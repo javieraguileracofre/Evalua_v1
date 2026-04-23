@@ -117,6 +117,33 @@ def _from_full_db_env() -> ResolvedDb | None:
     )
 
 
+def _from_cli_postgres_supabase(args: argparse.Namespace) -> ResolvedDb | None:
+    """Solo para --db-password en CLI: postgres@db.<ref>.supabase.co (no mezcla DB_HOST/DB_USER del .env)."""
+    pwd = (getattr(args, "db_password", None) or "").strip()
+    if not pwd:
+        return None
+    ref = (
+        (args.project_ref or os.getenv("SUPABASE_PROJECT_REF") or DEFAULT_PROJECT_REF)
+        .strip()
+        or DEFAULT_PROJECT_REF
+    )
+    host = f"db.{ref}.supabase.co"
+    user = "postgres"
+    name = "postgres"
+    port = 5432
+    sslmode = "require"
+    url = _build_url(host, user, pwd, name, port, sslmode)
+    return ResolvedDb(
+        sqlalchemy_url=url,
+        user=user,
+        password_plain=pwd,
+        host=host,
+        port=port,
+        db_name=name,
+        sslmode=sslmode,
+    )
+
+
 def _from_password_and_ref(args: argparse.Namespace) -> ResolvedDb | None:
     pwd = (getattr(args, "db_password", None) or "").strip() or os.getenv(
         "DB_PASSWORD", ""
@@ -154,9 +181,7 @@ def resolve_connection(args: argparse.Namespace) -> ResolvedDb | None:
     # --db-password en CLI gana sobre DATABASE_URL / DB_* del .env (bootstrap con postgres).
     cli_pw = (getattr(args, "db_password", None) or "").strip()
     if cli_pw:
-        r = _from_password_and_ref(args)
-        if r:
-            return r
+        return _from_cli_postgres_supabase(args)
     du = os.getenv("DATABASE_URL", "").strip()
     if du:
         return _from_database_url(du)
@@ -224,7 +249,7 @@ def main() -> int:
         "--db-password",
         default=None,
         metavar="CLAVE",
-        help="Contraseña (postgres por defecto en host Supabase). Tiene prioridad sobre DATABASE_URL del .env.",
+        help="Clave del usuario postgres en db.<ref>.supabase.co (ignora DB_HOST/DB_USER del .env). Prioridad sobre DATABASE_URL.",
     )
     p.add_argument(
         "--project-ref",
