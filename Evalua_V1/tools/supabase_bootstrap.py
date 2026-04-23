@@ -164,7 +164,8 @@ def _run_sql_file(engine, path: Path) -> None:
     sql = path.read_text(encoding="utf-8")
     if not sql.strip():
         return
-    with engine.begin() as conn:
+    # No usar begin(): no se puede pasar a AUTOCOMMIT dentro de una transacción ya abierta.
+    with engine.connect() as conn:
         conn = conn.execution_options(isolation_level="AUTOCOMMIT")
         conn.exec_driver_sql(sql)
 

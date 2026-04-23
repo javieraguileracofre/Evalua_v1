@@ -1,8 +1,14 @@
 Supabase — carga inicial vacía + usuario maestro
 ================================================
 
-Proyecto API: https://qtrqsdabrpxitmqvqdko.supabase.co
-Host PostgreSQL (directo): db.qtrqsdabrpxitmqvqdko.supabase.co  puerto 5432
+Proyecto API (no es donde se despliega el código FastAPI): https://qtrqsdabrpxitmqvqdko.supabase.co
+Host PostgreSQL (donde vive la BD): db.qtrqsdabrpxitmqvqdko.supabase.co  puerto 5432
+
+Si al ejecutar el bootstrap aparece "debe ser dueño de la tabla tenants", estás conectando con un
+usuario distinto de postgres (p. ej. evalua_user). Para la carga inicial usa DATABASE_URL con
+usuario postgres, o ejecuta los .sql en el SQL Editor del dashboard y luego:
+  python tools/supabase_bootstrap.py --skip-sql
+con un .env que pueda crear_all / usuario admin (idealmente postgres la primera vez).
 
 1) En Supabase Dashboard → Settings → Database, copia la contraseña del usuario postgres.
 
