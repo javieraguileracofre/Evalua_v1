@@ -1,36 +1,56 @@
-Supabase — carga inicial vacía + usuario maestro
-================================================
+Supabase — tablas vacías hasta que cargues el esquema (y la clave del panel)
+============================================================================
 
-Proyecto API (no es donde se despliega el código FastAPI): https://qtrqsdabrpxitmqvqdko.supabase.co
-Host PostgreSQL (donde vive la BD): db.qtrqsdabrpxitmqvqdko.supabase.co  puerto 5432
+Proyecto (API): https://qtrqsdabrpxitmqvqdko.supabase.co
+Host PostgreSQL:  db.qtrqsdabrpxitmqvqdko.supabase.co  puerto 5432  base postgres  usuario postgres
 
-Si al ejecutar el bootstrap aparece "debe ser dueño de la tabla tenants", estás conectando con un
-usuario distinto de postgres (p. ej. evalua_user). Para la carga inicial usa DATABASE_URL con
-usuario postgres, o ejecuta los .sql en el SQL Editor del dashboard y luego:
-  python tools/supabase_bootstrap.py --skip-sql
-con un .env que pueda crear_all / usuario admin (idealmente postgres la primera vez).
+Aclaración importante
+---------------------
+- Las tablas en el Table Editor están vacías hasta que ejecutes SQL o el bootstrap: eso es normal.
+- El proyecto Supabase SIEMPRE tiene una "Database password" para el rol postgres desde que creas
+  el proyecto (o tras resetearla). No "aparece" al cargar datos: la defines o reseteas en el panel.
+- Si hiciste ALTER ROLE postgres ... en pgAdmin contra localhost, eso NO cambia la contraseña
+  en la nube. En la nube usa la clave del panel o resetéala ahí.
 
-1) En Supabase Dashboard → Settings → Database, copia la contraseña del usuario postgres.
+──────────────────────────────────────────────────────────────────────────────
+OPCIÓN A — Ver tablas YA sin pelear con la clave en tu PC (recomendada primero)
+──────────────────────────────────────────────────────────────────────────────
+1) Supabase → SQL Editor → New query.
+2) Abre el archivo local:
+      Evalua_V1/db/supabase/bootstrap_public_schema.sql
+   Copia TODO el contenido, pégalo en el editor y pulsa RUN.
+3) Table Editor → schema public → deberías ver tenants, seguridad_roles, etc.
 
-2) Pon en .env la conexión (una de estas opciones):
-   - DATABASE_URL / PLATFORM_DATABASE_URL, o
-   - DB_HOST, DB_USER, DB_PASSWORD, DB_NAME (+ DB_SSLMODE=require en la nube), o
-   - al menos DB_PASSWORD (usuario postgres por defecto) y SUPABASE_PROJECT_REF si no hay DB_HOST.
+Luego, para fila tenant + tablas SQLAlchemy + usuario maestro desde tu máquina:
 
-   Desde la raíz de Evalua_V1:
+4) Dashboard → Settings → Database → copia la contraseña actual (o resetéala).
+5) En Evalua_V1, .env con DATABASE_URL y PLATFORM_DATABASE_URL (usuario postgres y esa clave),
+   host db.qtrqsdabrpxitmqvqdko.supabase.co, ?sslmode=require
+   (puedes partir de .env.supabase.template).
+6) En la raíz de Evalua_V1:
+      python tools/supabase_bootstrap.py --skip-sql
 
-   python tools/supabase_bootstrap.py
+──────────────────────────────────────────────────────────────────────────────
+OPCIÓN B — Todo desde Python (sin pegar SQL en el panel)
+──────────────────────────────────────────────────────────────────────────────
+Necesitas la contraseña del panel para el usuario postgres en Supabase.
 
-   (Opcional: --db-password "..." si no quieres guardar la clave en .env.)
+  python tools/supabase_bootstrap.py --db-password "CLAVE_DEL_PANEL"
 
-   Esto:
-   - Ejecuta db/psql/000_platform_registry.sql, 001_tenant_base.sql, 002_tenant_security.sql
-   - Inserta/actualiza la fila en public.tenants para el tenant "athletic" apuntando a esta instancia
-   - Crea todas las tablas SQLAlchemy (create_all) y roles auth por defecto
-   - Crea el usuario maestro:
-       email: javier.aguilera@evaluasoluciones.cl
-       password: Evalua1234##   (cámbiala en cuanto puedas)
+O en .env (solo si NO tienes DATABASE_URL todavía):
 
-3) Si aún no tienes .env, copia .env.supabase.template a .env y ajusta las mismas credenciales; arranca la app.
+  SUPABASE_POSTGRES_PASSWORD=CLAVE_DEL_PANEL
+  SUPABASE_PROJECT_REF=qtrqsdabrpxitmqvqdko
 
-Nota: si el script falla por permisos o SQL, revisa el mensaje; puedes ejecutar los .sql manualmente en SQL Editor y luego solo la parte Python (ver --help).
+  python tools/supabase_bootstrap.py
+
+Usuario maestro tras bootstrap exitoso
+---------------------------------------
+  email:    javier.aguilera@evaluasoluciones.cl
+  password: Evalua1234##   (cámbiala en cuanto puedas)
+
+Si algo falla
+-------------
+- "password authentication failed": la clave no es la del proyecto en la nube; reset en Database.
+- "debe ser dueño de la tabla tenants": conectas con un usuario sin permisos; usa postgres en URL o SQL Editor.
+- Si cambias db/psql/000, 001 o 002, actualiza también bootstrap_public_schema.sql para mantenerlos alineados.

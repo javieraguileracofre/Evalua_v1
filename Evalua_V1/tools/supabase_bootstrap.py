@@ -9,8 +9,9 @@ Bootstrap de Supabase: esquema mínimo (000–002), fila tenants, create_all, us
 Credenciales (en orden de prioridad):
   1) DATABASE_URL en .env
   2) DB_HOST + DB_USER + DB_PASSWORD + DB_NAME (+ DB_PORT, DB_SSLMODE opcionales), igual que core.config
-  3) DB_PASSWORD (o --db-password) + SUPABASE_PROJECT_REF / --project-ref:
-     usuario DB_USER o postgres, host db.<ref>.supabase.co si DB_HOST vacío
+  3) Si no hay DATABASE_URL ni DB_* completos: SUPABASE_POSTGRES_PASSWORD en .env
+     (clave del panel Settings → Database) + SUPABASE_PROJECT_REF → postgres@db.<ref>.supabase.co
+  4) DB_PASSWORD + SUPABASE_PROJECT_REF (host por defecto Supabase)
 
 La fila en public.tenants usa el mismo usuario/host/bd que la conexión resuelta
 (para que la app coincida con tu .env).
@@ -188,6 +189,13 @@ def resolve_connection(args: argparse.Namespace) -> ResolvedDb | None:
     full = _from_full_db_env()
     if full:
         return full
+    panel_pw = os.getenv("SUPABASE_POSTGRES_PASSWORD", "").strip()
+    if panel_pw:
+        ns = argparse.Namespace(
+            db_password=panel_pw,
+            project_ref=args.project_ref,
+        )
+        return _from_cli_postgres_supabase(ns)
     return _from_password_and_ref(args)
 
 
@@ -267,8 +275,8 @@ def main() -> int:
     if not resolved:
         print(
             "Error: define DATABASE_URL, o DB_HOST+DB_USER+DB_PASSWORD+DB_NAME, "
-            "o DB_PASSWORD (y opcionalmente DB_USER, SUPABASE_PROJECT_REF) en .env; "
-            "o pasa --db-password CLAVE (prioridad sobre .env).",
+            "o SUPABASE_POSTGRES_PASSWORD (panel Supabase) + SUPABASE_PROJECT_REF sin DATABASE_URL, "
+            "o DB_PASSWORD + ref; o pasa --db-password CLAVE.",
             file=sys.stderr,
         )
         return 1
@@ -313,6 +321,14 @@ def main() -> int:
         _upsert_tenant(engine, resolved)
     except Exception as exc:
         print(f"Error SQL / tenant: {exc}", file=sys.stderr)
+        low = str(exc).lower()
+        if "password authentication failed" in low or "autentific" in low:
+            print(
+                "\nLa clave no coincide con el usuario postgres de ESTE proyecto en Supabase. "
+                "Dashboard → Settings → Database → Reset database password (o copia la URI en Connect). "
+                "Un ALTER ROLE hecho en PostgreSQL local no cambia la nube.\n",
+                file=sys.stderr,
+            )
         return 1
     finally:
         engine.dispose()
