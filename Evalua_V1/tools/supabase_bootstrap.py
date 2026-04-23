@@ -151,6 +151,12 @@ def _from_password_and_ref(args: argparse.Namespace) -> ResolvedDb | None:
 
 def resolve_connection(args: argparse.Namespace) -> ResolvedDb | None:
     _load_dotenv()
+    # --db-password en CLI gana sobre DATABASE_URL / DB_* del .env (bootstrap con postgres).
+    cli_pw = (getattr(args, "db_password", None) or "").strip()
+    if cli_pw:
+        r = _from_password_and_ref(args)
+        if r:
+            return r
     du = os.getenv("DATABASE_URL", "").strip()
     if du:
         return _from_database_url(du)
@@ -216,8 +222,9 @@ def main() -> int:
     )
     p.add_argument(
         "--db-password",
-        default="",
-        help="Contraseña (si no está en DB_PASSWORD / DATABASE_URL en .env).",
+        default=None,
+        metavar="CLAVE",
+        help="Contraseña (postgres por defecto en host Supabase). Tiene prioridad sobre DATABASE_URL del .env.",
     )
     p.add_argument(
         "--project-ref",
@@ -236,7 +243,7 @@ def main() -> int:
         print(
             "Error: define DATABASE_URL, o DB_HOST+DB_USER+DB_PASSWORD+DB_NAME, "
             "o DB_PASSWORD (y opcionalmente DB_USER, SUPABASE_PROJECT_REF) en .env; "
-            "o pasa --db-password.",
+            "o pasa --db-password CLAVE (prioridad sobre .env).",
             file=sys.stderr,
         )
         return 1
