@@ -1,0 +1,518 @@
+{% extends "layout/base.html" %}
+{% block title %}{% if modo == 'editar' %}Centro de control · editar orden{% else %}Centro de control · nueva orden{% endif %} · Taller{% endblock %}
+
+{% block page_title %}{% if modo == 'editar' %}Centro de control · editar orden{% else %}Centro de control · nueva orden{% endif %}{% endblock %}
+{% block page_subtitle %}{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('taller_hub') }}">Taller</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('taller_ordenes_lista') }}">Órdenes</a></li>
+<li class="breadcrumb-item active">{% if modo == 'editar' %}Editar{% else %}Nueva{% endif %}</li>
+{% endblock %}
+
+{% block head %}
+<style>
+  /* Contraste en esta página (migas, formulario, barra lateral) */
+  .main-inner .breadcrumb-item a{
+    color: #334155;
+    font-weight: 600;
+  }
+  .main-inner .breadcrumb-item.active{
+    color: #0f172a;
+  }
+  .tl-orden-intro .tl-orden-intro-title{
+    color: var(--text, #0a0f1a);
+    font-weight: 800;
+    letter-spacing: -.02em;
+  }
+  .tl-orden-intro .tl-orden-intro-sub{
+    color: #334155;
+    font-weight: 500;
+    line-height: 1.5;
+    max-width: 44rem;
+  }
+  /* Cabeceras de bloque oscuras: evita texto claro si el fondo no aplica */
+  .tl-orden-form .tl-orden-section-head{
+    background: linear-gradient(135deg, #152238 0%, #0f172a 100%) !important;
+    border-bottom: 1px solid rgba(148, 163, 184, .22) !important;
+    color: #f1f5f9 !important;
+  }
+  .tl-orden-form .tl-orden-section-head h5,
+  .tl-orden-form .tl-orden-section-head span{
+    color: #f8fafc !important;
+  }
+  .tl-orden-form .form-label,
+  .tl-orden-form .form-check-label{
+    color: #0f172a !important;
+    font-weight: 650;
+  }
+  .tl-orden-form .form-check-label.small{
+    font-weight: 600;
+    font-size: .8125rem;
+  }
+  .tl-orden-form .text-muted,
+  .tl-orden-form .card-body > p.small.text-muted{
+    color: #475569 !important;
+  }
+  .tl-orden-form .form-check-inline span.small,
+  .tl-orden-form label.form-check-inline{
+    color: #1e293b !important;
+  }
+  .tl-orden-form .tl-orden-sidebar{
+    border: 1px solid var(--border, #dfe4ed);
+    border-radius: var(--radius-lg, 18px);
+    background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+  }
+  .tl-orden-form .tl-orden-sidebar .tl-orden-sidebar-hint{
+    color: #334155 !important;
+    font-weight: 500;
+    font-size: .875rem;
+  }
+  .tl-orden-form .tl-cotizacion-hint{
+    color: #475569 !important;
+    font-weight: 500;
+  }
+  .tl-orden-form .tl-cotizacion-total-label{
+    color: #334155 !important;
+    font-weight: 650;
+  }
+  .tl-orden-form #cot-sub-neto,
+  .tl-orden-form #cot-iva{
+    color: #0f172a !important;
+    font-weight: 700;
+  }
+  .tl-orden-form #cot-total{
+    color: #1e3a5f !important;
+    font-weight: 800;
+  }
+  .tl-orden-form #tabla-cotizacion thead{
+    background: linear-gradient(180deg, #e2e8f0, #d8e0ec) !important;
+  }
+  .tl-orden-form #tabla-cotizacion thead th{
+    color: #0f172a !important;
+    font-weight: 700;
+    font-size: .78rem;
+    vertical-align: middle;
+    border-color: #b8c5d8 !important;
+  }
+  .tl-orden-form #tabla-cotizacion tbody td{
+    color: var(--text, #0a0f1a);
+    background: #fff;
+  }
+  .tl-orden-form #bloqueNuevoVeh{
+    background: #eef2f9 !important;
+    border-color: #c8cfde !important;
+  }
+  .tl-orden-form #bloqueNuevoVeh .small{
+    color: #334155 !important;
+    font-weight: 700;
+  }
+  .tl-orden-form .card .badge.bg-secondary.bg-opacity-10{
+    background: rgba(30, 58, 95, .08) !important;
+    color: #0f172a !important;
+    border: 1px solid rgba(30, 58, 95, .2) !important;
+  }
+  .tl-orden-form .card-header.bg-white h5{
+    color: #0f172a;
+  }
+  .tl-orden-form .cot-net{
+    color: #0f172a !important;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tl-orden-form">
+<div class="tl-orden-intro mb-3">
+  <h2 class="tl-orden-intro-title h5 mb-1">
+    {% if modo == 'editar' %}Recepción, cotización e inventario{% else %}Cliente, vehículo y cotización{% endif %}
+  </h2>
+  <p class="tl-orden-intro-sub small mb-0">
+    {% if modo == 'editar' %}
+    Actualice recepción, cotización, testigos e inventario; los totales de cotización se recalculan solos.
+    {% else %}
+    Seleccione cliente y vehículo, complete la recepción y la cotización línea a línea antes de registrar.
+    {% endif %}
+  </p>
+</div>
+
+{% if msg %}
+<div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
+  <div class="d-flex align-items-start gap-2">
+    {% if (sev or 'info') == 'success' %}
+      <i class="bi bi-check-circle-fill mt-1"></i>
+    {% elif (sev or 'info') == 'warning' %}
+      <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+    {% elif (sev or 'info') == 'danger' %}
+      <i class="bi bi-x-circle-fill mt-1"></i>
+    {% else %}
+      <i class="bi bi-info-circle-fill mt-1"></i>
+    {% endif %}
+    <div class="flex-grow-1">{{ msg }}</div>
+  </div>
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+</div>
+{% endif %}
+
+<div class="d-flex justify-content-between flex-wrap gap-2 mb-3">
+  <a href="{{ request.url_for('taller_ordenes_lista') }}" class="btn btn-outline-secondary btn-sm fw-semibold">Volver al listado</a>
+</div>
+
+<form method="post" action="{% if modo == 'editar' %}{{ request.url_for('taller_orden_actualizar', orden_id=orden.id) }}{% else %}{{ request.url_for('taller_orden_crear') }}{% endif %}" id="form-os">
+  {% if modo == 'editar' %}
+  <input type="hidden" name="cliente_id" value="{{ orden.cliente_id }}">
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card shadow-sm border-0 mb-3">
+        <div class="card-header bg-white border-0"><h5 class="mb-0 fw-semibold">Cliente y vehículo</h5></div>
+        <div class="card-body">
+          {% if modo == 'nueva' %}
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label">Cliente</label>
+              <select name="cliente_id" class="form-select" required id="selCliente"
+                data-base-nueva="{{ request.url_for('taller_orden_nueva') }}">
+                <option value="">Seleccione</option>
+                {% for c in clientes %}
+                <option value="{{ c.id }}" {% if cliente_pre == c.id %}selected{% endif %}>{{ c.razon_social }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Vehículo</label>
+              <select name="vehiculo_id" class="form-select" id="selVehiculo" required>
+                <option value="">Seleccione</option>
+                <option value="nuevo">— Registrar nuevo vehículo —</option>
+                {% for v in vehiculos %}
+                <option value="{{ v.id }}">{{ v.patente }} — {{ v.marca }} {{ v.modelo }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div id="bloqueNuevoVeh" class="row g-2 mt-2 border rounded p-3 bg-light d-none">
+            <div class="col-12 small text-muted fw-semibold">Datos del nuevo vehículo</div>
+            <div class="col-md-3"><label class="form-label">Patente</label><input type="text" name="nv_patente" class="form-control text-uppercase" maxlength="20"></div>
+            <div class="col-md-3"><label class="form-label">Marca</label><input type="text" name="nv_marca" class="form-control"></div>
+            <div class="col-md-3"><label class="form-label">Modelo</label><input type="text" name="nv_modelo" class="form-control"></div>
+            <div class="col-md-3"><label class="form-label">Color</label><input type="text" name="nv_color" class="form-control"></div>
+            <div class="col-md-2"><label class="form-label">Año</label><input type="number" name="nv_anio" class="form-control" min="1980" max="2100"></div>
+            <div class="col-md-4"><label class="form-label">VIN</label><input type="text" name="nv_vin" class="form-control" maxlength="32"></div>
+            <div class="col-md-2"><label class="form-label">Km</label><input type="number" name="nv_km" class="form-control" min="0"></div>
+          </div>
+          {% else %}
+          <p class="mb-1"><strong>Cliente:</strong> {{ orden.cliente.razon_social if orden.cliente else '—' }}</p>
+          <p class="mb-0"><strong>Vehículo:</strong>
+            {% if orden.vehiculo %}{{ orden.vehiculo.patente }} {{ orden.vehiculo.marca }} {{ orden.vehiculo.modelo }}{% else %}—{% endif %}
+          </p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-3">
+        <div class="card-header bg-white border-0"><h5 class="mb-0 fw-semibold">Recepción</h5></div>
+        <div class="card-body row g-2">
+          <div class="col-md-4">
+            <label class="form-label">Fecha y hora recepción</label>
+            <input type="datetime-local" name="fecha_recepcion" class="form-control" required
+              value="{% if orden and orden.fecha_recepcion %}{{ orden.fecha_recepcion.strftime('%Y-%m-%dT%H:%M') }}{% elif fecha_default %}{{ fecha_default }}{% endif %}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Entrega estimada</label>
+            <input type="datetime-local" name="fecha_entrega_estimada" class="form-control"
+              value="{% if orden and orden.fecha_entrega_estimada %}{{ orden.fecha_entrega_estimada.strftime('%Y-%m-%dT%H:%M') }}{% endif %}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Estado</label>
+            <select name="estado" class="form-select">
+              {% for e in estados %}
+              <option value="{{ e }}" {% if orden and orden.estado == e %}selected{% elif not orden and e == 'RECIBIDA' %}selected{% endif %}>{{ e }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Contacto</label>
+            <input type="text" name="contacto_nombre" class="form-control" value="{{ orden.contacto_nombre if orden else '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Teléfono</label>
+            <input type="text" name="contacto_telefono" class="form-control" value="{{ orden.contacto_telefono if orden else '' }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Trabajo solicitado</label>
+            <textarea name="trabajo_solicitado" class="form-control" rows="2">{{ orden.trabajo_solicitado if orden else '' }}</textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Observaciones</label>
+            <textarea name="observaciones" class="form-control" rows="3">{{ orden.observaciones if orden else '' }}</textarea>
+          </div>
+          <div class="col-12 border-top pt-3 mt-1">
+            <div class="row g-2 align-items-end">
+              <div class="col-md-4">
+                <label class="form-label small fw-semibold">Ingreso en grúa</label>
+                <div class="d-flex gap-3">
+                  <label class="form-check form-check-inline mb-0"><input class="form-check-input" type="radio" name="ingreso_grua" value="" {% if orden and orden.ingreso_grua is none %}checked{% elif not orden %}checked{% endif %}> <span class="small">N/D</span></label>
+                  <label class="form-check form-check-inline mb-0"><input class="form-check-input" type="radio" name="ingreso_grua" value="SI" {% if orden and orden.ingreso_grua is sameas true %}checked{% endif %}> <span class="small">Sí</span></label>
+                  <label class="form-check form-check-inline mb-0"><input class="form-check-input" type="radio" name="ingreso_grua" value="NO" {% if orden and orden.ingreso_grua is sameas false %}checked{% endif %}> <span class="small">No</span></label>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small">O.T.E / N°</label>
+                <input type="text" name="ote_num" class="form-control form-control-sm" value="{{ orden.ote_num if orden else '' }}" maxlength="60" placeholder="Referencia interna">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small">E-mail</label>
+                <input type="email" name="email_contacto" class="form-control form-control-sm" value="{{ orden.email_contacto if orden else '' }}" placeholder="cliente@ejemplo.cl">
+              </div>
+              <div class="col-12">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="cotizacion_afecta_iva" id="cot_afecta_iva" value="on"
+                    {% if not orden or orden.cotizacion_afecta_iva %}checked{% endif %}>
+                  <label class="form-check-label small" for="cot_afecta_iva">Cotización afecta a IVA (19%)</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-3 border-primary border-opacity-25">
+        <div class="card-header py-2" style="background:linear-gradient(135deg,#1e3a5f 0%,#2d4a6f 100%);">
+          <h5 class="mb-0 text-white small text-uppercase letter-spacing-1"><i class="bi bi-table me-1"></i> Cotización (línea a línea)</h5>
+        </div>
+        <div class="card-body">
+          <p class="small mb-2 tl-cotizacion-hint">Describa cada trabajo o repuesto: cantidad × precio unitario = valor neto línea.</p>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0 align-middle" id="tabla-cotizacion">
+              <thead>
+                <tr class="text-center small">
+                  <th style="width:72px;">Cant.</th>
+                  <th>Descripción del trabajo / repuesto</th>
+                  <th style="width:120px;">Precio unit.</th>
+                  <th style="width:120px;">Valor neto</th>
+                  <th style="width:44px;"></th>
+                </tr>
+              </thead>
+              <tbody id="cotizacion-body"></tbody>
+            </table>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="btn-add-cot-line"><i class="bi bi-plus-lg"></i> Agregar línea</button>
+          <div class="row justify-content-end mt-3">
+            <div class="col-md-5 col-lg-4">
+              <table class="table table-sm mb-0">
+                <tr><td class="small tl-cotizacion-total-label">Subtotal neto</td><td class="text-end fw-semibold" id="cot-sub-neto">$ 0</td></tr>
+                <tr><td class="small tl-cotizacion-total-label">IVA 19%</td><td class="text-end fw-semibold" id="cot-iva">$ 0</td></tr>
+                <tr class="border-top"><td class="fw-bold tl-cotizacion-total-label">Total</td><td class="text-end fw-bold text-primary" id="cot-total">$ 0</td></tr>
+              </table>
+            </div>
+          </div>
+          <input type="hidden" name="cotizacion_json" id="cotizacion_json" value="">
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-3">
+        <div class="card-header tl-orden-section-head py-3"><h5 class="mb-0 small text-uppercase fw-bold">Testigos tablero (encendidos / reportados)</h5></div>
+        <div class="card-body">
+          <div class="row row-cols-2 row-cols-md-5 g-2">
+            {% for k, lbl in testigo_labels %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="{{ k }}" id="{{ k }}" value="on"
+                {% if checks_state.get(k) %}checked{% endif %}>
+              <label class="form-check-label small" for="{{ k }}">{{ lbl }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-3">
+        <div class="card-header tl-orden-section-head py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <h5 class="mb-0 small text-uppercase fw-bold">Inventario en vehículo</h5>
+          <span class="small text-uppercase fw-semibold" style="letter-spacing:.04em;">Combustible</span>
+        </div>
+        <div class="card-body row">
+          <div class="col-md-8">
+            <div class="row row-cols-2 g-1">
+              {% for key, lbl in inv_labels %}
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="{{ key }}" id="{{ key }}" value="on"
+                  {% if checks_state.get(key) %}checked{% endif %}>
+                <label class="form-check-label small" for="{{ key }}">{{ lbl }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Combustible</label>
+            <select name="nivel_combustible" class="form-select">
+              <option value="">—</option>
+              {% for n in niveles_comb %}
+              <option value="{{ n }}" {% if orden and orden.nivel_combustible == n %}selected{% endif %}>{{ n }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-3">
+        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h5 class="mb-0 fw-semibold">Daños y estado exterior del vehículo</h5>
+          <span class="badge bg-secondary bg-opacity-10 text-dark border">Diagrama de referencia</span>
+        </div>
+        <div class="card-body">
+          <div class="text-center mb-3 p-2 bg-light rounded border">
+            <img src="{{ request.url_for('static', path='img/TALLER/SECCION_VH_DAÑOS.png') }}" alt="Vistas del vehículo para marcar daños" class="img-fluid" style="max-height:220px;" onerror="this.closest('.text-center').innerHTML='<p class=\'text-muted small mb-0\'>Coloque la imagen <code>static/img/TALLER/SECCION_VH_DAÑOS.png</code> para ver el diagrama.</p>'">
+          </div>
+          <p class="small text-muted mb-2">Indique rayones, bollos u observaciones por vista (según diagrama).</p>
+          <div class="row g-2">
+            <div class="col-md-6"><label class="form-label small">Frente</label><textarea name="dano_vista_frente" class="form-control" rows="2">{{ orden.dano_vista_frente if orden else '' }}</textarea></div>
+            <div class="col-md-6"><label class="form-label small">Atrás</label><textarea name="dano_vista_atras" class="form-control" rows="2">{{ orden.dano_vista_atras if orden else '' }}</textarea></div>
+            <div class="col-md-6"><label class="form-label small">Lado izquierdo</label><textarea name="dano_vista_izquierda" class="form-control" rows="2">{{ orden.dano_vista_izquierda if orden else '' }}</textarea></div>
+            <div class="col-md-6"><label class="form-label small">Lado derecho</label><textarea name="dano_vista_derecha" class="form-control" rows="2">{{ orden.dano_vista_derecha if orden else '' }}</textarea></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card shadow-sm border-0 sticky-top tl-orden-sidebar" style="top:1rem;">
+        <div class="card-body">
+          <p class="tl-orden-sidebar-hint mb-3 lh-sm">Revise cotización y daños antes de confirmar. Los totales se calculan automáticamente según el IVA indicado.</p>
+          <button type="submit" class="btn btn-primary w-100 mb-2">{% if modo == 'editar' %}Guardar cambios{% else %}Registrar orden{% endif %}</button>
+          {% if modo == 'editar' and orden %}
+          <a href="{{ request.url_for('taller_orden_imprimir', orden_id=orden.id) }}" class="btn btn-outline-secondary w-100" target="_blank"><i class="bi bi-printer me-1"></i> Vista de impresión</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+<script type="application/json" id="cotizacion-initial-data">{{ lineas_cotizacion_json | safe }}</script>
+<script>
+(function(){
+  var sel = document.getElementById('selVehiculo');
+  var bloque = document.getElementById('bloqueNuevoVeh');
+  if(sel && bloque){
+    function sync(){
+      bloque.classList.toggle('d-none', sel.value !== 'nuevo');
+    }
+    sel.addEventListener('change', sync);
+    sync();
+  }
+})();
+
+(function(){
+  var sel = document.getElementById('selCliente');
+  if(!sel || !sel.dataset.baseNueva) return;
+  sel.addEventListener('change', function(){
+    var u = new URL(sel.dataset.baseNueva, window.location.origin);
+    if(sel.value) u.searchParams.set('cliente_id', sel.value);
+    else u.searchParams.delete('cliente_id');
+    var cur = new URLSearchParams(window.location.search);
+    var msg = cur.get('msg');
+    var sev = cur.get('sev');
+    if(msg){
+      u.searchParams.set('msg', msg);
+      if(sev) u.searchParams.set('sev', sev);
+    }
+    window.location.href = u.pathname + u.search;
+  });
+})();
+
+(function(){
+  var IVA = 0.19;
+  var body = document.getElementById('cotizacion-body');
+  var hid = document.getElementById('cotizacion_json');
+  var chkIva = document.getElementById('cot_afecta_iva');
+  var elSub = document.getElementById('cot-sub-neto');
+  var elIva = document.getElementById('cot-iva');
+  var elTot = document.getElementById('cot-total');
+  var raw = document.getElementById('cotizacion-initial-data');
+  var initial = [];
+  try { initial = JSON.parse(raw ? raw.textContent : '[]'); } catch(e) { initial = []; }
+  if(!initial.length) initial = [{ descripcion: '', cantidad: '1', precio_unitario: '0' }];
+
+  function fmt(n){
+    var x = Math.round(n * 100) / 100;
+    return x.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  }
+  function parseNum(s){
+    if(s == null || s === '') return 0;
+    var t = String(s).replace(/\./g,'').replace(',','.');
+    var v = parseFloat(t);
+    return isFinite(v) ? v : 0;
+  }
+  function rowTemplate(d, c, p){
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><input type="text" class="form-control form-control-sm text-center cot-cant" value="'+ (c||'') +'"></td>'+
+      '<td><input type="text" class="form-control form-control-sm cot-desc" placeholder="Descripción del trabajo" value="'+ (d||'').replace(/"/g,'&quot;') +'"></td>'+
+      '<td><input type="text" class="form-control form-control-sm text-end cot-pu" value="'+ (p||'') +'"></td>'+
+      '<td class="text-end align-middle cot-net fw-semibold">0</td>'+
+      '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger py-0 cot-del" title="Quitar">&times;</button></td>';
+    return tr;
+  }
+  function recalcRow(tr){
+    var cant = parseNum(tr.querySelector('.cot-cant').value);
+    var pu = parseNum(tr.querySelector('.cot-pu').value);
+    var net = Math.round(cant * pu * 100) / 100;
+    tr.querySelector('.cot-net').textContent = fmt(net);
+    return net;
+  }
+  function recalcAll(){
+    var rows = body.querySelectorAll('tr');
+    var sub = 0;
+    rows.forEach(function(tr){ sub += recalcRow(tr); });
+    var afecta = chkIva && chkIva.checked;
+    var iva = afecta ? Math.round(sub * IVA * 100) / 100 : 0;
+    var tot = Math.round((sub + iva) * 100) / 100;
+    if(elSub) elSub.textContent = '$ ' + fmt(sub);
+    if(elIva) elIva.textContent = '$ ' + fmt(iva);
+    if(elTot) elTot.textContent = '$ ' + fmt(tot);
+    syncJson();
+  }
+  function syncJson(){
+    var out = [];
+    body.querySelectorAll('tr').forEach(function(tr){
+      var desc = (tr.querySelector('.cot-desc') && tr.querySelector('.cot-desc').value) || '';
+      var cant = (tr.querySelector('.cot-cant') && tr.querySelector('.cot-cant').value) || '1';
+      var pu = (tr.querySelector('.cot-pu') && tr.querySelector('.cot-pu').value) || '0';
+      out.push({ descripcion: desc.trim(), cantidad: String(cant).trim(), precio_unitario: String(pu).trim() });
+    });
+    if(hid) hid.value = JSON.stringify(out);
+  }
+  function bind(tr){
+    tr.querySelectorAll('.cot-cant,.cot-pu,.cot-desc').forEach(function(inp){
+      inp.addEventListener('input', recalcAll);
+    });
+    var del = tr.querySelector('.cot-del');
+    if(del) del.addEventListener('click', function(){
+      tr.remove();
+      if(!body.querySelectorAll('tr').length) body.appendChild(rowTemplate('','1','0'));
+      recalcAll();
+    });
+  }
+  initial.forEach(function(line){
+    var tr = rowTemplate(line.descripcion||'', line.cantidad||'1', line.precio_unitario||'0');
+    body.appendChild(tr);
+    bind(tr);
+  });
+  if(chkIva) chkIva.addEventListener('change', recalcAll);
+  var btnAdd = document.getElementById('btn-add-cot-line');
+  if(btnAdd) btnAdd.addEventListener('click', function(){
+    var tr = rowTemplate('','1','0');
+    body.appendChild(tr);
+    bind(tr);
+    recalcAll();
+  });
+  var form = document.getElementById('form-os');
+  if(form) form.addEventListener('submit', function(){ syncJson(); });
+  recalcAll();
+})();
+</script>
+</div>
+{% endblock %}

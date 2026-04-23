@@ -1,0 +1,107 @@
+{% extends "layout/base.html" %}
+{% block title %}Órdenes de servicio · Taller{% endblock %}
+
+{% block page_title %}Órdenes de servicio{% endblock %}
+{% block page_subtitle %}{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('taller_hub') }}">Taller</a></li>
+<li class="breadcrumb-item active" aria-current="page">Órdenes</li>
+{% endblock %}
+
+{% block head %}
+<style>
+  .tl-ordenes-intro .tl-ordenes-title{
+    color: var(--text, #0a0f1a);
+    font-weight: 800;
+    letter-spacing: -.02em;
+  }
+  .tl-ordenes-intro .tl-ordenes-sub{
+    color: var(--secondary-soft, #3d465a);
+    font-weight: 500;
+    max-width: 42rem;
+  }
+  .tl-ordenes-page .tl-ordenes-toolbar label{
+    color: var(--secondary-soft, #3d465a);
+    font-weight: 600;
+  }
+  .tl-ordenes-page .tl-ordenes-table thead{
+    background: linear-gradient(180deg, #e2e8f0, #d8e0ec) !important;
+  }
+  .tl-ordenes-page .tl-ordenes-table thead th{
+    color: #0f172a !important;
+    font-weight: 700;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    border-bottom: 1px solid #b8c5d8 !important;
+    white-space: nowrap;
+  }
+  .tl-ordenes-page .tl-ordenes-table tbody td{
+    color: var(--text, #0a0f1a);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tl-ordenes-intro mb-3">
+  <h2 class="tl-ordenes-title h5 mb-1">Centro de control · listado de órdenes</h2>
+  <p class="tl-ordenes-sub small mb-0">Filtre por estado y abra el detalle o imprima el comprobante desde cada fila.</p>
+</div>
+
+<div class="tl-ordenes-page">
+<div class="tl-ordenes-toolbar d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <form method="get" class="d-flex flex-wrap gap-2 align-items-center">
+    <label class="small mb-0">Estado</label>
+    <select name="estado" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+      <option value="">Todos</option>
+      {% for e in estados %}
+      <option value="{{ e }}" {% if filtro_estado == e %}selected{% endif %}>{{ e }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <a href="{{ request.url_for('taller_orden_nueva') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg"></i> Nueva orden
+  </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0 tl-ordenes-table">
+      <thead>
+        <tr>
+          <th>Folio</th>
+          <th>Fecha recepción</th>
+          <th>Cliente</th>
+          <th>Vehículo</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in ordenes %}
+        <tr>
+          <td class="fw-semibold">{{ o.folio or '—' }}</td>
+          <td>{{ o.fecha_recepcion.strftime('%d-%m-%Y %H:%M') if o.fecha_recepcion else '—' }}</td>
+          <td>{{ o.cliente.razon_social if o.cliente else '—' }}</td>
+          <td>
+            {% if o.vehiculo %}
+              {{ o.vehiculo.patente }} {{ o.vehiculo.marca }} {{ o.vehiculo.modelo }}
+            {% else %}—{% endif %}
+          </td>
+          <td><span class="badge bg-secondary-subtle text-dark">{{ o.estado }}</span></td>
+          <td class="text-end">
+            <a href="{{ request.url_for('taller_orden_detalle', orden_id=o.id) }}" class="btn btn-sm btn-outline-primary">Ver</a>
+            <a href="{{ request.url_for('taller_orden_imprimir', orden_id=o.id) }}" class="btn btn-sm btn-outline-secondary" target="_blank">Imprimir</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted py-4 text-center">No hay órdenes registradas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+{% endblock %}

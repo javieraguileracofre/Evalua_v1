@@ -1,0 +1,236 @@
+{# templates/clientes/clientes_carga_masiva.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Carga masiva de clientes · Evalua_V1{% endblock title %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('clientes_list') }}">Clientes</a></li>
+<li class="breadcrumb-item active" aria-current="page">Carga masiva</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Carga masiva de clientes{% endblock page_title %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="h4 fw-semibold mb-1">Importación masiva de clientes</h2>
+    <div class="text-muted small">
+      Incorpora múltiples clientes al maestro comercial mediante un archivo CSV estructurado y validado.
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('clientes_list') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left"></i> Volver a clientes
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Formato requerido</div>
+        <div class="fs-5 fw-bold">CSV</div>
+        <div class="small text-muted mt-2">
+          Archivo plano exportado desde Excel o generado desde otra fuente validada.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Objetivo</div>
+        <div class="fs-5 fw-bold">Alta masiva</div>
+        <div class="small text-muted mt-2">
+          Registro rápido de clientes para operación comercial y administrativa.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Recomendación</div>
+        <div class="fs-5 fw-bold">Validar antes</div>
+        <div class="small text-muted mt-2">
+          Revisa RUT, correo, dirección y columnas antes de ejecutar la importación.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Archivo de carga</h3>
+        <div class="text-muted small">
+          Selecciona el archivo CSV con la estructura requerida para registrar clientes en el sistema.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">Importador comercial</span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <form
+      method="post"
+      enctype="multipart/form-data"
+      action="{{ request.url_for('clientes_carga_masiva_upload') }}"
+    >
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Archivo CSV <span class="text-danger">*</span></label>
+        <input
+          type="file"
+          name="archivo"
+          class="form-control"
+          accept=".csv,.txt"
+          required
+        >
+        <div class="form-text">
+          Formatos aceptados: <strong>.csv</strong> y <strong>.txt</strong>. Se recomienda codificación UTF-8.
+          Límites por petición: tamaño máximo <strong>{{ bulk_csv_max_mb }} MiB</strong> y
+          <strong>{{ bulk_csv_max_rows }}</strong> filas de datos (aprox., contando saltos de línea).
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center mt-4">
+        <a href="{{ request.url_for('clientes_list') }}" class="btn btn-light">
+          <i class="bi bi-arrow-left"></i> Volver
+        </a>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-upload"></i> Importar clientes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <h3 class="h6 fw-semibold mb-1">Estructura requerida del archivo</h3>
+    <div class="text-muted small">
+      El archivo debe contener exactamente las columnas esperadas para evitar errores de lectura o carga.
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <div class="alert alert-light border mb-3">
+      <div class="small mb-2 fw-semibold">Columnas esperadas</div>
+      <code>rut, razon_social, nombre_fantasia, giro, direccion, comuna, ciudad, telefono, email, activo</code>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Columna</th>
+            <th>Descripción</th>
+            <th>Ejemplo</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>rut</code></td>
+            <td>RUT o identificador tributario del cliente</td>
+            <td>76.123.456-7</td>
+          </tr>
+          <tr>
+            <td><code>razon_social</code></td>
+            <td>Nombre legal o razón social</td>
+            <td>Comercial Ejemplo SpA</td>
+          </tr>
+          <tr>
+            <td><code>nombre_fantasia</code></td>
+            <td>Nombre comercial visible</td>
+            <td>Ejemplo Comercial</td>
+          </tr>
+          <tr>
+            <td><code>giro</code></td>
+            <td>Actividad económica o rubro</td>
+            <td>Venta de repuestos</td>
+          </tr>
+          <tr>
+            <td><code>direccion</code></td>
+            <td>Dirección comercial o tributaria</td>
+            <td>Av. Principal 123</td>
+          </tr>
+          <tr>
+            <td><code>comuna</code></td>
+            <td>Comuna asociada</td>
+            <td>Santiago</td>
+          </tr>
+          <tr>
+            <td><code>ciudad</code></td>
+            <td>Ciudad del cliente</td>
+            <td>Santiago</td>
+          </tr>
+          <tr>
+            <td><code>telefono</code></td>
+            <td>Teléfono de contacto</td>
+            <td>+56 9 1234 5678</td>
+          </tr>
+          <tr>
+            <td><code>email</code></td>
+            <td>Correo electrónico principal</td>
+            <td>contacto@empresa.cl</td>
+          </tr>
+          <tr>
+            <td><code>activo</code></td>
+            <td>Estado del cliente</td>
+            <td>true</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <h3 class="h6 fw-semibold mb-1">Buenas prácticas antes de importar</h3>
+    <div class="text-muted small">
+      Recomendaciones para reducir errores y asegurar una carga limpia.
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="p-3 rounded-4 border bg-light h-100">
+          <div class="small text-muted mb-1">1. Validación de datos</div>
+          <div class="fw-semibold">
+            Verifica que no existan RUT duplicados, correos mal escritos ni filas vacías.
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="p-3 rounded-4 border bg-light h-100">
+          <div class="small text-muted mb-1">2. Orden del archivo</div>
+          <div class="fw-semibold">
+            Mantén los encabezados correctos y evita renombrar columnas o agregar campos extra.
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="p-3 rounded-4 border bg-light h-100">
+          <div class="small text-muted mb-1">3. Exportación</div>
+          <div class="fw-semibold">
+            Si trabajas en Excel, exporta como CSV y revisa el resultado antes de subirlo.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}

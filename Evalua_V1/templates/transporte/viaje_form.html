@@ -1,0 +1,91 @@
+{% extends "layout/base.html" %}
+{% block title %}{% if modo == 'editar' %}Editar hoja de ruta{% else %}Nueva hoja de ruta{% endif %} · Transporte{% endblock %}
+{% block page_title %}{% if modo == 'editar' %}Editar viaje{% else %}Nueva hoja de ruta{% endif %}{% endblock %}
+{% block page_subtitle %}{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('transporte_hub') }}">Transporte</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('transporte_viajes_lista') }}">Viajes</a></li>
+<li class="breadcrumb-item active">{% if modo == 'editar' %}Editar{% else %}Nuevo{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap gap-2 mb-3">
+  <a href="{{ request.url_for('transporte_viajes_lista') }}" class="btn btn-outline-secondary btn-sm">Volver al listado</a>
+  {% if modo == 'editar' and viaje %}
+  <a href="{{ request.url_for('transporte_viaje_detalle', viaje_id=viaje.id) }}" class="btn btn-outline-primary btn-sm">Ver detalle</a>
+  {% endif %}
+</div>
+
+<form method="post" action="{% if modo == 'editar' %}{{ request.url_for('transporte_viaje_actualizar', viaje_id=viaje.id) }}{% else %}{{ request.url_for('transporte_viaje_crear') }}{% endif %}" class="card border-0 shadow-sm">
+  <div class="card-body row g-3">
+    <div class="col-md-6">
+      <label class="form-label">Chofer / trabajador</label>
+      <select name="empleado_id" class="form-select" required>
+        <option value="">Seleccione</option>
+        {% for e in empleados %}
+        <option value="{{ e.id }}" {% if viaje and viaje.empleado_id == e.id %}selected{% endif %}>{{ e.nombre_completo }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Vehículo flota</label>
+      <select name="vehiculo_transporte_id" class="form-select">
+        <option value="">—</option>
+        {% for vt in vehiculos %}
+        <option value="{{ vt.id }}" {% if viaje and viaje.vehiculo_transporte_id == vt.id %}selected{% endif %}>{{ vt.patente }} — {{ vt.marca }} {{ vt.modelo }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Cliente carga (opcional)</label>
+      <select name="cliente_id" class="form-select">
+        <option value="">—</option>
+        {% for c in clientes %}
+        <option value="{{ c.id }}" {% if viaje and viaje.cliente_id == c.id %}selected{% endif %}>{{ c.razon_social }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Anticipo vinculado (opcional)</label>
+      <select name="fondo_rendir_id" class="form-select">
+        <option value="">—</option>
+        {% for f in fondos %}
+        <option value="{{ f.id }}" {% if viaje and viaje.fondo_rendir_id == f.id %}selected{% endif %}>{{ f.folio }} · {{ f.empleado.nombre_completo if f.empleado else '' }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text">Solo anticipos abiertos o pendientes de aprobación.</div>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Origen</label>
+      <input type="text" name="origen" class="form-control" required maxlength="240" value="{{ viaje.origen if viaje else '' }}" placeholder="Ciudad, bodega, planta…">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Destino</label>
+      <input type="text" name="destino" class="form-control" required maxlength="240" value="{{ viaje.destino if viaje else '' }}">
+    </div>
+    <div class="col-12">
+      <label class="form-label">Referencia de carga</label>
+      <input type="text" name="referencia_carga" class="form-control" maxlength="200" value="{{ viaje.referencia_carga if viaje and viaje.referencia_carga else '' }}" placeholder="OC, guía, nota de venta…">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Salida programada</label>
+      <input type="datetime-local" name="programado_salida" class="form-control"
+        value="{% if viaje and viaje.programado_salida %}{{ viaje.programado_salida.strftime('%Y-%m-%dT%H:%M') }}{% endif %}">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Llegada programada</label>
+      <input type="datetime-local" name="programado_llegada" class="form-control"
+        value="{% if viaje and viaje.programado_llegada %}{{ viaje.programado_llegada.strftime('%Y-%m-%dT%H:%M') }}{% endif %}">
+    </div>
+    <div class="col-12">
+      <label class="form-label">Notas internas</label>
+      <textarea name="notas" class="form-control" rows="2">{{ viaje.notas if viaje and viaje.notas else '' }}</textarea>
+    </div>
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">{% if modo == 'editar' %}Guardar cambios{% else %}Crear borrador{% endif %}</button>
+      <a href="{{ request.url_for('transporte_viajes_lista') }}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+  </div>
+</form>
+{% endblock %}

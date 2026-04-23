@@ -1,0 +1,269 @@
+{# templates/finanzas/cxp_lista.html #}
+{% extends "layout/base.html" %}
+{% import "finanzas/_cxp_macros.html" as cxp %}
+
+{% block title %}Cuentas por pagar · Evalua ERP{% endblock %}
+{% block page_title %}Cuentas por pagar{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  Cuentas por pagar (AP): documentos de proveedor, aging, saldos pendientes y registro de pagos con trazabilidad.
+</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="/finanzas/hub">Finanzas</a></li>
+<li class="breadcrumb-item active" aria-current="page">Cuentas por pagar</li>
+{% endblock %}
+
+{% block page_actions %}
+<div class="d-flex gap-2 flex-wrap">
+  <a href="{{ request.url_for('cxp_nuevo') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg"></i> Nuevo documento
+  </a>
+  <a href="{{ request.url_for('fin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-bank"></i> Dashboard finanzas
+  </a>
+  <a href="{{ request.url_for('proveedor_lista') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-truck"></i> Proveedores
+  </a>
+</div>
+{% endblock %}
+
+{% block hero_title %}Caja de proveedores y obligaciones{% endblock %}
+{% block hero_desc %}
+Priorice vencimientos, reduzca mora y liquide documentos con filtros por proveedor, estado y saldo abierto. Los KPI usan líneas y aplicaciones de pago (no solo cabecera de documento).
+{% endblock %}
+
+{% block head %}
+<style>
+  .cxp-monto {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+  .cxp-table-wrap {
+    max-height: min(62vh, 640px);
+    overflow: auto;
+  }
+  .cxp-table-wrap thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if not cxp_schema_ok %}
+<div class="alert alert-warning border-0 shadow-sm mb-3" role="alert">
+  <strong>Esquema CxP incompleto.</strong> Faltan tablas en <code>fin</code> (p. ej. tras un reset). Como <code>postgres</code> ejecute <code>db/psql/096_grant_evalua_user_ap_fk.sql</code> (incluye REFERENCES a <code>categoria_gasto</code> y <code>centro_costo</code>) y luego <code>python tools/create_fin_ap_tables.py</code>; reinicie la app.
+</div>
+{% endif %}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Documentos</div>
+        <div class="fs-4 fw-bold">{{ resumen.documentos }}</div>
+        <div class="small text-muted mt-1">Registrados en AP</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card h-100 border-0 shadow-sm bg-primary-subtle bg-opacity-25">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Total documentado</div>
+        <div class="fs-5 fw-bold text-primary cxp-monto">$ {{ cxp.cxp_monto(resumen.total_documentado) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Saldo pendiente</div>
+        <div class="fs-5 fw-bold text-warning cxp-monto">$ {{ cxp.cxp_monto(resumen.saldo_pendiente) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Saldo vencido</div>
+        <div class="fs-5 fw-bold text-danger cxp-monto">$ {{ cxp.cxp_monto(resumen.saldo_vencido) }}</div>
+        <div class="small text-muted mt-1">{{ resumen.docs_vencidos }} doc.</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Por vencer 7 días</div>
+        <div class="fs-5 fw-bold text-primary cxp-monto">$ {{ cxp.cxp_monto(resumen.saldo_por_vencer) }}</div>
+        <div class="small text-muted mt-1">{{ resumen.docs_por_vencer }} doc.</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card h-100 border-0 shadow-sm bg-success-subtle bg-opacity-25">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Cartera liquidada</div>
+        <div class="fs-5 fw-bold text-success cxp-monto">$ {{ cxp.cxp_monto(resumen.facturacion_liquidada) }}</div>
+        <div class="small text-muted mt-1">Suma de montos originales de documentos sin saldo pendiente</div>
+        <div class="small text-muted mt-2 border-top pt-2">Pagos aplicados (hist.): $ {{ cxp.cxp_monto(resumen.total_aplicado_hist) }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-md-4 col-lg-3">
+        <label class="form-label fw-semibold" for="cxp-q">Buscar</label>
+        <input type="search" name="q" id="cxp-q" class="form-control" value="{{ filtros.q }}" placeholder="Proveedor, folio o referencia" autocomplete="off">
+      </div>
+      <div class="col-md-4 col-lg-3">
+        <label class="form-label fw-semibold" for="cxp-prov">Proveedor</label>
+        <select name="proveedor_id" id="cxp-prov" class="form-select">
+          <option value="">Todos</option>
+          {% for p in proveedores %}
+          <option value="{{ p.id }}" {% if filtros.proveedor_id is not none and filtros.proveedor_id|string == p.id|string %}selected{% endif %}>{{ p.razon_social }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 col-lg-2">
+        <label class="form-label fw-semibold" for="cxp-estado">Estado</label>
+        <select name="estado" id="cxp-estado" class="form-select">
+          <option value="">Todos</option>
+          {% for e in ['BORRADOR','INGRESADO','VENCIDO','PAGADO','ANULADO'] %}
+          <option value="{{ e }}" {% if filtros.estado == e %}selected{% endif %}>{{ e }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 col-lg-2">
+        <div class="form-check mt-2 pt-1">
+          <input class="form-check-input" type="checkbox" name="solo_abiertos" value="true" id="solo_abiertos" {% if filtros.solo_abiertos %}checked{% endif %}>
+          <label class="form-check-label" for="solo_abiertos">Solo con saldo</label>
+        </div>
+      </div>
+      <div class="col-md-12 col-lg-2 d-flex gap-2">
+        <button type="submit" class="btn btn-primary flex-grow-1">
+          <i class="bi bi-funnel"></i> Filtrar
+        </button>
+        <a href="{{ request.url_for('cxp_lista') }}" class="btn btn-outline-secondary" title="Limpiar filtros">Limpiar</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <h3 class="h6 fw-semibold mb-0">Documentos por pagar</h3>
+      <div class="text-muted small">Ordenados por fecha de vencimiento (más próximos primero).</div>
+    </div>
+    <span class="badge bg-light text-dark border">{{ documentos|length }} en pantalla</span>
+  </div>
+  <div class="cxp-table-wrap border-top">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th scope="col">ID</th>
+          <th scope="col">Proveedor</th>
+          <th scope="col">Documento</th>
+          <th scope="col">Emisión</th>
+          <th scope="col">Vencimiento</th>
+          <th class="text-end" scope="col">Total</th>
+          <th class="text-end" scope="col">Saldo</th>
+          <th scope="col">Mora</th>
+          <th scope="col">Estado</th>
+          <th scope="col">Aging</th>
+          <th class="text-end" scope="col">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in documentos %}
+        {% set saldo = (d.saldo_pendiente or 0)|float %}
+        <tr>
+          <td class="fw-semibold text-nowrap">#{{ d.id }}</td>
+          <td>
+            <div class="fw-semibold">{{ d.razon_social }}</div>
+            <div class="small text-muted">{{ d.rut or '—' }}</div>
+          </td>
+          <td>
+            <div class="fw-semibold">{{ d.tipo }} #{{ d.folio }}</div>
+            <div class="small text-muted">{{ d.referencia or '—' }}</div>
+          </td>
+          <td class="text-nowrap small">{{ d.fecha_emision }}</td>
+          <td class="text-nowrap small">{{ d.fecha_vencimiento }}</td>
+          <td class="text-end cxp-monto fw-medium">$ {{ cxp.cxp_monto(d.total) }}</td>
+          <td class="text-end cxp-monto fw-semibold {% if saldo > 0 %}text-danger{% else %}text-success{% endif %}">
+            $ {{ cxp.cxp_monto(d.saldo_pendiente) }}
+          </td>
+          <td>
+            {% if d.dias_mora and d.dias_mora > 0 %}
+            <span class="badge rounded-pill text-bg-danger">{{ d.dias_mora }} días</span>
+            {% else %}
+            <span class="badge rounded-pill text-bg-secondary">0</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if d.estado_visual == 'PAGADO' %}
+            <span class="badge text-bg-success">{{ d.estado }}</span>
+            {% elif d.estado_visual == 'VENCIDO' %}
+            <span class="badge text-bg-danger">{{ d.estado }}</span>
+            {% elif saldo > 0 %}
+            <span class="badge text-bg-warning text-dark">{{ d.estado }}</span>
+            {% else %}
+            <span class="badge text-bg-secondary">{{ d.estado }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if d.aging_bucket == 'POR_VENCER' %}
+            <span class="badge text-bg-primary">Por vencer</span>
+            {% elif d.aging_bucket == 'VENCE_HOY' %}
+            <span class="badge text-bg-warning text-dark">Vence hoy</span>
+            {% elif d.aging_bucket == '1_30' %}
+            <span class="badge text-bg-danger">1–30</span>
+            {% elif d.aging_bucket == '31_60' %}
+            <span class="badge text-bg-danger">31–60</span>
+            {% elif d.aging_bucket == '61_90' %}
+            <span class="badge text-bg-dark">61–90</span>
+            {% elif d.aging_bucket == '90_PLUS' %}
+            <span class="badge text-bg-dark">90+</span>
+            {% else %}
+            <span class="badge text-bg-success">Pagado</span>
+            {% endif %}
+          </td>
+          <td class="text-end text-nowrap">
+            <div class="btn-group btn-group-sm">
+              <a href="{{ request.url_for('cxp_detalle', documento_id=d.id) }}" class="btn btn-outline-primary" title="Ver ficha"><i class="bi bi-eye"></i></a>
+              {% if not d.asiento_id %}
+              <a href="{{ request.url_for('cxp_editar', documento_id=d.id) }}" class="btn btn-outline-secondary" title="Editar"><i class="bi bi-pencil"></i></a>
+              {% endif %}
+              {% if saldo > 0 %}
+              <a href="{{ request.url_for('cxp_pagar_form', documento_id=d.id) }}" class="btn btn-success"><i class="bi bi-cash-coin"></i> Pagar</a>
+              {% endif %}
+              {% if d.puede_eliminar %}
+              <form method="post" action="{{ request.url_for('cxp_eliminar', documento_id=d.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar documento #{{ d.id }} y su asiento contable?');">
+                <button type="submit" class="btn btn-outline-danger" title="Eliminar"><i class="bi bi-trash"></i></button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="11" class="text-center py-5 text-muted">
+            <i class="bi bi-inbox d-block fs-2 mb-2 opacity-50"></i>
+            No hay documentos para los filtros seleccionados.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

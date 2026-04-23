@@ -1,0 +1,385 @@
+{# templates/comercial/ticket_80mm.html #}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Ticket {{ nota.numero }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    /*
+      80 mm rollo: ancho útil configurable (--printable-w); 74 mm por defecto.
+      En pantalla se centra; en impresión se fuerza ancho y tipografía mono.
+    */
+    :root {
+      --paper-w: 80mm;
+      --printable-w: 74mm;
+      --font-main: "Courier New", "Lucida Console", Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #f4f4f4;
+      color: #111;
+      font-family: var(--font-main);
+      font-size: 11px;
+      line-height: 1.3;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page {
+      display: flex;
+      justify-content: center;
+      padding: 12px;
+    }
+
+    .ticket {
+      width: min(100%, var(--paper-w));
+      max-width: var(--paper-w);
+      background: #fff;
+      padding: 8px 6px 12px;
+      border: 1px solid #ddd;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, .05);
+    }
+
+    .center {
+      text-align: center;
+    }
+
+    .strong {
+      font-weight: 700;
+    }
+
+    .muted {
+      color: #555;
+    }
+
+    .small {
+      font-size: 10px;
+    }
+
+    .ticket-head {
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    .ticket-head-sub {
+      font-size: 12px;
+    }
+
+    .ticket-doc-title {
+      font-size: 11px;
+    }
+
+    .mb-2 { margin-bottom: 2px; }
+    .mb-4 { margin-bottom: 4px; }
+    .mb-6 { margin-bottom: 6px; }
+    .mb-8 { margin-bottom: 8px; }
+    .mb-10 { margin-bottom: 10px; }
+    .mt-8 { margin-top: 8px; }
+
+    .line {
+      border-top: 1px dashed #000;
+      margin: 8px 0;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .row .left {
+      flex: 1;
+      min-width: 0;
+      word-break: break-word;
+    }
+
+    .row .right {
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    .items {
+      margin-top: 8px;
+    }
+
+    .item {
+      padding: 4px 0;
+      border-bottom: 1px dotted #ddd;
+    }
+
+    .item:last-child {
+      border-bottom: none;
+    }
+
+    .totals .row {
+      margin-bottom: 3px;
+    }
+
+    .big-total {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .actions {
+      width: min(100%, var(--paper-w));
+      max-width: var(--paper-w);
+      margin: 12px auto 24px;
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      border: 1px solid #bbb;
+      background: #fff;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      text-decoration: none;
+      color: #111;
+    }
+
+    .btn:hover {
+      background: #f7f7f7;
+    }
+
+    @media print {
+      /* Impresoras térmicas 80 mm; si el driver ignora "80mm", el cuerpo limita el ancho */
+      @page {
+        size: 80mm auto;
+        margin: 1.5mm 2mm;
+      }
+
+      html, body {
+        width: var(--paper-w) !important;
+        max-width: var(--paper-w) !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        font-size: 9.5pt;
+        line-height: 1.22;
+      }
+
+      .page {
+        display: block;
+        width: var(--paper-w);
+        max-width: var(--paper-w);
+        padding: 0;
+        margin: 0;
+      }
+
+      .ticket {
+        width: var(--printable-w);
+        max-width: var(--printable-w);
+        margin: 0 auto;
+        border: 0;
+        box-shadow: none;
+        padding: 0.5mm 0 2mm;
+        font-size: 9.5pt;
+      }
+
+      .ticket-head {
+        font-size: 11pt !important;
+      }
+
+      .ticket-head-sub {
+        font-size: 10pt !important;
+      }
+
+      .ticket-doc-title {
+        font-size: 9.5pt !important;
+      }
+
+      .big-total {
+        font-size: 11pt !important;
+      }
+
+      .small {
+        font-size: 8.5pt !important;
+      }
+
+      .row {
+        gap: 4px;
+      }
+
+      .item .strong {
+        font-size: 9pt;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+
+      .actions {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  {% macro clp(valor) -%}
+    {% set v = (valor or 0) | float %}
+    $ {{ "{:,.0f}".format(v).replace(",", ".") }}
+  {%- endmacro %}
+
+  {% set cliente_nombre = nota.cliente.razon_social if nota.cliente else 'Cliente de paso' %}
+  {% set cliente_rut = nota.cliente.rut if nota.cliente and nota.cliente.rut else '' %}
+  {% set tiene_iva = (nota.total_iva or 0) > 0 %}
+  {% set redirect_url = request.url_for('nota_venta_lista') if volver_a == 'listado' else request.url_for('nota_venta_detalle', nota_id=nota.id) %}
+
+  {% set tipo_pago_raw = (nota.tipo_pago or '') | upper %}
+  {% if tipo_pago_raw == 'CONTADO' %}
+    {% set forma_pago = 'Efectivo' %}
+  {% elif tipo_pago_raw == 'TRANSBANK' %}
+    {% set forma_pago = 'Transbank' %}
+  {% elif tipo_pago_raw == 'TARJETA' %}
+    {% set forma_pago = 'Transbank' %}
+  {% elif tipo_pago_raw == 'CREDITO' %}
+    {% set forma_pago = 'Crédito' %}
+  {% else %}
+    {% set forma_pago = nota.tipo_pago or 'No informado' %}
+  {% endif %}
+
+  <div
+    id="ticket-config"
+    data-auto-print="{{ 'true' if auto_print else 'false' }}"
+    data-redirect-url="{{ redirect_url }}"
+  ></div>
+
+  <div class="page">
+    <div class="ticket" id="ticket">
+      <div class="center mb-8">
+        <div class="strong ticket-head">MINIMARKET</div>
+        <div class="strong ticket-head-sub">CIUDAD DEL SOL</div>
+        <div class="muted small">Comprobante de venta</div>
+      </div>
+
+      <div class="center mb-8">
+        <div class="strong ticket-doc-title">NOTA DE VENTA</div>
+        <div>{{ nota.numero }}</div>
+      </div>
+
+      <div class="line"></div>
+
+      <div class="mb-4">
+        <div><span class="strong">Fecha:</span> {{ nota.fecha.strftime('%d-%m-%Y %H:%M') if nota.fecha else '—' }}</div>
+        <div><span class="strong">Cliente:</span> {{ cliente_nombre }}</div>
+        {% if cliente_rut %}
+        <div><span class="strong">RUT:</span> {{ cliente_rut }}</div>
+        {% endif %}
+        <div><span class="strong">Pago:</span> {{ forma_pago }}</div>
+        <div><span class="strong">Estado:</span> {{ nota.estado or '—' }}</div>
+      </div>
+
+      <div class="line"></div>
+
+      <div class="items">
+        {% for d in nota.detalles %}
+        <div class="item">
+          <div class="strong">{{ d.descripcion }}</div>
+          <div class="row">
+            <div class="left muted">
+              {{ d.cantidad }} x {{ clp(d.precio_unitario) }}
+            </div>
+            <div class="right strong">{{ clp(d.subtotal) }}</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="muted center">Sin ítems</div>
+        {% endfor %}
+      </div>
+
+      <div class="line"></div>
+
+      <div class="totals">
+        <div class="row">
+          <div class="left">Subtotal</div>
+          <div class="right">{{ clp(nota.subtotal_neto) }}</div>
+        </div>
+
+        <div class="row">
+          <div class="left">Descuento</div>
+          <div class="right">$ 0</div>
+        </div>
+
+        <div class="row">
+          <div class="left">{% if tiene_iva %}IVA{% else %}IVA (Exenta){% endif %}</div>
+          <div class="right">{{ clp(nota.total_iva) }}</div>
+        </div>
+
+        <div class="line"></div>
+
+        <div class="row big-total">
+          <div class="left">TOTAL</div>
+          <div class="right">{{ clp(nota.total_total) }}</div>
+        </div>
+      </div>
+
+      <div class="line"></div>
+
+      <div class="center mt-8">
+        <div class="mb-4">Gracias por su compra</div>
+        <div class="muted small">Minimarket Ciudad del Sol</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn" type="button" onclick="window.print()">Imprimir nuevamente</button>
+    <a class="btn" href="{{ redirect_url }}">
+      {% if volver_a == 'listado' %}Ir al listado{% else %}Ir al detalle{% endif %}
+    </a>
+    <a class="btn" href="{{ request.url_for('nota_venta_form') }}">Nueva venta</a>
+  </div>
+
+  <script>
+    (function () {
+      const configEl = document.getElementById('ticket-config');
+      if (!configEl) return;
+
+      const autoPrint = configEl.dataset.autoPrint === 'true';
+      const redirectUrl = configEl.dataset.redirectUrl || '';
+
+      function irDespuesDeImprimir() {
+        if (redirectUrl) {
+          /* replace evita que "Atrás" vuelva al ticket y re-dispare flujos raros con el POST de creación */
+          window.location.replace(redirectUrl);
+        }
+      }
+
+      if (!autoPrint) {
+        return;
+      }
+
+      let redirected = false;
+
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          window.print();
+        }, 250);
+      });
+
+      window.addEventListener('afterprint', function () {
+        if (redirected) return;
+        redirected = true;
+        setTimeout(irDespuesDeImprimir, 250);
+      });
+
+      setTimeout(function () {
+        if (redirected) return;
+        redirected = true;
+        irDespuesDeImprimir();
+      }, 4000);
+    })();
+  </script>
+</body>
+</html>

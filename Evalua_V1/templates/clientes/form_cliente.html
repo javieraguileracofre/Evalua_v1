@@ -1,0 +1,287 @@
+{# templates/clientes/form_cliente.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}{{ 'Editar' if cliente else 'Nuevo' }} Cliente · Evalua_V1{% endblock title %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('clientes_list') }}">Clientes</a></li>
+<li class="breadcrumb-item active" aria-current="page">
+  {{ 'Editar' if cliente else 'Nuevo' }}
+</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}
+  {{ 'Editar cliente' if cliente else 'Nuevo cliente' }}
+{% endblock page_title %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="h4 fw-semibold mb-1">
+      {{ 'Ficha de cliente' if cliente else 'Alta de cliente' }}
+    </h2>
+    <div class="text-muted small">
+      {{ 'Actualiza los datos maestros del cliente para mantener consistencia comercial, operativa y documental.' if cliente
+         else 'Registra un nuevo cliente en el maestro comercial para habilitar ventas, cobranza y operación administrativa.' }}
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('clientes_list') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left"></i> Volver a clientes
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Modo</div>
+        <div class="fs-5 fw-bold">{{ 'Edición' if cliente else 'Creación' }}</div>
+        <div class="small text-muted mt-2">
+          {{ 'Se modificará un registro existente.' if cliente else 'Se generará un nuevo registro maestro.' }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Identificador</div>
+        <div class="fs-5 fw-bold">
+          {{ cliente.rut if cliente else 'Pendiente de ingreso' }}
+        </div>
+        <div class="small text-muted mt-2">
+          El RUT se utiliza como referencia principal del cliente.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Estado</div>
+        <div class="fs-5 fw-bold">
+          {% if not cliente or cliente.activo %}
+            Activo
+          {% else %}
+            Inactivo
+          {% endif %}
+        </div>
+        <div class="small text-muted mt-2">
+          Define si el cliente puede seguir operando dentro del sistema.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<form method="post"
+      action="{% if cliente %}{{ request.url_for('clientes_update', cliente_id=cliente.id) }}{% else %}{{ request.url_for('clientes_create') }}{% endif %}">
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white border-0 pb-0 pt-3">
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+          <h3 class="h6 fw-semibold mb-1">Identificación comercial</h3>
+          <div class="text-muted small">
+            Datos principales para identificar legal y comercialmente al cliente.
+          </div>
+        </div>
+        <span class="badge rounded-pill bg-light text-dark border">Datos maestros</span>
+      </div>
+    </div>
+
+    <div class="card-body pt-3">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">RUT <span class="text-danger">*</span></label>
+          <input
+            type="text"
+            name="rut"
+            class="form-control"
+            value="{{ cliente.rut if cliente else '' }}"
+            {% if cliente %}readonly{% endif %}
+            required
+          >
+          {% if cliente %}
+            <div class="form-text">El RUT no puede modificarse en esta versión.</div>
+          {% else %}
+            <div class="form-text">Ingresa el identificador tributario del cliente.</div>
+          {% endif %}
+        </div>
+
+        <div class="col-md-8">
+          <label class="form-label small fw-semibold">Razón social <span class="text-danger">*</span></label>
+          <input
+            type="text"
+            name="razon_social"
+            class="form-control"
+            value="{{ cliente.razon_social if cliente else '' }}"
+            required
+          >
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Nombre de fantasía</label>
+          <input
+            type="text"
+            name="nombre_fantasia"
+            class="form-control"
+            value="{{ cliente.nombre_fantasia if cliente else '' }}"
+            placeholder="Nombre comercial visible"
+          >
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Giro</label>
+          <input
+            type="text"
+            name="giro"
+            class="form-control"
+            value="{{ cliente.giro if cliente else '' }}"
+            placeholder="Actividad o rubro del cliente"
+          >
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white border-0 pb-0 pt-3">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Ubicación y contacto</h3>
+        <div class="text-muted small">
+          Información de localización y medios de contacto para relación comercial y administrativa.
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body pt-3">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Dirección</label>
+          <input
+            type="text"
+            name="direccion"
+            class="form-control"
+            value="{{ cliente.direccion if cliente else '' }}"
+            placeholder="Dirección comercial o tributaria"
+          >
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Comuna</label>
+          <input
+            type="text"
+            name="comuna"
+            class="form-control"
+            value="{{ cliente.comuna if cliente else '' }}"
+          >
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Ciudad</label>
+          <input
+            type="text"
+            name="ciudad"
+            class="form-control"
+            value="{{ cliente.ciudad if cliente else '' }}"
+          >
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Teléfono</label>
+          <input
+            type="text"
+            name="telefono"
+            class="form-control"
+            value="{{ cliente.telefono if cliente else '' }}"
+            placeholder="+56 9 ..."
+          >
+        </div>
+
+        <div class="col-md-5">
+          <label class="form-label small fw-semibold">Correo electrónico</label>
+          <input
+            type="email"
+            name="email"
+            class="form-control"
+            value="{{ cliente.email if cliente else '' }}"
+            placeholder="contacto@empresa.cl"
+          >
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Estado</label>
+          <select name="activo" class="form-select">
+            <option value="true" {% if not cliente or cliente.activo %}selected{% endif %}>Activo</option>
+            <option value="false" {% if cliente and not cliente.activo %}selected{% endif %}>Inactivo</option>
+          </select>
+          <div class="form-text">Controla si el cliente se mantiene habilitado en la operación.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white border-0 pb-0 pt-3">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Consideraciones operativas</h3>
+        <div class="text-muted small">
+          Recomendaciones para mantener calidad y trazabilidad en el maestro de clientes.
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body pt-3">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="p-3 rounded-4 border bg-light h-100">
+            <div class="small text-muted mb-1">Identificación</div>
+            <div class="fw-semibold">
+              Usa el RUT real del cliente y evita duplicidades en el maestro comercial.
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <div class="p-3 rounded-4 border bg-light h-100">
+            <div class="small text-muted mb-1">Contacto</div>
+            <div class="fw-semibold">
+              Mantén correo y teléfono actualizados para ventas, cobranza y comunicaciones.
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <div class="p-3 rounded-4 border bg-light h-100">
+            <div class="small text-muted mb-1">Trazabilidad</div>
+            <div class="fw-semibold">
+              Inactivar es preferible a eliminar cuando ya existen documentos asociados.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center mt-4">
+    <a href="{{ request.url_for('clientes_list') }}" class="btn btn-light">
+      <i class="bi bi-arrow-left"></i> Volver
+    </a>
+
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-save"></i>
+      {{ 'Guardar cambios' if cliente else 'Crear cliente' }}
+    </button>
+  </div>
+
+</form>
+
+{% endblock content %}

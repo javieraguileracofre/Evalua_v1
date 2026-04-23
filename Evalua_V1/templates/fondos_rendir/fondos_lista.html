@@ -1,0 +1,44 @@
+{% extends "layout/base.html" %}
+{% block title %}Anticipos · Fondos por rendir{% endblock %}
+{% block page_title %}Anticipos{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('fondos_rendir_hub') }}">Fondos por rendir</a></li>
+<li class="breadcrumb-item active">Listado</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a href="{{ request.url_for('fondos_rendir_hub') }}" class="btn btn-outline-secondary btn-sm">Panel</a>
+  <a href="{{ request.url_for('fondos_rendir_fondo_nuevo') }}" class="btn btn-primary btn-sm">Nuevo anticipo</a>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle small">
+      <thead class="table-light">
+        <tr><th>Folio</th><th>Entrega</th><th>Trabajador</th><th>Vehículo</th><th class="text-end">Anticipo</th><th>Estado</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for f in fondos %}
+        <tr>
+          <td class="fw-semibold">{{ f.folio }}</td>
+          <td>{{ f.fecha_entrega.strftime('%d-%m-%Y %H:%M') }}</td>
+          <td>{{ f.empleado.nombre_completo if f.empleado else '—' }}</td>
+          <td>{{ f.vehiculo.patente if f.vehiculo else '—' }}</td>
+          <td class="text-end">${{ '{:,.0f}'.format(f.monto_anticipo|float).replace(',', '.') }}</td>
+          <td>
+            {% if f.estado == 'ABIERTO' %}<span class="badge bg-info text-dark">Abierto</span>
+            {% elif f.estado == 'PENDIENTE_APROBACION' %}<span class="badge bg-warning text-dark">Pendiente</span>
+            {% elif f.estado == 'APROBADO' %}<span class="badge bg-success">Aprobado</span>
+            {% else %}<span class="badge bg-danger">Rechazado</span>{% endif %}
+          </td>
+          <td><a class="btn btn-sm btn-outline-primary py-0" href="{{ request.url_for('fondos_rendir_fondo_detalle', fondo_id=f.id) }}">Abrir</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-4">No hay registros.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

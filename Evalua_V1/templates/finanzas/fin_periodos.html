@@ -1,0 +1,295 @@
+{# templates/finanzas/fin_periodos.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Períodos contables · Evalua ERP{% endblock title %}
+{% block page_title %}Cierre mensual · Períodos contables{% endblock page_title %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  Administra la apertura y cierre de períodos para resguardar integridad contable, disciplina operativa y control de cambios.
+</div>
+{% endblock page_subtitle %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('fin_dashboard') }}">Dashboard Finanzas</a></li>
+<li class="breadcrumb-item active" aria-current="page">Períodos contables</li>
+{% endblock breadcrumbs %}
+
+{% block page_actions %}
+<div class="d-flex flex-wrap gap-2">
+  <a href="{{ request.url_for('fin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-bank"></i> Dashboard Finanzas
+  </a>
+</div>
+{% endblock page_actions %}
+
+{% block hero_title %}Gobierno de períodos contables{% endblock hero_title %}
+{% block hero_desc %}
+Controla apertura y cierre de períodos para bloquear modificaciones fuera de ventana, proteger consistencia financiera y sostener una política formal de cierre.
+{% endblock hero_desc %}
+
+{% block content %}
+
+{% set total_periodos = periodos|length %}
+{% set cerrados = periodos|selectattr("estado", "equalto", "CERRADO")|list|length %}
+{% set abiertos = total_periodos - cerrados %}
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Total períodos</div>
+        <div class="fs-3 fw-bold">{{ total_periodos }}</div>
+        <div class="small text-muted mt-2">
+          Períodos disponibles para control y administración financiera.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Períodos abiertos</div>
+        <div class="fs-3 fw-bold text-success">{{ abiertos }}</div>
+        <div class="small text-muted mt-2">
+          Permiten registrar y ajustar operaciones del periodo.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Períodos cerrados</div>
+        <div class="fs-3 fw-bold text-danger">{{ cerrados }}</div>
+        <div class="small text-muted mt-2">
+          Restringen modificaciones posteriores sobre operaciones financieras.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Generar rango de períodos</h3>
+        <div class="text-muted small">
+          Crea períodos faltantes para años y meses futuros o históricos dentro del rango administrativo que definas.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">Administración</span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <form method="post" action="{{ request.url_for('fin_periodos_generar') }}">
+      <div class="row g-3">
+        <div class="col-6 col-md-3">
+          <label class="form-label">Año inicial</label>
+          <input type="number" name="anio_ini" class="form-control" value="{{ anio_actual }}" required>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label">Mes inicial</label>
+          <input type="number" name="mes_ini" class="form-control" min="1" max="12" value="1" required>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label">Año final</label>
+          <input type="number" name="anio_fin" class="form-control" value="{{ anio_actual + 1 }}" required>
+        </div>
+
+        <div class="col-6 col-md-3">
+          <label class="form-label">Mes final</label>
+          <input type="number" name="mes_fin" class="form-control" min="1" max="12" value="12" required>
+        </div>
+
+        <div class="col-12">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-calendar2-plus"></i> Generar períodos
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Política de cierre</h3>
+        <div class="text-muted small">
+          Un período cerrado protege la contabilidad y reduce el riesgo de cambios extemporáneos sobre registros críticos.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">Control interno</span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="p-3 rounded-4 border bg-light h-100">
+          <div class="small text-muted mb-1">Regla operativa</div>
+          <div class="fw-semibold">
+            Un período <span class="text-danger">CERRADO</span> debe impedir modificaciones posteriores sobre operaciones ya controladas.
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="p-3 rounded-4 border bg-light h-100">
+          <div class="small text-muted mb-1">Gobernanza</div>
+          <div class="fw-semibold">
+            Abrir o cerrar períodos debe ser una acción administrativa y no una tarea operativa cotidiana.
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="p-3 rounded-4 border bg-light h-100">
+          <div class="small text-muted mb-1">Riesgo</div>
+          <div class="fw-semibold">
+            Reabrir un período debe justificarse y quedar documentado mediante notas para trazabilidad.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Períodos contables</h3>
+        <div class="text-muted small">
+          Estado actual de cada período con responsable de cierre, fecha y acciones administrativas disponibles.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">
+        {{ total_periodos }} registro{{ '' if total_periodos == 1 else 's' }}
+      </span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="min-width: 120px;">Período</th>
+            <th style="min-width: 120px;">Estado</th>
+            <th style="min-width: 180px;">Cerrado por</th>
+            <th style="min-width: 180px;">Fecha cierre</th>
+            <th>Notas</th>
+            <th class="text-end" style="min-width: 150px;">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in periodos %}
+          {% set periodo_str = p.anio ~ '-' ~ ("%02d"|format(p.mes)) %}
+          <tr>
+            <td>
+              <div class="fw-semibold">{{ periodo_str }}</div>
+              <div class="small text-muted">Período contable</div>
+            </td>
+
+            <td>
+              {% if p.estado == 'CERRADO' %}
+                <span class="badge bg-danger">CERRADO</span>
+              {% else %}
+                <span class="badge bg-success">ABIERTO</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if p.cerrado_por %}
+                <div class="fw-medium">{{ p.cerrado_por }}</div>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if p.cerrado_at %}
+                <div>{{ p.cerrado_at }}</div>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if p.notas %}
+                <div class="text-truncate" style="max-width: 340px;" title="{{ p.notas }}">
+                  {{ p.notas }}
+                </div>
+              {% else %}
+                <span class="text-muted">Sin observaciones</span>
+              {% endif %}
+            </td>
+
+            <td class="text-end">
+              {% if p.estado == 'ABIERTO' %}
+                <form method="post" action="{{ request.url_for('fin_periodos_cerrar') }}" class="d-inline">
+                  <input type="hidden" name="anio" value="{{ p.anio }}">
+                  <input type="hidden" name="mes" value="{{ p.mes }}">
+                  <input type="hidden" name="notas" value="Cierre mensual desde UI">
+                  <button
+                    class="btn btn-sm btn-outline-danger"
+                    onclick="return confirm('Vas a CERRAR el período {{ periodo_str }}. ¿Confirmas la acción?');"
+                  >
+                    <i class="bi bi-lock"></i> Cerrar
+                  </button>
+                </form>
+              {% else %}
+                <form method="post" action="{{ request.url_for('fin_periodos_abrir') }}" class="d-inline">
+                  <input type="hidden" name="anio" value="{{ p.anio }}">
+                  <input type="hidden" name="mes" value="{{ p.mes }}">
+                  <input type="hidden" name="notas" value="Reapertura desde UI">
+                  <button
+                    class="btn btn-sm btn-outline-secondary"
+                    onclick="return confirm('Vas a ABRIR el período {{ periodo_str }}. ¿Confirmas la acción?');"
+                  >
+                    <i class="bi bi-unlock"></i> Abrir
+                  </button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="text-center text-muted py-5">
+              <div class="mb-2">
+                <i class="bi bi-calendar2-check fs-3"></i>
+              </div>
+              <div class="fw-semibold">No hay períodos cargados.</div>
+              <div class="small">Cuando existan períodos contables definidos, aparecerán aquí para su administración.</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="alert alert-light border mt-4 mb-0">
+      <div class="d-flex align-items-start gap-2">
+        <i class="bi bi-info-circle mt-1"></i>
+        <div>
+          <div class="fw-semibold mb-1">Control y permisos</div>
+          <div class="small text-muted">
+            El cierre de períodos debe operar como una función administrativa. Toda reapertura debe quedar respaldada por observaciones y una política interna de excepción.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}

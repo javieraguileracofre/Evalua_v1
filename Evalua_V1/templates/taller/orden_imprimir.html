@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Orden de servicio {{ orden.folio }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    /* A4: márgenes para impresión y “Guardar como PDF” (Chrome/Edge) */
+    @page {
+      size: A4 portrait;
+      margin: 10mm 11mm 12mm 11mm;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 10pt;
+      line-height: 1.35;
+      color: #111;
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 8px 12px 24px;
+      background: #fff;
+    }
+    h1 {
+      text-align: center;
+      font-size: 1.35rem;
+      letter-spacing: .06em;
+      margin: 0 0 4px;
+      text-transform: uppercase;
+    }
+    .sub { text-align: center; font-size: 9pt; color: #333; margin: 0; }
+    .folio-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 8px;
+      font-weight: 700;
+      font-size: 10pt;
+    }
+    .bar {
+      background: #000;
+      color: #fff;
+      font-size: 8pt;
+      font-weight: 700;
+      letter-spacing: .12em;
+      padding: 6px 10px;
+      text-transform: uppercase;
+      margin-top: 10px;
+    }
+    .box {
+      border: 1px solid #000;
+      min-height: 72px;
+      padding: 8px;
+      font-size: 9pt;
+      white-space: pre-wrap;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 0; }
+    .grid-2 .bar:first-child { border-right: 1px solid #fff; }
+    .inv-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 12px;
+      padding: 8px;
+      border: 1px solid #000;
+      border-top: none;
+      font-size: 8.5pt;
+    }
+    .chk { display: flex; align-items: center; gap: 4px; }
+    .chk i { font-size: 11px; color: #000; }
+    .fuel-wrap {
+      border: 1px solid #000;
+      border-left: none;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 120px;
+    }
+    .fuel-gauge {
+      width: 120px;
+      height: 60px;
+      border: 2px solid #000;
+      border-bottom: none;
+      border-radius: 120px 120px 0 0;
+      position: relative;
+      margin-top: 4px;
+    }
+    .fuel-needle {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      width: 2px;
+      height: 48px;
+      background: #000;
+      transform-origin: bottom center;
+    }
+    .fuel-lbl { display: flex; justify-content: space-between; width: 100%; font-size: 7pt; margin-top: 2px; padding: 0 4px; }
+    .icons-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 8px 4px;
+      border: 1px solid #000;
+      border-top: none;
+    }
+    .ti { width: 36px; text-align: center; font-size: 7pt; }
+    .ti i { font-size: 16px; display: block; margin-bottom: 2px; opacity: .35; }
+    .ti.on i { opacity: 1; color: #c00; }
+    .car-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .car-cell {
+      border: 1px solid #000;
+      padding: 6px;
+      min-height: 100px;
+    }
+    .car-cell h4 { margin: 0 0 4px; font-size: 8pt; text-transform: uppercase; letter-spacing: .06em; }
+    .car-cell svg { width: 100%; height: 56px; display: block; margin: 4px 0; }
+    .car-note { font-size: 8pt; white-space: pre-wrap; min-height: 36px; }
+    .dashed { border-top: 1px dashed #444; margin: 16px 0 12px; }
+    .legal { font-size: 7.5pt; line-height: 1.35; text-align: justify; }
+    .legal h3 { font-size: 9pt; margin: 0 0 6px; background: #000; color: #fff; padding: 4px 8px; text-transform: uppercase; }
+    .sign-row { display: flex; justify-content: space-between; gap: 24px; margin-top: 28px; }
+    .sign { flex: 1; border-top: 1px solid #000; padding-top: 4px; font-size: 8pt; text-align: center; }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none !important; }
+    }
+    .toolbar { text-align: right; margin-bottom: 8px; }
+    .toolbar button {
+      padding: 6px 14px;
+      cursor: pointer;
+      border: 1px solid #333;
+      background: #f4f4f4;
+      border-radius: 4px;
+      font-size: 10pt;
+    }
+    .admin-line {
+      font-size: 8.5pt;
+      margin: 6px 0 10px;
+      padding: 4px 0;
+      border-bottom: 1px solid #ccc;
+    }
+    .cot-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 10px;
+      font-size: 8.5pt;
+    }
+    .cot-table thead th {
+      background: #0d3b66;
+      color: #fff;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      padding: 6px 5px;
+      border: 1px solid #000;
+      text-align: left;
+    }
+    .cot-table thead th.num { text-align: right; }
+    .cot-table tbody td {
+      border: 1px solid #999;
+      padding: 4px 5px;
+      vertical-align: top;
+      min-height: 1.2em;
+    }
+    .cot-table tbody td.num { text-align: right; white-space: nowrap; }
+    .cot-table tbody td.cant { text-align: center; width: 9%; }
+    .cot-totals {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 12px;
+      font-size: 9pt;
+    }
+    .cot-totals table { border-collapse: collapse; }
+    .cot-totals td { padding: 2px 0 2px 16px; text-align: right; white-space: nowrap; }
+    .cot-totals td.lbl { text-align: left; padding-left: 0; color: #333; }
+    .cot-totals .grand td { font-weight: 700; font-size: 10pt; border-top: 1px solid #000; padding-top: 6px; }
+    .vh-damage-img {
+      max-width: 100%;
+      max-height: 160px;
+      width: auto;
+      height: auto;
+      display: block;
+      margin: 4px auto 10px;
+      object-fit: contain;
+    }
+    .print-doc-head {
+      border-bottom: 2px solid #000;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+    .print-cotizacion { margin-bottom: 4px; }
+    .damages-print {
+      margin-top: 0;
+    }
+    @media print {
+      html, body {
+        height: auto !important;
+        background: #fff !important;
+      }
+      body {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: none !important;
+        font-size: 9.5pt;
+        line-height: 1.32;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
+      .no-print { display: none !important; }
+      a[href^="http"]:after,
+      a[href^="/"]:after { content: none !important; }
+      /* Barras y cabecera cotización: conservar color al imprimir */
+      .bar,
+      .legal h3,
+      .cot-table thead th {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .print-doc-head {
+        border-bottom-width: 1.5pt;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      /* Tabla cotización: repetir títulos si hay varias páginas */
+      .cot-table {
+        font-size: 8.5pt;
+      }
+      .cot-table thead {
+        display: table-header-group;
+      }
+      .cot-table tbody tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .cot-table tbody td {
+        border-color: #333 !important;
+      }
+      .cot-totals {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        margin-bottom: 8px;
+      }
+      .cot-totals .grand td {
+        font-size: 10.5pt;
+      }
+      /* Inventario + combustible: evitar cortar el bloque en dos si cabe en una página */
+      .grid-2 {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      /* Diagrama: más legible en PDF */
+      .vh-damage-img {
+        max-height: 48mm !important;
+        max-width: 100% !important;
+        width: auto !important;
+        height: auto !important;
+        margin-bottom: 6px !important;
+        image-rendering: auto;
+      }
+      .damages-print {
+        break-inside: auto;
+      }
+      .damages-print .car-grid {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .car-cell {
+        min-height: 72px;
+      }
+      .icons-row {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .box {
+        min-height: 48px;
+      }
+      .legal p {
+        orphans: 3;
+        widows: 3;
+      }
+      .sign-row {
+        margin-top: 20px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .dashed {
+        break-after: avoid;
+      }
+    }
+    @media screen {
+      body { -webkit-print-color-adjust: economy; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="toolbar no-print">
+  <button type="button" onclick="window.print()"><i class="bi bi-printer"></i> Imprimir</button>
+</div>
+
+<div class="print-doc-head">
+  <h1>Orden de servicio</h1>
+  <p class="sub">Mecánica automotriz · Mantenimiento y reparación</p>
+  <div class="folio-row">N° DE FOLIO: <span style="min-width:8em;border-bottom:1px solid #000;text-align:center">{{ orden.folio }}</span></div>
+
+  <p class="admin-line" style="margin-bottom:0;border-bottom:none;padding-bottom:0">
+    <strong>Ingreso en grúa:</strong>
+    {% if orden.ingreso_grua is sameas true %}Sí{% elif orden.ingreso_grua is sameas false %}No{% else %}N/D{% endif %}
+    · <strong>O.T.E / N°:</strong> {{ orden.ote_num or '—' }}
+    · <strong>E-mail:</strong> {{ orden.email_contacto or '—' }}
+  </p>
+</div>
+
+<div class="print-cotizacion">
+<div class="bar">Cotización</div>
+<table class="cot-table">
+  <thead>
+    <tr>
+      <th class="cant">Cant.</th>
+      <th>Descripción del trabajo</th>
+      <th class="num" style="width:14%">P. unitario</th>
+      <th class="num" style="width:14%">Valor neto</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for L in lineas_cotizacion %}
+    <tr>
+      <td class="cant">{{ L.cantidad }}</td>
+      <td>{{ L.descripcion }}</td>
+      <td class="num">${{ '{:,.0f}'.format((L.precio_unitario or 0)|float).replace(',', '.') }}</td>
+      <td class="num">${{ '{:,.0f}'.format((L.valor_neto or 0)|float).replace(',', '.') }}</td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="4" style="text-align:center;color:#666;">Sin líneas de cotización</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="cot-totals">
+  <table>
+    <tr>
+      <td class="lbl">Subtotal neto</td>
+      <td>${{ '{:,.0f}'.format(totales_cot.subtotal_neto|float).replace(',', '.') }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">{% if orden.cotizacion_afecta_iva %}IVA 19%{% else %}IVA (exento){% endif %}</td>
+      <td>${{ '{:,.0f}'.format(totales_cot.iva|float).replace(',', '.') }}</td>
+    </tr>
+    <tr class="grand">
+      <td class="lbl">Total</td>
+      <td>${{ '{:,.0f}'.format(totales_cot.total|float).replace(',', '.') }}</td>
+    </tr>
+  </table>
+</div>
+</div>
+
+<div class="bar">Observaciones</div>
+<div class="box">{{ orden.observaciones or ' ' }}</div>
+
+<div class="bar" style="margin-top:10px">Testigos tablero</div>
+<div class="icons-row">
+  {% set tlist = [
+    ('testigo_airbag', 'bi-shield-fill', 'Airbag'),
+    ('testigo_check_engine', 'bi-exclamation-octagon', 'Motor'),
+    ('testigo_abs', 'bi-circle-fill', 'ABS'),
+    ('testigo_aceite', 'bi-droplet-fill', 'Aceite'),
+    ('testigo_bateria', 'bi-battery-charging', 'Batería'),
+    ('testigo_cinturon', 'bi-person-fill', 'Cinturón'),
+    ('testigo_freno_mano', 'bi-p-square-fill', 'F. mano'),
+    ('testigo_luces_altas', 'bi-lightbulb-fill', 'Luces'),
+    ('testigo_traccion', 'bi-snow', 'Tracción'),
+    ('testigo_temperatura', 'bi-thermometer-half', 'Temp.'),
+  ] %}
+  {% for field, icon, lab in tlist %}
+  <div class="ti {% if checks.get(field) %}on{% endif %}">
+    <i class="bi {{ icon }}"></i>
+    {{ lab }}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="grid-2">
+  <div>
+    <div class="bar">Inventario</div>
+    <div class="inv-grid">
+      {% for key, lab in [
+        ('inv_gato','Gato'),('inv_herramientas','Herramientas'),('inv_triangulos','Triángulos'),('inv_tapetes','Tapetes'),
+        ('inv_llanta_repuesto','Llanta rep.'),('inv_extintor','Extintor'),('inv_antena','Antena'),('inv_emblemas','Emblemas'),
+        ('inv_tapones_rueda','Tapones'),('inv_cables','Cables'),('inv_estereo','Estéreo'),('inv_encendedor','Encendedor')
+      ] %}
+      <div class="chk">
+        {% if checks.get(key) %}<i class="bi bi-check-square-fill"></i>{% else %}<i class="bi bi-square"></i>{% endif %}
+        {{ lab }}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div>
+    <div class="bar">Nivel de gasolina</div>
+    <div class="fuel-wrap">
+      <strong style="font-size:9pt">{{ orden.nivel_combustible or '—' }}</strong>
+      <div class="fuel-gauge"><div class="fuel-needle" style="transform: translateX(-50%) rotate({{ needle_angle }}deg);"></div></div>
+      <div class="fuel-lbl"><span>E</span><span>1/4</span><span>1/2</span><span>3/4</span><span>F</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="bar" style="margin-top:10px">Daños / estado exterior del vehículo</div>
+<div class="damages-print" style="border:1px solid #000;border-top:none;padding:8px;">
+  <img class="vh-damage-img" src="{{ request.url_for('static', path='img/TALLER/SECCION_VH_DAÑOS.png') }}" alt="Diagrama 4 vistas"/>
+  <div class="car-grid" style="margin-top:4px">
+    <div class="car-cell">
+      <h4>Frente</h4>
+      <div class="car-note">{{ orden.dano_vista_frente or '' }}</div>
+    </div>
+    <div class="car-cell">
+      <h4>Atrás</h4>
+      <div class="car-note">{{ orden.dano_vista_atras or '' }}</div>
+    </div>
+    <div class="car-cell">
+      <h4>Lado izquierdo</h4>
+      <div class="car-note">{{ orden.dano_vista_izquierda or '' }}</div>
+    </div>
+    <div class="car-cell">
+      <h4>Lado derecho</h4>
+      <div class="car-note">{{ orden.dano_vista_derecha or '' }}</div>
+    </div>
+  </div>
+</div>
+
+<p style="font-size:8pt;margin-top:10px"><strong>Trabajo solicitado:</strong> {{ orden.trabajo_solicitado or '—' }}</p>
+<p style="font-size:8pt"><strong>Cliente:</strong> {{ orden.cliente.razon_social if orden.cliente else '—' }} · <strong>RUT:</strong> {{ orden.cliente.rut if orden.cliente else '—' }}</p>
+{% if orden.vehiculo %}
+<p style="font-size:8pt"><strong>Vehículo:</strong> {{ orden.vehiculo.patente }} · {{ orden.vehiculo.marca }} {{ orden.vehiculo.modelo }}{% if orden.vehiculo.vin %} · VIN {{ orden.vehiculo.vin }}{% endif %}</p>
+{% endif %}
+<p style="font-size:8pt"><strong>Recepción:</strong> {{ orden.fecha_recepcion.strftime('%d-%m-%Y %H:%M') if orden.fecha_recepcion else '—' }}
+{% if orden.contacto_nombre %} · Contacto: {{ orden.contacto_nombre }}{% endif %}
+{% if orden.contacto_telefono %} · Tel: {{ orden.contacto_telefono }}{% endif %}
+</p>
+
+<div class="dashed"></div>
+
+<div class="legal">
+  <h3>Condiciones del servicio</h3>
+  <p>
+    El taller no se responsabiliza por objetos de valor dejados en el vehículo. Los trabajos se consideran aceptados al firmar la recepción.
+    El vehículo debe retirarse dentro del plazo indicado; pasado dicho plazo podrán aplicarse cargos de estacionamiento conforme política interna.
+    Transcurridos más de cinco días hábiles sin retiro, se aplicarán las políticas de almacenamiento vigentes en el establecimiento.
+  </p>
+</div>
+
+<div class="sign-row">
+  <div class="sign">Firma y Timbre cliente</div>
+  <div class="sign">Firma y Timbre {{ empresa_nombre }}</div>
+</div>
+
+<p style="text-align:center;font-size:7pt;color:#888;margin-top:20px">Documento generado por Evalua ERP · Orden de servicio</p>
+
+</body>
+</html>

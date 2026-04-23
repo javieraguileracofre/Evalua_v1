@@ -1,0 +1,146 @@
+{# templates/finanzas/hub.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Hub Finanzas · Evalua ERP{% endblock %}
+{% block page_title %}Hub Finanzas y control{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  Accesos rápidos a cobranza, cuentas por pagar, contabilidad y cierre mensual en un solo lugar.
+</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item active" aria-current="page">Hub Finanzas</li>
+{% endblock %}
+
+{% block head %}
+<style>
+  .fin-hub-hero {
+    background: linear-gradient(135deg, #0f172a, #1d4ed8);
+    color: #e2e8f0;
+    border-radius: 16px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, .18);
+  }
+  .fin-hub-hero .kpi {
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 10px;
+    padding: .65rem .8rem;
+  }
+  .fin-hub-card {
+    border: 0;
+    border-radius: 14px;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, .08);
+    overflow: hidden;
+  }
+  .fin-hub-card .top {
+    height: 5px;
+    background: linear-gradient(90deg, #2563eb, #0ea5e9);
+  }
+  .fin-hub-card.cobranza .top { background: linear-gradient(90deg, #2563eb, #22c55e); }
+  .fin-hub-card.cxp .top { background: linear-gradient(90deg, #7c3aed, #2563eb); }
+  .fin-hub-card.dashboard .top { background: linear-gradient(90deg, #0891b2, #2563eb); }
+  .fin-hub-card.contabilidad .top { background: linear-gradient(90deg, #475569, #0f172a); }
+  .fin-hub-card.cierre .top { background: linear-gradient(90deg, #ea580c, #eab308); }
+  .fin-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .2rem .5rem;
+    border-radius: 999px;
+    border: 1px solid #dbeafe;
+    color: #1d4ed8;
+    background: #eff6ff;
+    font-size: .75rem;
+    font-weight: 600;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fin-hub-hero p-3 p-md-4 mb-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+    <div>
+      <h2 class="h5 mb-1 text-white">Centro financiero operativo</h2>
+      <p class="mb-0 small text-white-50">Visualiza, controla y ejecuta cobranzas, pagos, contabilidad y cierres desde un solo panel.</p>
+    </div>
+    <a href="{{ request.url_for('fin_dashboard') }}" class="btn btn-light btn-sm fw-semibold">
+      <i class="bi bi-speedometer2"></i> Abrir dashboard financiero
+    </a>
+  </div>
+  <div class="row g-2 mt-2">
+    <div class="col-6 col-lg-3"><div class="kpi small"><div class="text-white-50">Cobranza</div><div class="fw-semibold">Gestión de aging y recuperación</div></div></div>
+    <div class="col-6 col-lg-3"><div class="kpi small"><div class="text-white-50">CxP</div><div class="fw-semibold">Pagos y control proveedor</div></div></div>
+    <div class="col-6 col-lg-3"><div class="kpi small"><div class="text-white-50">Contabilidad</div><div class="fw-semibold">Asientos, ER y Balance</div></div></div>
+    <div class="col-6 col-lg-3"><div class="kpi small"><div class="text-white-50">Cierre</div><div class="fw-semibold">Bloqueo y periodos</div></div></div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 fin-hub-card cobranza">
+      <div class="top"></div>
+      <div class="card-body d-flex flex-column">
+        <h3 class="h6 fw-semibold mb-2"><i class="bi bi-cash-stack text-primary"></i> Cobranza</h3>
+        <p class="text-muted small flex-grow-1">Resumen operativo y tablero con aging y recuperación.</p>
+        <div class="mb-2"><span class="fin-chip"><i class="bi bi-clock-history"></i> Seguimiento diario</span></div>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('cobranza_resumen') }}" class="btn btn-sm btn-outline-primary">Resumen</a>
+          <a href="{{ request.url_for('cobranza_dashboard') }}" class="btn btn-sm btn-outline-secondary">Dashboard</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 fin-hub-card cxp">
+      <div class="top"></div>
+      <div class="card-body d-flex flex-column">
+        <h3 class="h6 fw-semibold mb-2"><i class="bi bi-wallet2 text-primary"></i> Cuentas por pagar</h3>
+        <p class="text-muted small flex-grow-1">Documentos, proveedores y flujo de pagos.</p>
+        <div class="mb-2"><span class="fin-chip"><i class="bi bi-check2-square"></i> Pagos con asiento</span></div>
+        <a href="{{ request.url_for('cxp_lista') }}" class="btn btn-sm btn-outline-primary align-self-start">Ir a CxP</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 fin-hub-card dashboard">
+      <div class="top"></div>
+      <div class="card-body d-flex flex-column">
+        <h3 class="h6 fw-semibold mb-2"><i class="bi bi-bank text-primary"></i> Dashboard finanzas</h3>
+        <p class="text-muted small flex-grow-1">KPIs financieros y documentos recientes.</p>
+        <div class="mb-2"><span class="fin-chip"><i class="bi bi-bar-chart-line"></i> Indicadores clave</span></div>
+        <a href="{{ request.url_for('fin_dashboard') }}" class="btn btn-sm btn-outline-primary align-self-start">Abrir dashboard</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 fin-hub-card contabilidad">
+      <div class="top"></div>
+      <div class="card-body d-flex flex-column">
+        <h3 class="h6 fw-semibold mb-2"><i class="bi bi-diagram-3 text-primary"></i> Contabilidad</h3>
+        <p class="text-muted small flex-grow-1">Plan, libro diario, balance de situación, estado de resultados y asientos manuales.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('contabilidad_plan_cuentas') }}" class="btn btn-sm btn-outline-primary">Plan</a>
+          <a href="{{ request.url_for('contabilidad_asientos') }}" class="btn btn-sm btn-outline-secondary">Asientos</a>
+          <a href="{{ request.url_for('contabilidad_asiento_manual_nuevo') }}" class="btn btn-sm btn-outline-secondary">Manual</a>
+          <a href="{{ request.url_for('contabilidad_estado_resultados') }}" class="btn btn-sm btn-outline-secondary" title="Ingresos, costos y gastos del período">Estado de resultados</a>
+          <a href="{{ request.url_for('contabilidad_balance_general') }}" class="btn btn-sm btn-outline-secondary" title="Activos, pasivos y patrimonio a una fecha">Balance general</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 fin-hub-card cierre">
+      <div class="top"></div>
+      <div class="card-body d-flex flex-column">
+        <h3 class="h6 fw-semibold mb-2"><i class="bi bi-calendar-month text-primary"></i> Cierre mensual</h3>
+        <p class="text-muted small flex-grow-1">Periodos contables y bloqueo por fechas.</p>
+        <div class="mb-2"><span class="fin-chip"><i class="bi bi-shield-check"></i> Control de periodos</span></div>
+        <a href="{{ request.url_for('fin_periodos') }}" class="btn btn-sm btn-outline-primary align-self-start">Periodos</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

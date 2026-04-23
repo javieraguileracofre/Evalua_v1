@@ -1,0 +1,372 @@
+{# templates/finanzas/estado_resultados.html #}
+{% extends "layout/base.html" %}
+{% import "finanzas/_fin_macros.html" as fin %}
+
+{% block title %}Estado de resultados · Evalua ERP{% endblock %}
+{% block page_title %}Estado de resultados{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  Ingresos, costos y gastos del período elegido, con utilidad bruta y resultado operacional derivados del plan de cuentas (INGRESO, COSTO, GASTO).
+</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="/finanzas/hub">Finanzas</a></li>
+<li class="breadcrumb-item active" aria-current="page">Estado de resultados</li>
+{% endblock %}
+
+{% block page_actions %}
+<div class="d-flex gap-2 flex-wrap align-items-center">
+  <button type="button" class="btn btn-outline-secondary btn-sm d-print-none" onclick="window.print()" title="Imprimir o guardar PDF">
+    <i class="bi bi-printer"></i> Imprimir
+  </button>
+  <a
+    href="{{ request.url_for('contabilidad_estado_resultados_excel') }}{% if fecha_desde or fecha_hasta %}?{% if fecha_desde %}fecha_desde={{ fecha_desde }}{% endif %}{% if fecha_desde and fecha_hasta %}&amp;{% endif %}{% if fecha_hasta %}fecha_hasta={{ fecha_hasta }}{% endif %}{% endif %}"
+    class="btn btn-success btn-sm d-print-none"
+    title="Descargar estado de resultados en Excel"
+  >
+    <i class="bi bi-file-earmark-excel"></i> Excel
+  </a>
+  <a href="{{ request.url_for('contabilidad_balance_general') }}{% if fecha_hasta %}?fecha_hasta={{ fecha_hasta }}{% endif %}" class="btn btn-outline-primary btn-sm d-print-none">
+    <i class="bi bi-pie-chart"></i> Balance general
+  </a>
+  <a href="{{ request.url_for('contabilidad_asientos') }}" class="btn btn-outline-secondary btn-sm d-print-none">
+    <i class="bi bi-journal-richtext"></i> Asientos
+  </a>
+  <a href="{{ request.url_for('contabilidad_plan_cuentas') }}" class="btn btn-outline-secondary btn-sm d-print-none">
+    <i class="bi bi-diagram-3"></i> Plan de cuentas
+  </a>
+</div>
+{% endblock %}
+
+{% block hero_title %}Rendimiento del período contable{% endblock %}
+{% block hero_desc %}
+Los importes provienen del libro diario filtrado por fechas de asiento. Sin fechas se considera todo el histórico. La utilidad bruta es ingresos menos costos; el resultado operacional resta además los gastos.
+{% endblock %}
+
+{% block head %}
+{% include "finanzas/_fin_informes_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="d-lg-none sticky-top py-2 mb-2 border-bottom bg-body d-print-none fin-inf-nav-jump" style="z-index: 1010;">
+  <div class="d-flex gap-2 overflow-auto pb-1 small fw-medium">
+    <a href="#er-ingresos" class="text-nowrap btn btn-sm btn-light border">Ingresos</a>
+    <a href="#er-costos" class="text-nowrap btn btn-sm btn-light border">Costos</a>
+    <a href="#er-gastos" class="text-nowrap btn btn-sm btn-light border">Gastos</a>
+    <a href="#er-flujo" class="text-nowrap btn btn-sm btn-light border">Flujo</a>
+    <a href="#er-resultado" class="text-nowrap btn btn-sm btn-light border">Resultado</a>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4 border-0 d-print-none">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end" id="form-er-fechas">
+      <div class="col-md-4 col-lg-3">
+        <label class="form-label fw-semibold" for="fecha_desde">Fecha desde</label>
+        <input type="date" name="fecha_desde" id="fecha_desde" class="form-control" value="{{ fecha_desde or '' }}" aria-describedby="er-fecha-help">
+      </div>
+      <div class="col-md-4 col-lg-3">
+        <label class="form-label fw-semibold" for="fecha_hasta">Fecha hasta</label>
+        <input type="date" name="fecha_hasta" id="fecha_hasta" class="form-control" value="{{ fecha_hasta or '' }}">
+      </div>
+      <div class="col-md-4 col-lg-6 d-flex flex-wrap gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-calendar-range"></i> Aplicar período
+        </button>
+        <a href="{{ request.url_for('contabilidad_estado_resultados') }}?fecha_desde={{ er_mes_desde }}&amp;fecha_hasta={{ er_mes_hasta }}" class="btn btn-outline-primary">Mes en curso</a>
+        <a href="{{ request.url_for('contabilidad_estado_resultados') }}?fecha_hasta={{ fecha_hoy }}" class="btn btn-outline-primary">Hasta hoy</a>
+        <a href="{{ request.url_for('contabilidad_estado_resultados') }}" class="btn btn-outline-secondary">Quitar filtros</a>
+      </div>
+    </form>
+    <div id="er-fecha-help" class="form-text mt-2 mb-0">
+      Las fechas filtran por <strong>fecha de asiento</strong>. Vacías = acumulado completo.
+    </div>
+    <div class="mt-3 pt-3 border-top small text-muted d-flex flex-wrap gap-2 align-items-center">
+      {% if fecha_desde or fecha_hasta %}
+      {% if fecha_desde %}<span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Desde {{ fecha_desde }}</span>{% endif %}
+      {% if fecha_hasta %}<span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Hasta {{ fecha_hasta }}</span>{% endif %}
+      {% else %}
+      <span class="badge bg-secondary-subtle text-secondary-emphasis border">Período: histórico completo</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<p class="small text-muted d-none d-print-block mb-2">
+  Estado de resultados ·
+  {% if fecha_desde or fecha_hasta %}
+  {{ fecha_desde or '…' }} — {{ fecha_hasta or '…' }}
+  {% else %}
+  Histórico completo
+  {% endif %}
+</p>
+
+<div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-3 mb-4">
+  <div class="col">
+    <div class="card h-100 border-0 shadow-sm bg-success-subtle bg-opacity-25">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Total ingresos</div>
+        <div class="fs-5 fw-bold text-success fin-inf-monto">{{ fin.fmt_monto(resumen.total_ingresos) }}</div>
+        <div class="small text-muted">{{ resumen.ingresos|length }} cuenta(s)</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Total costos</div>
+        <div class="fs-5 fw-bold fin-inf-monto">{{ fin.fmt_monto(resumen.total_costos) }}</div>
+        <div class="small text-muted">{{ resumen.costos|length }} cuenta(s)</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Total gastos</div>
+        <div class="fs-5 fw-bold fin-inf-monto">{{ fin.fmt_monto(resumen.total_gastos) }}</div>
+        <div class="small text-muted">{{ resumen.gastos|length }} cuenta(s)</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card h-100 border-0 shadow-sm border-primary border-opacity-25">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Utilidad bruta</div>
+        <div class="fs-5 fw-bold text-primary fin-inf-monto">{{ fin.fmt_monto(resumen.utilidad_bruta) }}</div>
+        <div class="small text-muted">Ingresos − costos</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card h-100 border-0 shadow-sm {% if (resumen.resultado_operacional or 0)|float >= 0 %}bg-primary-subtle{% else %}bg-danger-subtle{% endif %} bg-opacity-25">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Resultado operacional</div>
+        <div class="fs-5 fw-bold fin-inf-monto">{{ fin.fmt_monto(resumen.resultado_operacional) }}</div>
+        <div class="small text-muted">
+          Utilidad bruta − gastos
+          {% if pct_ro_sobre_ingresos_pct %}
+          <span class="ms-1">· {{ pct_ro_sobre_ingresos_pct }}% ing.</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4 fin-inf-eq-card" id="er-flujo">
+  <div class="card-body py-4">
+    <div class="text-center small text-muted text-uppercase fw-semibold mb-3">Flujo del estado de resultados</div>
+    <div class="d-flex flex-wrap justify-content-center align-items-center gap-2 gap-md-2 fs-6 text-md-center">
+      <span class="fw-bold text-success fin-inf-monto">{{ fin.fmt_monto(resumen.total_ingresos) }}</span>
+      <span class="fin-inf-eq-op">−</span>
+      <span class="fw-bold fin-inf-monto">{{ fin.fmt_monto(resumen.total_costos) }}</span>
+      <span class="fin-inf-eq-op">=</span>
+      <span class="fw-bold text-primary fin-inf-monto">{{ fin.fmt_monto(resumen.utilidad_bruta) }}</span>
+    </div>
+    <div class="d-flex flex-wrap justify-content-center gap-3 mt-1 small text-muted">
+      <span>Ingresos</span>
+      <span>Costos</span>
+      <span>Utilidad bruta</span>
+    </div>
+    <hr class="my-3 opacity-25">
+    <div class="d-flex flex-wrap justify-content-center align-items-center gap-2">
+      <span class="fw-bold text-primary fin-inf-monto">{{ fin.fmt_monto(resumen.utilidad_bruta) }}</span>
+      <span class="fin-inf-eq-op">−</span>
+      <span class="fw-bold fin-inf-monto">{{ fin.fmt_monto(resumen.total_gastos) }}</span>
+      <span class="fin-inf-eq-op">=</span>
+      <span class="fw-bold fin-inf-monto {% if (resumen.resultado_operacional or 0)|float >= 0 %}text-success{% else %}text-danger{% endif %}">{{ fin.fmt_monto(resumen.resultado_operacional) }}</span>
+    </div>
+    <div class="d-flex flex-wrap justify-content-center gap-3 mt-1 small text-muted">
+      <span>Utilidad bruta</span>
+      <span>Gastos</span>
+      <span>Resultado operacional</span>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3 d-print-none">
+  <div class="card-body py-3">
+    <label for="fin-inf-search" class="form-label fw-semibold mb-1"><i class="bi bi-search"></i> Buscar en ingresos, costos y gastos</label>
+    <input type="search" class="form-control" id="fin-inf-search" placeholder="Código o nombre de cuenta…" autocomplete="off" aria-describedby="fin-inf-search-help">
+    <div id="fin-inf-search-help" class="form-text mb-0">Un solo filtro para las tres tablas.</div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-4" id="er-ingresos" data-fin-inf-section>
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-start">
+        <div>
+          <h3 class="h6 fw-semibold mb-0"><i class="bi bi-graph-up-arrow text-success"></i> Ingresos</h3>
+          <div class="small text-muted">Cuentas tipo INGRESO (neto haber − debe)</div>
+        </div>
+        <span class="badge rounded-pill bg-success">{{ resumen.ingresos|length }}</span>
+      </div>
+      <div class="card-body pt-2">
+        <div class="fin-inf-table-wrap border rounded">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th scope="col">Cuenta</th>
+                <th class="text-end" scope="col">Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in resumen.ingresos %}
+              <tr data-fin-inf-q="{{ ((item.codigo_cuenta or '') ~ ' ' ~ (item.nombre_cuenta or ''))|lower|trim }}">
+                <td>
+                  <div class="fw-semibold text-nowrap">{{ item.codigo_cuenta }}</div>
+                  <div class="small text-muted text-break">{{ item.nombre_cuenta }}</div>
+                </td>
+                <td class="text-end fin-inf-monto fw-medium text-success">{{ fin.fmt_monto(item.monto) }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="2" class="text-center text-muted py-4">
+                  <i class="bi bi-inbox d-block fs-3 mb-2 opacity-50"></i>
+                  Sin movimientos de ingreso en el período.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="fin-inf-empty-filter alert alert-light border small py-2 mt-2 d-none mb-0" role="status">Ninguna fila coincide con la búsqueda.</div>
+      </div>
+      <div class="card-footer bg-white border-top d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">Total ingresos</span>
+        <span class="fs-6 fw-bold text-success fin-inf-monto">{{ fin.fmt_monto(resumen.total_ingresos) }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4" id="er-costos" data-fin-inf-section>
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-start">
+        <div>
+          <h3 class="h6 fw-semibold mb-0"><i class="bi bi-box-seam text-primary"></i> Costos</h3>
+          <div class="small text-muted">Cuentas tipo COSTO</div>
+        </div>
+        <span class="badge rounded-pill bg-primary">{{ resumen.costos|length }}</span>
+      </div>
+      <div class="card-body pt-2">
+        <div class="fin-inf-table-wrap border rounded">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th scope="col">Cuenta</th>
+                <th class="text-end" scope="col">Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in resumen.costos %}
+              <tr data-fin-inf-q="{{ ((item.codigo_cuenta or '') ~ ' ' ~ (item.nombre_cuenta or ''))|lower|trim }}">
+                <td>
+                  <div class="fw-semibold text-nowrap">{{ item.codigo_cuenta }}</div>
+                  <div class="small text-muted text-break">{{ item.nombre_cuenta }}</div>
+                </td>
+                <td class="text-end fin-inf-monto fw-medium">{{ fin.fmt_monto(item.monto) }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="2" class="text-center text-muted py-4">
+                  <i class="bi bi-inbox d-block fs-3 mb-2 opacity-50"></i>
+                  Sin movimientos de costo en el período.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="fin-inf-empty-filter alert alert-light border small py-2 mt-2 d-none mb-0" role="status">Ninguna fila coincide con la búsqueda.</div>
+      </div>
+      <div class="card-footer bg-white border-top d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">Total costos</span>
+        <span class="fs-6 fw-bold fin-inf-monto">{{ fin.fmt_monto(resumen.total_costos) }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4" id="er-gastos" data-fin-inf-section>
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-start">
+        <div>
+          <h3 class="h6 fw-semibold mb-0"><i class="bi bi-wallet2 text-danger"></i> Gastos</h3>
+          <div class="small text-muted">Cuentas tipo GASTO</div>
+        </div>
+        <span class="badge rounded-pill bg-danger">{{ resumen.gastos|length }}</span>
+      </div>
+      <div class="card-body pt-2">
+        <div class="fin-inf-table-wrap border rounded">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th scope="col">Cuenta</th>
+                <th class="text-end" scope="col">Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in resumen.gastos %}
+              <tr data-fin-inf-q="{{ ((item.codigo_cuenta or '') ~ ' ' ~ (item.nombre_cuenta or ''))|lower|trim }}">
+                <td>
+                  <div class="fw-semibold text-nowrap">{{ item.codigo_cuenta }}</div>
+                  <div class="small text-muted text-break">{{ item.nombre_cuenta }}</div>
+                </td>
+                <td class="text-end fin-inf-monto fw-medium">{{ fin.fmt_monto(item.monto) }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="2" class="text-center text-muted py-4">
+                  <i class="bi bi-inbox d-block fs-3 mb-2 opacity-50"></i>
+                  Sin movimientos de gasto en el período.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="fin-inf-empty-filter alert alert-light border small py-2 mt-2 d-none mb-0" role="status">Ninguna fila coincide con la búsqueda.</div>
+      </div>
+      <div class="card-footer bg-white border-top d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">Total gastos</span>
+        <span class="fs-6 fw-bold fin-inf-monto">{{ fin.fmt_monto(resumen.total_gastos) }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-1" id="er-resultado">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase fw-semibold">Utilidad bruta</div>
+        <div class="fs-3 fw-bold text-primary fin-inf-monto mt-1">{{ fin.fmt_monto(resumen.utilidad_bruta) }}</div>
+        <p class="small text-muted mb-0 mt-2">Capacidad del negocio para cubrir gastos de estructura tras el costo directo.</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100 {% if (resumen.resultado_operacional or 0)|float >= 0 %}border-success{% else %}border-danger border{% endif %}">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase fw-semibold">Resultado operacional</div>
+        <div class="fs-3 fw-bold fin-inf-monto mt-1 {% if (resumen.resultado_operacional or 0)|float >= 0 %}text-success{% else %}text-danger{% endif %}">{{ fin.fmt_monto(resumen.resultado_operacional) }}</div>
+        <p class="small text-muted mb-0 mt-2">
+          {% if pct_ro_sobre_ingresos_pct %}
+          Representa el <strong>{{ pct_ro_sobre_ingresos_pct }}%</strong> de los ingresos del período.
+          {% else %}
+          No hay ingresos en el período; el porcentaje sobre ventas no aplica.
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/fin_informes.js" defer></script>
+{% endblock %}

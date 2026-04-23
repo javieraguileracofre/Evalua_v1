@@ -1,0 +1,260 @@
+{# templates/postventa/ficha_cliente.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}{{ cliente.razon_social }} · Postventa{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('postventa_hub') }}">Postventa</a></li>
+<li class="breadcrumb-item active" aria-current="page">{{ cliente.razon_social[:40] }}{% if cliente.razon_social|length > 40 %}…{% endif %}</li>
+{% endblock %}
+
+{% block page_title %}{{ cliente.razon_social }}{% endblock %}
+
+{% block page_subtitle %}
+<p class="page-subtitle mb-0">
+  <span class="me-3"><strong>RUT</strong> <code>{{ cliente.rut }}</code></span>
+  {% if cliente.telefono %}<span class="me-3"><i class="bi bi-telephone"></i> {{ cliente.telefono }}</span>{% endif %}
+  {% if cliente.email %}<span><i class="bi bi-envelope"></i> {{ cliente.email }}</span>{% endif %}
+</p>
+{% endblock %}
+
+{% block page_actions %}
+<div class="d-flex flex-wrap gap-2">
+  <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('postventa_hub') }}">
+    <i class="bi bi-arrow-left"></i> Hub Postventa
+  </a>
+  <a class="btn btn-outline-primary btn-sm" href="{{ request.url_for('clientes_form_editar', cliente_id=cliente.id) }}">
+    <i class="bi bi-pencil-square"></i> Editar cliente
+  </a>
+  <a class="btn btn-outline-primary btn-sm" href="{{ request.url_for('cobranza_gestion', cliente_id=cliente.id) }}">
+    <i class="bi bi-cash-stack"></i> Cobranza
+  </a>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-soft small text-uppercase fw-semibold mb-1">Interacciones (total)</div>
+        <div class="fs-3 fw-bold">{{ conteos.interacciones_total or 0 }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-soft small text-uppercase fw-semibold mb-1">Solicitudes abiertas</div>
+        <div class="fs-3 fw-bold text-warning">{{ conteos.solicitudes_abiertas or 0 }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-soft small text-uppercase fw-semibold mb-1">Ubicación</div>
+        <div class="small">{{ cliente.ciudad or '—' }}{% if cliente.comuna %}, {{ cliente.comuna }}{% endif %}</div>
+        <div class="small text-muted">{{ cliente.direccion or '' }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-6">
+    <div class="card h-100 shadow-sm">
+      <div class="card-header fw-semibold">
+        <i class="bi bi-telephone-outbound text-primary"></i> Registrar interacción
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ request.url_for('postventa_registrar_interaccion', cliente_id=cliente.id) }}">
+          <div class="mb-2">
+            <label class="form-label" for="tipo">Tipo</label>
+            <select class="form-select" id="tipo" name="tipo" required>
+              <option value="LLAMADA">Llamada</option>
+              <option value="WHATSAPP">WhatsApp</option>
+              <option value="EMAIL">Correo</option>
+              <option value="VISITA">Visita</option>
+              <option value="REUNION">Reunión</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="fecha_evento">Fecha y hora del contacto</label>
+            <input class="form-control" type="datetime-local" id="fecha_evento" name="fecha_evento">
+            <div class="form-text">Opcional: si lo dejas vacío se usa la fecha/hora actual.</div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="asunto">Asunto</label>
+            <input class="form-control" id="asunto" name="asunto" maxlength="200" placeholder="Ej. Seguimiento cotización">
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="detalle">Detalle / notas</label>
+            <textarea class="form-control" id="detalle" name="detalle" rows="4" required placeholder="Qué conversaron, acuerdos, próximos pasos…"></textarea>
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <label class="form-label" for="duracion_minutos">Duración (min)</label>
+              <input class="form-control" type="number" min="0" step="1" id="duracion_minutos" name="duracion_minutos" placeholder="Ej. 15">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="resultado">Resultado</label>
+              <select class="form-select" id="resultado" name="resultado">
+                <option value="">—</option>
+                <option value="CONTACTADO">Contactado</option>
+                <option value="SIN_RESPUESTA">Sin respuesta</option>
+                <option value="VOICEMAIL">Buzón de voz</option>
+                <option value="SEGUIMIENTO">Requiere seguimiento</option>
+                <option value="CERRADO_POSITIVO">Cerrado positivo</option>
+                <option value="CERRADO_NEGATIVO">Cerrado negativo</option>
+                <option value="OTRO">Otro</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3 mt-2">
+            <label class="form-label" for="registrado_por">Registrado por</label>
+            <input class="form-control" id="registrado_por" name="registrado_por" maxlength="120" placeholder="Nombre del ejecutivo">
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check2-circle"></i> Guardar interacción
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card h-100 shadow-sm">
+      <div class="card-header fw-semibold">
+        <i class="bi bi-ticket-perforated text-primary"></i> Nueva solicitud / caso
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ request.url_for('postventa_registrar_solicitud', cliente_id=cliente.id) }}">
+          <div class="mb-2">
+            <label class="form-label" for="titulo">Título</label>
+            <input class="form-control" id="titulo" name="titulo" required maxlength="250" placeholder="Resumen breve">
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="categoria">Categoría</label>
+            <select class="form-select" id="categoria" name="categoria" required>
+              <option value="CONSULTA">Consulta</option>
+              <option value="RECLAMO">Reclamo</option>
+              <option value="GARANTIA">Garantía</option>
+              <option value="MEJORA">Mejora / sugerencia</option>
+              <option value="PEDIDO">Pedido adicional</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="prioridad">Prioridad</label>
+            <select class="form-select" id="prioridad" name="prioridad" required>
+              <option value="BAJA">Baja</option>
+              <option value="MEDIA" selected>Media</option>
+              <option value="ALTA">Alta</option>
+              <option value="URGENTE">Urgente</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="descripcion">Descripción</label>
+            <textarea class="form-control" id="descripcion" name="descripcion" rows="5" required placeholder="Detalle de la solicitud del cliente…"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Crear solicitud
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="bi bi-clock-history"></i> Línea de tiempo</span>
+    <span class="small text-muted">Interacciones y solicitudes ordenadas por fecha</span>
+  </div>
+  <div class="card-body">
+    {% if timeline %}
+    <ul class="list-unstyled mb-0">
+      {% for item in timeline %}
+      <li class="mb-4 pb-4 border-bottom">
+        {% if item.tipo == 'interaccion' %}
+          {% set it = item.ref %}
+          <div class="d-flex gap-3">
+            <div class="flex-shrink-0 text-center" style="width:44px;">
+              <span class="rounded-circle bg-primary-subtle text-primary d-inline-flex align-items-center justify-content-center" style="width:40px;height:40px;">
+                {% if it.tipo == 'LLAMADA' %}<i class="bi bi-telephone-fill"></i>
+                {% elif it.tipo == 'WHATSAPP' %}<i class="bi bi-whatsapp"></i>
+                {% elif it.tipo == 'EMAIL' %}<i class="bi bi-envelope-fill"></i>
+                {% elif it.tipo == 'VISITA' %}<i class="bi bi-geo-alt-fill"></i>
+                {% else %}<i class="bi bi-chat-dots-fill"></i>{% endif %}
+              </span>
+            </div>
+            <div class="flex-grow-1 min-w-0">
+              <div class="d-flex flex-wrap justify-content-between gap-2">
+                <div>
+                  <span class="badge text-bg-secondary">{{ it.tipo }}</span>
+                  {% if it.resultado %}
+                  <span class="badge text-bg-light border">{{ it.resultado }}</span>
+                  {% endif %}
+                </div>
+                <small class="text-muted">{{ it.fecha_evento }}</small>
+              </div>
+              {% if it.asunto %}<div class="fw-semibold mt-1">{{ it.asunto }}</div>{% endif %}
+              <div class="mt-1 small" style="white-space:pre-wrap;">{{ it.detalle }}</div>
+              <div class="mt-2 small text-muted">
+                {% if it.duracion_minutos is not none %}<span class="me-3">{{ it.duracion_minutos }} min</span>{% endif %}
+                {% if it.registrado_por %}<span>Por {{ it.registrado_por }}</span>{% endif %}
+              </div>
+            </div>
+          </div>
+        {% else %}
+          {% set sol = item.ref %}
+          <div class="d-flex gap-3">
+            <div class="flex-shrink-0 text-center" style="width:44px;">
+              <span class="rounded-circle bg-warning-subtle text-warning-emphasis d-inline-flex align-items-center justify-content-center" style="width:40px;height:40px;">
+                <i class="bi bi-ticket-perforated-fill"></i>
+              </span>
+            </div>
+            <div class="flex-grow-1 min-w-0">
+              <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
+                <div>
+                  <span class="badge text-bg-dark">{{ sol.categoria }}</span>
+                  <span class="badge {% if sol.estado == 'ABIERTA' %}text-bg-danger{% elif sol.estado == 'EN_PROCESO' %}text-bg-primary{% elif sol.estado == 'ESPERA_CLIENTE' %}text-bg-info text-dark{% elif sol.estado == 'RESUELTA' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ sol.estado }}</span>
+                  <span class="badge text-bg-light border">{{ sol.prioridad }}</span>
+                </div>
+                <small class="text-muted">{{ sol.fecha_apertura }}</small>
+              </div>
+              <div class="fw-semibold mt-1">{{ sol.titulo }}</div>
+              <div class="mt-1 small" style="white-space:pre-wrap;">{{ sol.descripcion }}</div>
+              {% if sol.estado not in ['RESUELTA', 'DESCARTADA'] %}
+              <form class="row g-2 align-items-end mt-3" method="post" action="{{ request.url_for('postventa_actualizar_estado_solicitud', solicitud_id=sol.id) }}">
+                <div class="col-auto">
+                  <label class="form-label small mb-0" for="estado-{{ sol.id }}">Cambiar estado</label>
+                  <select class="form-select form-select-sm" id="estado-{{ sol.id }}" name="estado">
+                    <option value="ABIERTA" {% if sol.estado == 'ABIERTA' %}selected{% endif %}>Abierta</option>
+                    <option value="EN_PROCESO" {% if sol.estado == 'EN_PROCESO' %}selected{% endif %}>En proceso</option>
+                    <option value="ESPERA_CLIENTE" {% if sol.estado == 'ESPERA_CLIENTE' %}selected{% endif %}>Espera cliente</option>
+                    <option value="RESUELTA" {% if sol.estado == 'RESUELTA' %}selected{% endif %}>Resuelta</option>
+                    <option value="DESCARTADA" {% if sol.estado == 'DESCARTADA' %}selected{% endif %}>Descartada</option>
+                  </select>
+                </div>
+                <div class="col-auto">
+                  <button type="submit" class="btn btn-sm btn-outline-primary">Actualizar</button>
+                </div>
+              </form>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-muted mb-0">Aún no hay interacciones ni solicitudes. Usa los formularios de arriba para comenzar el historial.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

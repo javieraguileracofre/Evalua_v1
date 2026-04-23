@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ fondo.folio }} · Rendición</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 20px; }
+    h1 { font-size: 22px; margin: 0 0 4px 0; }
+    .muted { color: #475569; font-size: 12px; }
+    .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .btns { display: flex; gap: 8px; }
+    .btn {
+      border: 1px solid #94a3b8; background: #fff; color: #0f172a;
+      border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; text-decoration: none;
+    }
+    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+    .card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; }
+    .value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+    .meta { margin: 10px 0; font-size: 13px; line-height: 1.5; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+    th, td { border: 1px solid #cbd5e1; padding: 7px; text-align: left; }
+    th { background: #f1f5f9; }
+    .right { text-align: right; }
+    @media print {
+      .no-print { display: none !important; }
+      body { margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div>
+      <h1>Rendición de anticipo {{ fondo.folio }}</h1>
+      <div class="muted">
+        Estado: {{ fondo.estado }} · Trabajador: {{ fondo.empleado.nombre_completo if fondo.empleado else '—' }}
+      </div>
+    </div>
+    <div class="btns no-print">
+      <button class="btn" onclick="window.print()">Imprimir / Guardar PDF</button>
+      <button class="btn" onclick="window.close()">Cerrar</button>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="card">
+      <div class="muted">Anticipo entregado</div>
+      <div class="value">${{ '{:,.0f}'.format(fondo.monto_anticipo|float).replace(',', '.') }}</div>
+    </div>
+    <div class="card">
+      <div class="muted">Total gastos</div>
+      <div class="value">${{ '{:,.0f}'.format(total_gastos|float).replace(',', '.') }}</div>
+    </div>
+    <div class="card">
+      <div class="muted">Saldo (anticipo − gastos)</div>
+      <div class="value">${{ '{:,.0f}'.format(saldo|float).replace(',', '.') }}</div>
+    </div>
+  </div>
+
+  <div class="meta">
+    <div><strong>Fecha entrega:</strong> {{ fondo.fecha_entrega.strftime('%d-%m-%Y %H:%M') }}</div>
+    {% if fondo.vehiculo %}<div><strong>Vehículo:</strong> {{ fondo.vehiculo.patente }}</div>{% endif %}
+    {% if fondo.observaciones %}<div><strong>Observaciones:</strong> {{ fondo.observaciones }}</div>{% endif %}
+    {% if fondo.fecha_envio_rendicion %}<div><strong>Envío rendición:</strong> {{ fondo.fecha_envio_rendicion.strftime('%d-%m-%Y %H:%M') }}</div>{% endif %}
+    {% if fondo.fecha_aprobacion %}<div><strong>Aprobación:</strong> {{ fondo.fecha_aprobacion.strftime('%d-%m-%Y %H:%M') }}</div>{% endif %}
+    {% if fondo.asiento_id_entrega %}<div><strong>Asiento entrega:</strong> #{{ fondo.asiento_id_entrega }}</div>{% endif %}
+    {% if fondo.asiento_id_liquidacion %}<div><strong>Asiento liquidación:</strong> #{{ fondo.asiento_id_liquidacion }}</div>{% endif %}
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Rubro</th>
+        <th>Descripción</th>
+        <th class="right">Monto</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for g in fondo.lineas_gasto|sort(attribute='linea') %}
+      <tr>
+        <td>{{ g.fecha_gasto.strftime('%d-%m-%Y %H:%M') }}</td>
+        <td>{{ g.rubro }}</td>
+        <td>{{ g.descripcion or '—' }}</td>
+        <td class="right">${{ '{:,.0f}'.format(g.monto|float).replace(',', '.') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

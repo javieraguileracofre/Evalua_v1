@@ -1,0 +1,418 @@
+{# templates/finanzas/balance_general.html #}
+{% extends "layout/base.html" %}
+{% import "finanzas/_fin_macros.html" as fin %}
+
+{% block title %}Balance general · Evalua ERP{% endblock %}
+{% block page_title %}Balance general{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  Posición financiera a una fecha de corte: activos frente a pasivos más patrimonio, con verificación de cuadre y búsqueda en línea.
+</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="/finanzas/hub">Finanzas</a></li>
+<li class="breadcrumb-item active" aria-current="page">Balance general</li>
+{% endblock %}
+
+{% block page_actions %}
+<div class="d-flex gap-2 flex-wrap align-items-center">
+  <button type="button" class="btn btn-outline-secondary btn-sm d-print-none" onclick="window.print()" title="Imprimir o guardar PDF">
+    <i class="bi bi-printer"></i> Imprimir
+  </button>
+  <a
+    href="{{ request.url_for('contabilidad_balance_8_columnas_excel') }}?fecha_desde={{ bg_fecha_desde_default }}&amp;fecha_hasta={{ bg_fecha_hasta_default }}"
+    class="btn btn-success btn-sm d-print-none"
+    title="Descargar Balance de 8 columnas en Excel"
+  >
+    <i class="bi bi-file-earmark-excel"></i> Balance 8 columnas
+  </a>
+  <a href="{{ request.url_for('contabilidad_asientos') }}" class="btn btn-outline-secondary btn-sm d-print-none">
+    <i class="bi bi-journal-richtext"></i> Asientos
+  </a>
+  <a href="{{ request.url_for('contabilidad_estado_resultados') }}" class="btn btn-outline-secondary btn-sm d-print-none">
+    <i class="bi bi-bar-chart-line"></i> Estado de resultados
+  </a>
+  <a href="{{ request.url_for('contabilidad_plan_cuentas') }}" class="btn btn-outline-secondary btn-sm d-print-none">
+    <i class="bi bi-diagram-3"></i> Plan de cuentas
+  </a>
+</div>
+{% endblock %}
+
+{% block hero_title %}Situación financiera en un vistazo{% endblock %}
+{% block hero_desc %}
+El corte por fecha limita los movimientos contables considerados; sin fecha se usa el acumulado histórico completo. Las cuentas provienen del plan clasificado como ACTIVO, PASIVO o PATRIMONIO.
+{% endblock %}
+
+{% block head %}
+{% include "finanzas/_fin_informes_styles.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="d-lg-none sticky-top py-2 mb-2 border-bottom bg-body d-print-none fin-inf-nav-jump" style="z-index: 1010;">
+  <div class="d-flex gap-2 overflow-auto pb-1 small fw-medium">
+    <a href="#bg-activos" class="text-nowrap btn btn-sm btn-light border">Activos</a>
+    <a href="#bg-pasivos" class="text-nowrap btn btn-sm btn-light border">Pasivos</a>
+    <a href="#bg-patrimonio" class="text-nowrap btn btn-sm btn-light border">Patrimonio</a>
+    <a href="#bg-cuadre" class="text-nowrap btn btn-sm btn-light border">Cuadre</a>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4 border-0 d-print-none">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end" id="form-bg-fecha">
+      <div class="col-md-5 col-lg-4">
+        <label class="form-label fw-semibold" for="fecha_hasta">Fecha de corte</label>
+        <input type="date" name="fecha_hasta" id="fecha_hasta" class="form-control" value="{{ fecha_hasta or '' }}" aria-describedby="bg-fecha-help">
+        <div id="bg-fecha-help" class="form-text">
+          Solo se incluyen asientos con fecha menor o igual al corte. Dejar vacío equivale a <strong>todo el histórico</strong>.
+        </div>
+      </div>
+      <div class="col-md-7 col-lg-8 d-flex flex-wrap gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-calendar-check"></i> Aplicar corte
+        </button>
+        <a href="{{ request.url_for('contabilidad_balance_general') }}?fecha_hasta={{ fecha_hoy }}" class="btn btn-outline-primary">Hoy</a>
+        <a href="{{ request.url_for('contabilidad_balance_general') }}" class="btn btn-outline-secondary">Quitar filtro</a>
+      </div>
+    </form>
+    <div class="mt-3 pt-3 border-top small text-muted d-flex flex-wrap gap-3 align-items-center">
+      <span>
+        {% if fecha_hasta %}
+        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Corte: {{ fecha_hasta }}</span>
+        {% else %}
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border">Corte: histórico completo</span>
+        {% endif %}
+      </span>
+      <span><i class="bi bi-info-circle"></i> Moneda de visualización según asientos (habitualmente CLP).</span>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4 border-0 d-print-none">
+  <div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+      <h3 class="h6 mb-0 fw-semibold"><i class="bi bi-journal-text"></i> Libro mayor por cuenta (Excel)</h3>
+      <span class="small text-muted">Análisis de movimientos y saldo acumulado</span>
+    </div>
+    <form method="get" action="{{ request.url_for('contabilidad_libro_mayor_excel') }}" class="row g-3 align-items-end">
+      <div class="col-lg-4">
+        <label class="form-label fw-semibold" for="codigo_cuenta_mayor">Cuenta</label>
+        <select class="form-select" id="codigo_cuenta_mayor" name="codigo_cuenta" required>
+          <option value="">Selecciona una cuenta…</option>
+          {% for c in cuentas_movimiento %}
+          <option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3 col-lg-2">
+        <label class="form-label fw-semibold" for="fecha_desde_mayor">Desde</label>
+        <input type="date" class="form-control" id="fecha_desde_mayor" name="fecha_desde" value="{{ bg_fecha_desde_default }}">
+      </div>
+      <div class="col-md-3 col-lg-2">
+        <label class="form-label fw-semibold" for="fecha_hasta_mayor">Hasta</label>
+        <input type="date" class="form-control" id="fecha_hasta_mayor" name="fecha_hasta" value="{{ bg_fecha_hasta_default }}">
+      </div>
+      <div class="col-md-6 col-lg-4 d-flex gap-2">
+        <button type="submit" class="btn btn-success">
+          <i class="bi bi-download"></i> Descargar libro mayor
+        </button>
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          onclick="document.getElementById('fecha_desde_mayor').value='{{ bg_fecha_desde_default }}';document.getElementById('fecha_hasta_mayor').value='{{ bg_fecha_hasta_default }}';"
+        >
+          Restablecer fechas
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4 border-0 d-print-none">
+  <div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+      <h3 class="h6 mb-0 fw-semibold"><i class="bi bi-collection"></i> Libro mayor consolidado (multi-cuenta)</h3>
+      <span class="small text-muted">Exporta un Excel con una hoja por cuenta + resumen</span>
+    </div>
+    <form method="get" action="{{ request.url_for('contabilidad_libro_mayor_consolidado_excel') }}" class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label fw-semibold" for="lm_tipo">Tipo de cuenta (opcional)</label>
+        <select class="form-select" id="lm_tipo" name="tipo">
+          <option value="">Todos</option>
+          {% for t in tipos_cuenta %}
+          <option value="{{ t }}">{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold" for="lm_codigo_desde">Código desde</label>
+        <input type="text" class="form-control" id="lm_codigo_desde" name="codigo_desde" placeholder="Ej: 110100">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold" for="lm_codigo_hasta">Código hasta</label>
+        <input type="text" class="form-control" id="lm_codigo_hasta" name="codigo_hasta" placeholder="Ej: 119999">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold" for="lm_fecha_desde">Desde</label>
+        <input type="date" class="form-control" id="lm_fecha_desde" name="fecha_desde" value="{{ bg_fecha_desde_default }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold" for="lm_fecha_hasta">Hasta</label>
+        <input type="date" class="form-control" id="lm_fecha_hasta" name="fecha_hasta" value="{{ bg_fecha_hasta_default }}">
+      </div>
+      <div class="col-md-1 d-grid">
+        <button type="submit" class="btn btn-success" title="Descargar libro mayor consolidado">
+          <i class="bi bi-download"></i>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<p class="small text-muted d-none d-print-block mb-2">
+  Balance general · {% if fecha_hasta %}Corte {{ fecha_hasta }}{% else %}Histórico completo{% endif %}
+</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100 border-0 shadow-sm bg-primary-subtle bg-opacity-25">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase fw-semibold">Total activos</div>
+        <div class="fs-4 fw-bold text-primary mt-1 fin-inf-monto">{{ fin.fmt_monto(resumen.total_activos) }}</div>
+        <div class="small text-muted mt-2">{{ resumen.activos|length }} cuenta(s) con saldo</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase fw-semibold">Pasivos + patrimonio</div>
+        <div class="fs-4 fw-bold mt-1 fin-inf-monto">{{ fin.fmt_monto(pasivo_mas_patrimonio) }}</div>
+        <div class="small text-muted mt-2">{{ resumen.pasivos|length }} pasivo(s) · {{ resumen.patrimonio|length }} patrimonio</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100 border-0 shadow-sm {% if resumen.cuadra %}border-success{% else %}border-warning border{% endif %}">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase fw-semibold">Diferencia (activo − pasivo − patrim.)</div>
+        <div class="fs-4 fw-bold mt-1 fin-inf-monto {% if resumen.cuadra %}text-success{% else %}text-warning{% endif %}">{{ fin.fmt_monto(diferencia_cuadre) }}</div>
+        <div class="small text-muted mt-2">Debe tender a 0 si el plan y los asientos están consistentes.</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100 border-0 shadow-sm {% if resumen.cuadra %}bg-success-subtle{% else %}bg-danger-subtle{% endif %} bg-opacity-25">
+      <div class="card-body d-flex flex-column">
+        <div class="small text-muted text-uppercase fw-semibold">Estado</div>
+        {% if resumen.cuadra %}
+        <div class="mt-2 fw-semibold text-success"><i class="bi bi-check-circle-fill"></i> Cuadrado</div>
+        <div class="small text-muted mt-auto">Activos = pasivos + patrimonio</div>
+        {% else %}
+        <div class="mt-2 fw-semibold text-danger"><i class="bi bi-exclamation-octagon-fill"></i> Revisar</div>
+        <div class="small text-muted mt-auto">Revise clasificación del plan y asientos del período.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4 fin-inf-eq-card" id="bg-cuadre">
+  <div class="card-body py-4">
+    <div class="text-center small text-muted text-uppercase fw-semibold mb-2">Ecuación del balance</div>
+    <div class="d-flex flex-wrap justify-content-center align-items-center gap-2 gap-md-3 fs-5">
+      <span class="fw-bold text-primary fin-inf-monto">{{ fin.fmt_monto(resumen.total_activos) }}</span>
+      <span class="fin-inf-eq-op">=</span>
+      <span class="fw-bold fin-inf-monto">{{ fin.fmt_monto(resumen.total_pasivos) }}</span>
+      <span class="fin-inf-eq-op">+</span>
+      <span class="fw-bold fin-inf-monto">{{ fin.fmt_monto(resumen.total_patrimonio) }}</span>
+    </div>
+    <div class="d-flex flex-wrap justify-content-center gap-4 mt-2 small text-muted">
+      <span>Activos</span>
+      <span>Pasivos</span>
+      <span>Patrimonio</span>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3 d-print-none">
+  <div class="card-body py-3">
+    <label for="fin-inf-search" class="form-label fw-semibold mb-1"><i class="bi bi-search"></i> Buscar en las tres secciones</label>
+    <input type="search" class="form-control" id="fin-inf-search" placeholder="Código o nombre de cuenta…" autocomplete="off" aria-describedby="fin-inf-search-help">
+    <div id="fin-inf-search-help" class="form-text mb-0">Filtra filas en activos, pasivos y patrimonio al mismo tiempo.</div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-4" id="bg-activos" data-fin-inf-section>
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-start">
+        <div>
+          <h3 class="h6 fw-semibold mb-0"><i class="bi bi-bank2 text-primary"></i> Activos</h3>
+          <div class="small text-muted">Saldo debe − haber en cuentas ACTIVO</div>
+        </div>
+        <span class="badge rounded-pill bg-primary">{{ resumen.activos|length }}</span>
+      </div>
+      <div class="card-body pt-2">
+        <div class="fin-inf-table-wrap border rounded">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th scope="col">Cuenta</th>
+                <th class="text-end" scope="col">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in resumen.activos %}
+              <tr data-fin-inf-q="{{ ((item.codigo_cuenta or '') ~ ' ' ~ (item.nombre_cuenta or ''))|lower|trim }}">
+                <td>
+                  <div class="fw-semibold text-nowrap">{{ item.codigo_cuenta }}</div>
+                  <div class="small text-muted text-break">{{ item.nombre_cuenta }}</div>
+                </td>
+                <td class="text-end fin-inf-monto fw-medium">{{ fin.fmt_monto(item.monto) }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="2" class="text-center text-muted py-4">
+                  <i class="bi bi-inbox d-block fs-3 mb-2 opacity-50"></i>
+                  Sin movimientos en activo para este corte.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="fin-inf-empty-filter alert alert-light border small py-2 mt-2 d-none mb-0" role="status">Ninguna fila coincide con la búsqueda.</div>
+      </div>
+      <div class="card-footer bg-white border-top d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">Total activos</span>
+        <span class="fs-6 fw-bold text-primary fin-inf-monto">{{ fin.fmt_monto(resumen.total_activos) }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4" id="bg-pasivos" data-fin-inf-section>
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-start">
+        <div>
+          <h3 class="h6 fw-semibold mb-0"><i class="bi bi-receipt text-primary"></i> Pasivos</h3>
+          <div class="small text-muted">Obligaciones y deudas (cuentas PASIVO)</div>
+        </div>
+        <span class="badge rounded-pill bg-secondary">{{ resumen.pasivos|length }}</span>
+      </div>
+      <div class="card-body pt-2">
+        <div class="fin-inf-table-wrap border rounded">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th scope="col">Cuenta</th>
+                <th class="text-end" scope="col">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in resumen.pasivos %}
+              <tr data-fin-inf-q="{{ ((item.codigo_cuenta or '') ~ ' ' ~ (item.nombre_cuenta or ''))|lower|trim }}">
+                <td>
+                  <div class="fw-semibold text-nowrap">{{ item.codigo_cuenta }}</div>
+                  <div class="small text-muted text-break">{{ item.nombre_cuenta }}</div>
+                </td>
+                <td class="text-end fin-inf-monto fw-medium">{{ fin.fmt_monto(item.monto) }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="2" class="text-center text-muted py-4">
+                  <i class="bi bi-inbox d-block fs-3 mb-2 opacity-50"></i>
+                  Sin movimientos en pasivo para este corte.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="fin-inf-empty-filter alert alert-light border small py-2 mt-2 d-none mb-0" role="status">Ninguna fila coincide con la búsqueda.</div>
+      </div>
+      <div class="card-footer bg-white border-top d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">Total pasivos</span>
+        <span class="fs-6 fw-bold fin-inf-monto">{{ fin.fmt_monto(resumen.total_pasivos) }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4" id="bg-patrimonio" data-fin-inf-section>
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-start">
+        <div>
+          <h3 class="h6 fw-semibold mb-0"><i class="bi bi-pie-chart text-primary"></i> Patrimonio</h3>
+          <div class="small text-muted">Capital y resultados acumulados (PATRIMONIO)</div>
+        </div>
+        <span class="badge rounded-pill bg-dark">{{ resumen.patrimonio|length }}</span>
+      </div>
+      <div class="card-body pt-2">
+        <div class="fin-inf-table-wrap border rounded">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th scope="col">Cuenta</th>
+                <th class="text-end" scope="col">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in resumen.patrimonio %}
+              <tr data-fin-inf-q="{{ ((item.codigo_cuenta or '') ~ ' ' ~ (item.nombre_cuenta or ''))|lower|trim }}">
+                <td>
+                  <div class="fw-semibold text-nowrap">{{ item.codigo_cuenta }}</div>
+                  <div class="small text-muted text-break">{{ item.nombre_cuenta }}</div>
+                </td>
+                <td class="text-end fin-inf-monto fw-medium">{{ fin.fmt_monto(item.monto) }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="2" class="text-center text-muted py-4">
+                  <i class="bi bi-inbox d-block fs-3 mb-2 opacity-50"></i>
+                  Sin movimientos en patrimonio para este corte.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="fin-inf-empty-filter alert alert-light border small py-2 mt-2 d-none mb-0" role="status">Ninguna fila coincide con la búsqueda.</div>
+      </div>
+      <div class="card-footer bg-white border-top d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">Total patrimonio</span>
+        <span class="fs-6 fw-bold fin-inf-monto">{{ fin.fmt_monto(resumen.total_patrimonio) }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mt-4" id="bg-alerta-cuadre">
+  {% if resumen.cuadra %}
+  <div class="alert alert-success border-0 shadow-sm d-flex align-items-start gap-2 mb-0" role="status">
+    <i class="bi bi-check-circle-fill fs-4 flex-shrink-0"></i>
+    <div>
+      <div class="fw-semibold">El balance cuadra</div>
+      <div class="small mb-0">La suma de activos coincide con pasivos más patrimonio para el corte seleccionado.</div>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning border-0 shadow-sm d-flex align-items-start gap-2 mb-0" role="alert">
+    <i class="bi bi-exclamation-triangle-fill fs-4 flex-shrink-0"></i>
+    <div>
+      <div class="fw-semibold">El balance no cuadra</div>
+      <div class="small mb-0">
+        Diferencia absoluta en pantalla: <strong class="fin-inf-monto">{{ fin.fmt_monto(diferencia_cuadre) }}</strong>.
+        Revise asientos no publicados, cuentas mal clasificadas en el plan o movimientos fuera del período.
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/fin_informes.js" defer></script>
+{% endblock %}

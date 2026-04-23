@@ -1,0 +1,537 @@
+{# templates/proveedores/form_proveedor.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}
+  {% if modo == 'editar' %}Editar proveedor{% else %}Nuevo proveedor{% endif %} · EvaluaERP
+{% endblock title %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('proveedor_lista') }}">Proveedores</a></li>
+<li class="breadcrumb-item active" aria-current="page">
+  {% if modo == 'editar' %}Editar{% else %}Nuevo{% endif %}
+</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}
+  {% if modo == 'editar' %}Editar proveedor{% else %}Nuevo proveedor{% endif %}
+{% endblock page_title %}
+
+{% block content %}
+
+{% macro clp(valor) -%}
+  $ {{ "{:,.0f}".format((valor or 0) | float).replace(",", ".") }}
+{%- endmacro %}
+
+{% set action_url = request.url_for('proveedor_actualizar', proveedor_id=proveedor.id) if modo == 'editar' else request.url_for('proveedor_crear') %}
+
+{% if msg %}
+<div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show" role="alert">
+  {{ msg }}
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<form method="post" action="{{ action_url }}" id="formProveedor">
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <h6 class="mb-3">Datos generales</h6>
+
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">RUT</label>
+              <input type="text" name="rut" class="form-control" required value="{{ proveedor.rut if proveedor else '' }}">
+            </div>
+
+            <div class="col-md-8">
+              <label class="form-label">Razón social</label>
+              <input type="text" name="razon_social" class="form-control" required value="{{ proveedor.razon_social if proveedor else '' }}">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Nombre fantasía</label>
+              <input type="text" name="nombre_fantasia" class="form-control" value="{{ proveedor.nombre_fantasia if proveedor else '' }}">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Giro</label>
+              <input type="text" name="giro" class="form-control" value="{{ proveedor.giro if proveedor else '' }}">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Email</label>
+              <input type="email" name="email" class="form-control" value="{{ proveedor.email if proveedor else '' }}">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Teléfono</label>
+              <input type="text" name="telefono" class="form-control" value="{{ proveedor.telefono if proveedor else '' }}">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Sitio web</label>
+              <input type="text" name="sitio_web" class="form-control" value="{{ proveedor.sitio_web if proveedor else '' }}">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Condición pago comercial (días)</label>
+              <input type="number" name="condicion_pago_dias" class="form-control" min="0" max="365" value="{{ proveedor.condicion_pago_dias if proveedor else 30 }}">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Límite comercial</label>
+              <input type="number" step="0.01" name="limite_credito" class="form-control" value="{{ proveedor.limite_credito if proveedor else 0 }}">
+            </div>
+
+            <div class="col-md-4">
+              <div class="form-check mt-4 pt-2">
+                <input class="form-check-input" type="checkbox" id="activo" name="activo" {% if proveedor %}{% if proveedor.activo %}checked{% endif %}{% else %}checked{% endif %}>
+                <label class="form-check-label" for="activo">Proveedor activo</label>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">Notas generales</label>
+              <textarea name="notas" rows="4" class="form-control">{{ proveedor.notas if proveedor else '' }}</textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h6 class="mb-0">Ficha financiera</h6>
+              <div class="small text-muted">Condiciones para cuentas por pagar y control financiero.</div>
+            </div>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Condición pago financiera (días)</label>
+              <input
+                type="number"
+                name="fin_condicion_pago_dias"
+                class="form-control"
+                min="0"
+                max="365"
+                value="{{ proveedor_fin.condicion_pago_dias if proveedor_fin else (proveedor.condicion_pago_dias if proveedor else 30) }}"
+              >
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Límite crédito financiero</label>
+              <input
+                type="number"
+                step="0.01"
+                name="fin_limite_credito"
+                class="form-control"
+                value="{{ proveedor_fin.limite_credito if proveedor_fin else (proveedor.limite_credito if proveedor else 0) }}"
+              >
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Estado financiero</label>
+              <select name="fin_estado" class="form-select">
+                {% set fin_estado_actual = proveedor_fin.estado if proveedor_fin else 'ACTIVO' %}
+                <option value="ACTIVO" {% if fin_estado_actual == 'ACTIVO' %}selected{% endif %}>ACTIVO</option>
+                <option value="INACTIVO" {% if fin_estado_actual == 'INACTIVO' %}selected{% endif %}>INACTIVO</option>
+                <option value="BLOQUEADO" {% if fin_estado_actual == 'BLOQUEADO' %}selected{% endif %}>BLOQUEADO</option>
+              </select>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">Notas financieras</label>
+              <textarea name="fin_notas" rows="3" class="form-control">{{ proveedor_fin.notas if proveedor_fin else '' }}</textarea>
+            </div>
+          </div>
+
+          {% if resumen_financiero %}
+          <hr>
+          <div class="row g-3">
+            <div class="col-md-3">
+              <div class="border rounded p-3 h-100">
+                <div class="small text-muted">Documentos AP</div>
+                <div class="fs-5 fw-semibold">{{ resumen_financiero.total_documentos or 0 }}</div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="border rounded p-3 h-100">
+                <div class="small text-muted">Total documentado</div>
+                <div class="fs-6 fw-semibold">{{ clp(resumen_financiero.total_documentado) }}</div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="border rounded p-3 h-100">
+                <div class="small text-muted">Saldo pendiente</div>
+                <div class="fs-6 fw-semibold">{{ clp(resumen_financiero.saldo_pendiente) }}</div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="border rounded p-3 h-100">
+                <div class="small text-muted">Docs vencidos</div>
+                <div class="fs-5 fw-semibold text-danger">{{ resumen_financiero.docs_vencidos or 0 }}</div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">Cuentas bancarias</h6>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="agregarBanco()">Agregar</button>
+          </div>
+          <div id="bancosContainer"></div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">Contactos</h6>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="agregarContacto()">Agregar</button>
+          </div>
+          <div id="contactosContainer"></div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">Direcciones</h6>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="agregarDireccion()">Agregar</button>
+          </div>
+          <div id="direccionesContainer"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <h6 class="mb-3">Acciones</h6>
+
+          <input type="hidden" name="bancos_json" id="bancos_json">
+          <input type="hidden" name="contactos_json" id="contactos_json">
+          <input type="hidden" name="direcciones_json" id="direcciones_json">
+
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary">
+              {% if modo == 'editar' %}Guardar cambios{% else %}Crear proveedor{% endif %}
+            </button>
+            <a href="{{ request.url_for('proveedor_lista') }}" class="btn btn-outline-secondary">Volver</a>
+          </div>
+
+          {% if proveedor %}
+          <hr>
+          <div class="small text-muted">
+            <div><strong>ID:</strong> {{ proveedor.id }}</div>
+            <div><strong>Creado:</strong> {{ proveedor.created_at }}</div>
+            <div><strong>Actualizado:</strong> {{ proveedor.updated_at }}</div>
+            {% if proveedor_fin %}
+            <div><strong>ID ficha financiera:</strong> {{ proveedor_fin.id }}</div>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+<script id="bancos-data" type="application/json">
+{{ bancos_iniciales | tojson | safe }}
+</script>
+
+<script id="contactos-data" type="application/json">
+{{ contactos_iniciales | tojson | safe }}
+</script>
+
+<script id="direcciones-data" type="application/json">
+{{ direcciones_iniciales | tojson | safe }}
+</script>
+
+<script>
+function parseJsonScript(id) {
+  const el = document.getElementById(id);
+  if (!el) return [];
+  try {
+    return JSON.parse(el.textContent || "[]");
+  } catch (error) {
+    console.error("No se pudo parsear JSON inicial:", id, error);
+    return [];
+  }
+}
+
+const bancosIniciales = parseJsonScript("bancos-data");
+const contactosIniciales = parseJsonScript("contactos-data");
+const direccionesIniciales = parseJsonScript("direcciones-data");
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function bancoCard(item = {}) {
+  return `
+    <div class="border rounded p-3 mb-3 banco-item bg-light-subtle">
+      <div class="row g-2">
+        <div class="col-md-4">
+          <label class="form-label">Banco</label>
+          <input class="form-control banco-banco" value="${escapeHtml(item.banco || "")}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Tipo cuenta</label>
+          <input class="form-control banco-tipo-cuenta" value="${escapeHtml(item.tipo_cuenta || "")}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">N° cuenta</label>
+          <input class="form-control banco-numero-cuenta" value="${escapeHtml(item.numero_cuenta || "")}">
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.banco-item').remove()">Quitar</button>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Titular</label>
+          <input class="form-control banco-titular" value="${escapeHtml(item.titular || "")}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">RUT titular</label>
+          <input class="form-control banco-rut-titular" value="${escapeHtml(item.rut_titular || "")}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Email pago</label>
+          <input class="form-control banco-email-pago" value="${escapeHtml(item.email_pago || "")}">
+        </div>
+        <div class="col-md-1 d-flex align-items-end">
+          <div class="form-check">
+            <input class="form-check-input banco-principal" type="checkbox" ${item.es_principal ? "checked" : ""}>
+            <label class="form-check-label">Ppal</label>
+          </div>
+        </div>
+        <div class="col-md-1 d-flex align-items-end">
+          <div class="form-check">
+            <input class="form-check-input banco-activo" type="checkbox" ${item.activo !== false ? "checked" : ""}>
+            <label class="form-check-label">Activo</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function contactoCard(item = {}) {
+  return `
+    <div class="border rounded p-3 mb-3 contacto-item bg-light-subtle">
+      <div class="row g-2">
+        <div class="col-md-4">
+          <label class="form-label">Nombre</label>
+          <input class="form-control contacto-nombre" value="${escapeHtml(item.nombre || "")}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Cargo</label>
+          <input class="form-control contacto-cargo" value="${escapeHtml(item.cargo || "")}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Email</label>
+          <input class="form-control contacto-email" value="${escapeHtml(item.email || "")}">
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.contacto-item').remove()">Quitar</button>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Teléfono</label>
+          <input class="form-control contacto-telefono" value="${escapeHtml(item.telefono || "")}">
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <div class="form-check">
+            <input class="form-check-input contacto-principal" type="checkbox" ${item.es_principal ? "checked" : ""}>
+            <label class="form-check-label">Ppal</label>
+          </div>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <div class="form-check">
+            <input class="form-check-input contacto-activo" type="checkbox" ${item.activo !== false ? "checked" : ""}>
+            <label class="form-check-label">Activo</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function direccionCard(item = {}) {
+  return `
+    <div class="border rounded p-3 mb-3 direccion-item bg-light-subtle">
+      <div class="row g-2">
+        <div class="col-md-5">
+          <label class="form-label">Dirección</label>
+          <input class="form-control direccion-linea1" value="${escapeHtml(item.linea1 || "")}">
+        </div>
+        <div class="col-md-5">
+          <label class="form-label">Complemento</label>
+          <input class="form-control direccion-linea2" value="${escapeHtml(item.linea2 || "")}">
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.direccion-item').remove()">Quitar</button>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Comuna</label>
+          <input class="form-control direccion-comuna" value="${escapeHtml(item.comuna || "")}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Ciudad</label>
+          <input class="form-control direccion-ciudad" value="${escapeHtml(item.ciudad || "")}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Región</label>
+          <input class="form-control direccion-region" value="${escapeHtml(item.region || "")}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">País</label>
+          <input class="form-control direccion-pais" value="${escapeHtml(item.pais || "Chile")}">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Código postal</label>
+          <input class="form-control direccion-codigo-postal" value="${escapeHtml(item.codigo_postal || "")}">
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <div class="form-check">
+            <input class="form-check-input direccion-principal" type="checkbox" ${item.es_principal ? "checked" : ""}>
+            <label class="form-check-label">Ppal</label>
+          </div>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <div class="form-check">
+            <input class="form-check-input direccion-activo" type="checkbox" ${item.activo !== false ? "checked" : ""}>
+            <label class="form-check-label">Activo</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function agregarBanco(item = {}) {
+  const container = document.getElementById("bancosContainer");
+  if (!container) return;
+  container.insertAdjacentHTML("beforeend", bancoCard(item));
+}
+
+function agregarContacto(item = {}) {
+  const container = document.getElementById("contactosContainer");
+  if (!container) return;
+  container.insertAdjacentHTML("beforeend", contactoCard(item));
+}
+
+function agregarDireccion(item = {}) {
+  const container = document.getElementById("direccionesContainer");
+  if (!container) return;
+  container.insertAdjacentHTML("beforeend", direccionCard(item));
+}
+
+function recolectarBancos() {
+  return Array.from(document.querySelectorAll(".banco-item"))
+    .map(function (el) {
+      return {
+        banco: el.querySelector(".banco-banco")?.value.trim() || "",
+        tipo_cuenta: el.querySelector(".banco-tipo-cuenta")?.value.trim() || "",
+        numero_cuenta: el.querySelector(".banco-numero-cuenta")?.value.trim() || "",
+        titular: el.querySelector(".banco-titular")?.value.trim() || "",
+        rut_titular: el.querySelector(".banco-rut-titular")?.value.trim() || "",
+        email_pago: el.querySelector(".banco-email-pago")?.value.trim() || "",
+        es_principal: el.querySelector(".banco-principal")?.checked || false,
+        activo: el.querySelector(".banco-activo")?.checked || false
+      };
+    })
+    .filter(function (x) {
+      return x.banco || x.numero_cuenta;
+    });
+}
+
+function recolectarContactos() {
+  return Array.from(document.querySelectorAll(".contacto-item"))
+    .map(function (el) {
+      return {
+        nombre: el.querySelector(".contacto-nombre")?.value.trim() || "",
+        cargo: el.querySelector(".contacto-cargo")?.value.trim() || "",
+        email: el.querySelector(".contacto-email")?.value.trim() || "",
+        telefono: el.querySelector(".contacto-telefono")?.value.trim() || "",
+        es_principal: el.querySelector(".contacto-principal")?.checked || false,
+        activo: el.querySelector(".contacto-activo")?.checked || false
+      };
+    })
+    .filter(function (x) {
+      return x.nombre;
+    });
+}
+
+function recolectarDirecciones() {
+  return Array.from(document.querySelectorAll(".direccion-item"))
+    .map(function (el) {
+      return {
+        linea1: el.querySelector(".direccion-linea1")?.value.trim() || "",
+        linea2: el.querySelector(".direccion-linea2")?.value.trim() || "",
+        comuna: el.querySelector(".direccion-comuna")?.value.trim() || "",
+        ciudad: el.querySelector(".direccion-ciudad")?.value.trim() || "",
+        region: el.querySelector(".direccion-region")?.value.trim() || "",
+        pais: el.querySelector(".direccion-pais")?.value.trim() || "Chile",
+        codigo_postal: el.querySelector(".direccion-codigo-postal")?.value.trim() || "",
+        es_principal: el.querySelector(".direccion-principal")?.checked || false,
+        activo: el.querySelector(".direccion-activo")?.checked || false
+      };
+    })
+    .filter(function (x) {
+      return x.linea1;
+    });
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  bancosIniciales.forEach(function (item) {
+    agregarBanco(item);
+  });
+
+  contactosIniciales.forEach(function (item) {
+    agregarContacto(item);
+  });
+
+  direccionesIniciales.forEach(function (item) {
+    agregarDireccion(item);
+  });
+
+  const form = document.getElementById("formProveedor");
+  if (form) {
+    form.addEventListener("submit", function () {
+      const bancosInput = document.getElementById("bancos_json");
+      const contactosInput = document.getElementById("contactos_json");
+      const direccionesInput = document.getElementById("direcciones_json");
+
+      if (bancosInput) {
+        bancosInput.value = JSON.stringify(recolectarBancos());
+      }
+      if (contactosInput) {
+        contactosInput.value = JSON.stringify(recolectarContactos());
+      }
+      if (direccionesInput) {
+        direccionesInput.value = JSON.stringify(recolectarDirecciones());
+      }
+    });
+  }
+});
+</script>
+
+{% endblock content %}

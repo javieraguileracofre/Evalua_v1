@@ -1,0 +1,812 @@
+{# templates/inventario/producto_form.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}{{ 'Editar' if producto else 'Nuevo' }} Producto · Evalua ERP{% endblock title %}
+{% block page_title %}{{ 'Editar producto' if producto else 'Nuevo producto' }}{% endblock page_title %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  Maestro premium de productos para inventario y punto de venta.
+</div>
+{% endblock page_subtitle %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('productos_list') }}">Inventario</a></li>
+<li class="breadcrumb-item active" aria-current="page">
+  {{ 'Editar producto' if producto else 'Nuevo producto' }}
+</li>
+{% endblock breadcrumbs %}
+
+{% block page_actions %}
+<div class="d-flex flex-wrap gap-2">
+  <a href="{{ request.url_for('productos_list') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left"></i> Volver
+  </a>
+</div>
+{% endblock page_actions %}
+
+{% block hero_title %}Gestión de producto{% endblock hero_title %}
+{% block hero_desc %}
+Configura identificación, precios, comportamiento de stock y parámetros comerciales del producto.
+{% endblock hero_desc %}
+
+{% block content %}
+
+<div
+  id="inventario-form-config"
+  data-search-url="{{ request.url_for('producto_buscar_por_codigo_api') }}"
+  data-es-edicion="{{ 'true' if producto else 'false' }}"
+></div>
+
+<div class="row g-4">
+  <div class="col-xl-8">
+
+    <div class="card shadow-sm border-0 mb-4">
+      <div class="card-header bg-white border-0 pb-0 pt-3">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <h3 class="h6 fw-semibold mb-1">Flujo con lector</h3>
+            <div class="text-muted small">
+              Escanea el código. Si el producto existe, podrás ingresar una nueva partida al stock. Si no existe, continúa con la creación.
+            </div>
+          </div>
+          <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle">
+            Honeywell / Código de barra
+          </span>
+        </div>
+      </div>
+
+      <div class="card-body pt-3">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-8">
+            <label class="form-label small fw-semibold">Escáner / código</label>
+            <input
+              type="text"
+              id="scannerCodigoInput"
+              class="form-control form-control-lg"
+              placeholder="Escanea código de barra o escribe código interno"
+              autocomplete="off"
+              {% if not producto %}autofocus{% endif %}
+            >
+            <div class="form-text">
+              Si el producto existe, se habilitará ingreso de stock. Si no existe, podrás crear uno nuevo.
+            </div>
+          </div>
+
+          <div class="col-md-4">
+            <div class="small text-muted mb-2">Estado del lector</div>
+            <div id="scannerEstado" class="fw-semibold text-muted">Esperando escaneo</div>
+          </div>
+        </div>
+
+        <div id="scannerFeedback" class="small mt-3 d-none"></div>
+
+        <div id="scannerExistenteBox" class="alert alert-warning mt-3 d-none mb-0">
+          <div class="fw-semibold mb-2">Producto existente encontrado</div>
+
+          <div class="small mb-1"><strong>Código interno:</strong> <span id="existenteCodigo">—</span></div>
+          <div class="small mb-1"><strong>Código de barra:</strong> <span id="existenteCodigoBarra">—</span></div>
+          <div class="small mb-1"><strong>Nombre:</strong> <span id="existenteNombre">—</span></div>
+          <div class="small mb-3"><strong>Stock actual:</strong> <span id="existenteStockActual">—</span></div>
+
+          <form id="formIngresoStock" method="post" class="border rounded-3 bg-white p-3 mb-3">
+            <div class="fw-semibold mb-3">Nueva partida de compra / ingreso de stock</div>
+
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label small fw-semibold">Cantidad a ingresar</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  id="cantidadIngresoInput"
+                  name="cantidad_ingreso"
+                  class="form-control"
+                  value="1"
+                  required
+                >
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label small fw-semibold">Costo unitario</label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  id="costoUnitarioIngresoInput"
+                  name="costo_unitario_ingreso"
+                  class="form-control"
+                  value="0"
+                >
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label small fw-semibold">Observación</label>
+                <input
+                  type="text"
+                  id="observacionIngresoInput"
+                  name="observacion_ingreso"
+                  class="form-control"
+                  value="Ingreso por nueva partida de compra"
+                >
+              </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              <button type="submit" class="btn btn-success btn-sm">
+                <i class="bi bi-box-arrow-in-down"></i> Agregar al stock
+              </button>
+
+              <a id="btnIrEditarExistente" href="#" class="btn btn-warning btn-sm">
+                <i class="bi bi-pencil"></i> Ir a editar existente
+              </a>
+
+              <button type="button" id="btnLimpiarScanner" class="btn btn-light btn-sm">
+                <i class="bi bi-arrow-clockwise"></i> Limpiar escaneo
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-white border-0 pb-0 pt-3">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <h3 class="h6 fw-semibold mb-1">
+              {{ 'Ficha de edición' if producto else 'Ficha de creación' }}
+            </h3>
+            <div class="text-muted small">
+              Completa la información base para operación, ventas e inventario.
+            </div>
+          </div>
+          <span class="badge rounded-pill bg-light text-dark border">
+            {{ 'Producto existente' if producto else 'Alta nueva' }}
+          </span>
+        </div>
+      </div>
+
+      <div class="card-body pt-3">
+        <form
+          id="productoForm"
+          method="post"
+          action="{% if producto %}{{ request.url_for('producto_update', producto_id=producto.id) }}{% else %}{{ request.url_for('producto_create') }}{% endif %}"
+        >
+          <div class="row g-3">
+
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Código interno</label>
+              {% if producto %}
+                <input type="text" class="form-control" value="{{ producto.codigo }}" readonly>
+                <div class="form-text">Identificador interno único.</div>
+              {% else %}
+                <input type="text" class="form-control" id="codigoInternoVisual" value="Generación automática" readonly>
+                <div class="form-text">Formato automático tipo PRD-000001.</div>
+              {% endif %}
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Código de barra</label>
+              <input
+                type="text"
+                id="codigoBarraInput"
+                name="codigo_barra"
+                class="form-control"
+                maxlength="80"
+                value="{{ producto.codigo_barra if producto and producto.codigo_barra else '' }}"
+                placeholder="Ej.: 7801234567890"
+              >
+              <div class="form-text">Compatible con lector Honeywell.</div>
+            </div>
+
+            <div class="col-md-5">
+              <label class="form-label small fw-semibold">Nombre del producto <span class="text-danger">*</span></label>
+              <input
+                type="text"
+                id="nombreProductoInput"
+                name="nombre"
+                class="form-control"
+                maxlength="200"
+                required
+                value="{{ producto.nombre if producto else '' }}"
+                placeholder="Ej.: Coca-Cola 350cc, Arroz 1kg, Pan amasado"
+              >
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Categoría</label>
+              <select id="categoriaSelect" name="categoria_id" class="form-select">
+                <option value="">— Sin categoría —</option>
+                {% for cat in categorias %}
+                <option value="{{ cat.id }}" {% if producto and producto.categoria_id == cat.id %}selected{% endif %}>
+                  {{ cat.nombre }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Unidad de medida</label>
+              <select id="unidadMedidaSelect" name="unidad_medida_id" class="form-select">
+                <option value="">— Selecciona —</option>
+                {% for um in unidades %}
+                <option value="{{ um.id }}" {% if producto and producto.unidad_medida_id == um.id %}selected{% endif %}>
+                  {{ um.codigo }} · {{ um.nombre }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Estado</label>
+              <select id="activoSelect" name="activo" class="form-select">
+                <option value="true" {% if not producto or producto.activo %}selected{% endif %}>Activo</option>
+                <option value="false" {% if producto and not producto.activo %}selected{% endif %}>Inactivo</option>
+              </select>
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Precio compra</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="precioCompraInput"
+                name="precio_compra"
+                class="form-control"
+                value="{{ producto.precio_compra if producto else '0' }}"
+              >
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Precio venta <span class="text-danger">*</span></label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="precioVentaInput"
+                name="precio_venta"
+                class="form-control"
+                required
+                value="{{ producto.precio_venta if producto else '0' }}"
+              >
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Stock mínimo</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="stockMinimoInput"
+                name="stock_minimo"
+                class="form-control"
+                value="{{ producto.stock_minimo if producto else '0' }}"
+              >
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Stock actual</label>
+              {% if producto %}
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  name="stock_actual_bloqueado"
+                  class="form-control"
+                  value="{{ producto.stock_actual if producto else '0' }}"
+                  readonly
+                >
+                <div class="form-text">El stock se ajusta desde movimientos/ajustes.</div>
+              {% else %}
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  id="stockActualInput"
+                  name="stock_actual"
+                  class="form-control"
+                  value="0"
+                >
+                <div class="form-text">Solo editable al crear el producto.</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Descripción interna</label>
+              <textarea
+                id="descripcionInput"
+                name="descripcion"
+                rows="3"
+                class="form-control"
+                placeholder="Notas internas, detalle comercial, formato, sabor, marca u observaciones útiles."
+              >{{ producto.descripcion if producto else '' }}</textarea>
+            </div>
+
+            <div class="col-12">
+              <div class="border rounded-4 p-3 bg-light-subtle">
+                <div class="fw-semibold mb-3">Comportamiento del producto</div>
+
+                <div class="row g-3">
+                  <div class="col-md-4">
+                    <div class="form-check form-switch">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        role="switch"
+                        id="controla_stock"
+                        name="controla_stock"
+                        value="true"
+                        {% if not producto or producto.controla_stock %}checked{% endif %}
+                      >
+                      <label class="form-check-label" for="controla_stock">
+                        Controla stock
+                      </label>
+                    </div>
+                    <div class="small text-muted mt-1">
+                      Descuenta y controla existencias en inventario.
+                    </div>
+                  </div>
+
+                  <div class="col-md-4">
+                    <div class="form-check form-switch">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        role="switch"
+                        id="permite_venta_fraccionada"
+                        name="permite_venta_fraccionada"
+                        value="true"
+                        {% if producto and producto.permite_venta_fraccionada %}checked{% endif %}
+                      >
+                      <label class="form-check-label" for="permite_venta_fraccionada">
+                        Venta fraccionada
+                      </label>
+                    </div>
+                    <div class="small text-muted mt-1">
+                      Permite vender en cantidades decimales.
+                    </div>
+                  </div>
+
+                  <div class="col-md-4">
+                    <div class="form-check form-switch">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        role="switch"
+                        id="es_servicio"
+                        name="es_servicio"
+                        value="true"
+                        {% if producto and producto.es_servicio %}checked{% endif %}
+                      >
+                      <label class="form-check-label" for="es_servicio">
+                        Es servicio
+                      </label>
+                    </div>
+                    <div class="small text-muted mt-1">
+                      No representa inventario físico.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mt-4">
+            <a href="{{ request.url_for('productos_list') }}" class="btn btn-light">
+              <i class="bi bi-arrow-left"></i> Volver
+            </a>
+
+            <button id="submitProductoBtn" type="submit" class="btn btn-primary">
+              <i class="bi bi-save"></i>
+              {{ 'Guardar cambios' if producto else 'Crear producto' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-4">
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-body">
+        <h3 class="h6 fw-semibold mb-3">Resumen</h3>
+
+        <div class="d-flex justify-content-between mb-2">
+          <span class="text-muted">Modo</span>
+          <strong>{{ 'Edición' if producto else 'Creación' }}</strong>
+        </div>
+
+        <div class="d-flex justify-content-between mb-2">
+          <span class="text-muted">Código interno</span>
+          <strong id="resumenCodigoInterno">{{ producto.codigo if producto else 'Automático' }}</strong>
+        </div>
+
+        <div class="d-flex justify-content-between mb-2">
+          <span class="text-muted">Código de barra</span>
+          <strong id="resumenCodigoBarra">{{ producto.codigo_barra if producto and producto.codigo_barra else 'No informado' }}</strong>
+        </div>
+
+        <div class="d-flex justify-content-between mb-2">
+          <span class="text-muted">Stock actual</span>
+          <strong id="resumenStockActual">{{ producto.stock_actual if producto else '0' }}</strong>
+        </div>
+
+        <div class="d-flex justify-content-between">
+          <span class="text-muted">Estado</span>
+          {% if producto %}
+            {% if producto.activo %}
+              <span class="badge bg-success">Activo</span>
+            {% else %}
+              <span class="badge bg-secondary">Inactivo</span>
+            {% endif %}
+          {% else %}
+            <span class="badge bg-primary">Nuevo</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <h3 class="h6 fw-semibold mb-3">Buenas prácticas</h3>
+        <ul class="small text-muted ps-3 mb-0">
+          <li>Si el producto existe, no lo dupliques: ingresa una nueva partida al stock.</li>
+          <li>Usa creación solo cuando el código realmente no exista.</li>
+          <li>Activa “controla stock” solo para productos físicos.</li>
+          <li>Evita editar stock manualmente en productos ya operativos.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}
+
+{% block scripts %}
+<script>
+  (function () {
+    const config = document.getElementById('inventario-form-config');
+    if (!config) return;
+
+    const searchUrl = config.dataset.searchUrl || '';
+    const esEdicion = config.dataset.esEdicion === 'true';
+
+    const scannerInput = document.getElementById('scannerCodigoInput');
+    const scannerEstado = document.getElementById('scannerEstado');
+    const scannerFeedback = document.getElementById('scannerFeedback');
+    const scannerExistenteBox = document.getElementById('scannerExistenteBox');
+    const existenteCodigo = document.getElementById('existenteCodigo');
+    const existenteCodigoBarra = document.getElementById('existenteCodigoBarra');
+    const existenteNombre = document.getElementById('existenteNombre');
+    const existenteStockActual = document.getElementById('existenteStockActual');
+    const btnIrEditarExistente = document.getElementById('btnIrEditarExistente');
+    const btnLimpiarScanner = document.getElementById('btnLimpiarScanner');
+
+    const formIngresoStock = document.getElementById('formIngresoStock');
+    const cantidadIngresoInput = document.getElementById('cantidadIngresoInput');
+    const costoUnitarioIngresoInput = document.getElementById('costoUnitarioIngresoInput');
+
+    const codigoBarraInput = document.getElementById('codigoBarraInput');
+    const nombreProductoInput = document.getElementById('nombreProductoInput');
+    const descripcionInput = document.getElementById('descripcionInput');
+    const categoriaSelect = document.getElementById('categoriaSelect');
+    const unidadMedidaSelect = document.getElementById('unidadMedidaSelect');
+    const activoSelect = document.getElementById('activoSelect');
+    const precioCompraInput = document.getElementById('precioCompraInput');
+    const precioVentaInput = document.getElementById('precioVentaInput');
+    const stockMinimoInput = document.getElementById('stockMinimoInput');
+    const stockActualInput = document.getElementById('stockActualInput');
+    const submitBtn = document.getElementById('submitProductoBtn');
+
+    const controlaStockCheck = document.getElementById('controla_stock');
+    const ventaFraccionadaCheck = document.getElementById('permite_venta_fraccionada');
+    const esServicioCheck = document.getElementById('es_servicio');
+
+    const resumenCodigoInterno = document.getElementById('resumenCodigoInterno');
+    const resumenCodigoBarra = document.getElementById('resumenCodigoBarra');
+    const resumenStockActual = document.getElementById('resumenStockActual');
+
+    let scannerTimer = null;
+    let scannerBusy = false;
+
+    function setEstado(texto, tipo) {
+      if (!scannerEstado) return;
+      scannerEstado.className = 'fw-semibold';
+      scannerEstado.classList.add(`text-${tipo}`);
+      scannerEstado.textContent = texto;
+    }
+
+    function showFeedback(texto, tipo) {
+      if (!scannerFeedback) return;
+      scannerFeedback.className = `small mt-3 text-${tipo}`;
+      scannerFeedback.textContent = texto;
+      scannerFeedback.classList.remove('d-none');
+    }
+
+    function clearFeedback() {
+      if (!scannerFeedback) return;
+      scannerFeedback.textContent = '';
+      scannerFeedback.className = 'small mt-3 d-none';
+    }
+
+    function hideExistingBox() {
+      if (scannerExistenteBox) scannerExistenteBox.classList.add('d-none');
+      if (formIngresoStock) formIngresoStock.action = '';
+    }
+
+    function habilitarCreacion() {
+      if (nombreProductoInput) {
+        nombreProductoInput.readOnly = false;
+      }
+      if (descripcionInput) descripcionInput.readOnly = false;
+      if (precioCompraInput) precioCompraInput.readOnly = false;
+      if (precioVentaInput) precioVentaInput.readOnly = false;
+      if (stockMinimoInput) stockMinimoInput.readOnly = false;
+      if (stockActualInput) stockActualInput.readOnly = false;
+
+      if (categoriaSelect) categoriaSelect.disabled = false;
+      if (unidadMedidaSelect) unidadMedidaSelect.disabled = false;
+      if (activoSelect) activoSelect.disabled = false;
+
+      if (controlaStockCheck) controlaStockCheck.disabled = false;
+      if (ventaFraccionadaCheck) ventaFraccionadaCheck.disabled = false;
+      if (esServicioCheck) esServicioCheck.disabled = false;
+
+      if (submitBtn) submitBtn.disabled = false;
+    }
+
+    function resetNuevoProducto(codigoEscaneado) {
+      hideExistingBox();
+      habilitarCreacion();
+
+      if (codigoBarraInput) {
+        codigoBarraInput.value = codigoEscaneado || '';
+      }
+
+      if (nombreProductoInput && !esEdicion) {
+        nombreProductoInput.value = '';
+        nombreProductoInput.focus();
+      }
+
+      if (descripcionInput) descripcionInput.value = '';
+      if (precioCompraInput) precioCompraInput.value = 0;
+      if (precioVentaInput) precioVentaInput.value = 0;
+      if (stockMinimoInput) stockMinimoInput.value = 0;
+      if (stockActualInput) stockActualInput.value = 0;
+
+      if (categoriaSelect) categoriaSelect.value = '';
+      if (unidadMedidaSelect) unidadMedidaSelect.value = '';
+      if (activoSelect) activoSelect.value = 'true';
+
+      if (controlaStockCheck) controlaStockCheck.checked = true;
+      if (ventaFraccionadaCheck) ventaFraccionadaCheck.checked = false;
+      if (esServicioCheck) esServicioCheck.checked = false;
+
+      if (resumenCodigoBarra) {
+        resumenCodigoBarra.textContent = codigoEscaneado || 'No informado';
+      }
+      if (resumenCodigoInterno && !esEdicion) {
+        resumenCodigoInterno.textContent = 'Automático';
+      }
+      if (resumenStockActual && !esEdicion) {
+        resumenStockActual.textContent = '0';
+      }
+    }
+
+    function bloquearFichaPorExistente(producto) {
+      if (codigoBarraInput) {
+        codigoBarraInput.value = producto.codigo_barra || '';
+      }
+
+      if (nombreProductoInput) {
+        nombreProductoInput.value = producto.nombre || '';
+        nombreProductoInput.readOnly = true;
+      }
+
+      if (descripcionInput) {
+        descripcionInput.value = producto.descripcion || '';
+        descripcionInput.readOnly = true;
+      }
+
+      if (precioCompraInput) {
+        precioCompraInput.value = producto.precio_compra ?? 0;
+        precioCompraInput.readOnly = true;
+      }
+
+      if (precioVentaInput) {
+        precioVentaInput.value = producto.precio_venta ?? 0;
+        precioVentaInput.readOnly = true;
+      }
+
+      if (stockMinimoInput) {
+        stockMinimoInput.value = producto.stock_minimo ?? 0;
+        stockMinimoInput.readOnly = true;
+      }
+
+      if (stockActualInput) {
+        stockActualInput.value = producto.stock_actual ?? 0;
+        stockActualInput.readOnly = true;
+      }
+
+      if (categoriaSelect) {
+        categoriaSelect.value = producto.categoria_id || '';
+        categoriaSelect.disabled = true;
+      }
+
+      if (unidadMedidaSelect) {
+        unidadMedidaSelect.value = producto.unidad_medida_id || '';
+        unidadMedidaSelect.disabled = true;
+      }
+
+      if (activoSelect) {
+        activoSelect.value = producto.activo ? 'true' : 'false';
+        activoSelect.disabled = true;
+      }
+
+      if (controlaStockCheck) {
+        controlaStockCheck.checked = !!producto.controla_stock;
+        controlaStockCheck.disabled = true;
+      }
+
+      if (ventaFraccionadaCheck) {
+        ventaFraccionadaCheck.checked = !!producto.permite_venta_fraccionada;
+        ventaFraccionadaCheck.disabled = true;
+      }
+
+      if (esServicioCheck) {
+        esServicioCheck.checked = !!producto.es_servicio;
+        esServicioCheck.disabled = true;
+      }
+
+      if (submitBtn && !esEdicion) {
+        submitBtn.disabled = true;
+      }
+    }
+
+    function showExistingBox(producto) {
+      if (!scannerExistenteBox) return;
+
+      existenteCodigo.textContent = producto.codigo || '—';
+      existenteCodigoBarra.textContent = producto.codigo_barra || '—';
+      existenteNombre.textContent = producto.nombre || '—';
+      existenteStockActual.textContent = producto.stock_actual ?? 0;
+      btnIrEditarExistente.href = producto.edit_url || '#';
+
+      if (cantidadIngresoInput) cantidadIngresoInput.value = '1';
+      if (costoUnitarioIngresoInput) {
+        costoUnitarioIngresoInput.value = producto.precio_compra ?? 0;
+      }
+      if (formIngresoStock) {
+        formIngresoStock.action = `/inventario/productos/${producto.id}/ingresar-stock`;
+      }
+
+      scannerExistenteBox.classList.remove('d-none');
+    }
+
+    async function buscarProducto(codigo) {
+      const response = await fetch(`${searchUrl}?codigo=${encodeURIComponent(codigo)}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'No fue posible consultar el producto.');
+      }
+
+      return data;
+    }
+
+    async function procesarEscaneo() {
+      if (scannerBusy || esEdicion) return;
+
+      const codigo = (scannerInput?.value || '').trim();
+      if (!codigo) {
+        setEstado('Esperando escaneo', 'muted');
+        return;
+      }
+
+      scannerBusy = true;
+      clearFeedback();
+      setEstado('Buscando producto...', 'primary');
+
+      try {
+        const data = await buscarProducto(codigo);
+
+        if (data.found && data.producto) {
+          bloquearFichaPorExistente(data.producto);
+          showExistingBox(data.producto);
+
+          if (resumenCodigoInterno) {
+            resumenCodigoInterno.textContent = data.producto.codigo || '—';
+          }
+          if (resumenCodigoBarra) {
+            resumenCodigoBarra.textContent = data.producto.codigo_barra || 'No informado';
+          }
+          if (resumenStockActual) {
+            resumenStockActual.textContent = data.producto.stock_actual ?? 0;
+          }
+
+          showFeedback('Producto existente encontrado. Usa “Agregar al stock” para ingresar la nueva partida.', 'warning');
+          setEstado('Producto existente', 'warning');
+        } else {
+          resetNuevoProducto(data.codigo_consultado || codigo);
+          showFeedback(
+            data.message || 'Producto no existe. Continúa con la creación de nuevo producto.',
+            'success'
+          );
+          setEstado('Continuar creación', 'success');
+        }
+      } catch (error) {
+        resetNuevoProducto(codigo);
+        showFeedback(error.message || 'No fue posible consultar el producto.', 'danger');
+        setEstado('Error de búsqueda', 'danger');
+      } finally {
+        scannerBusy = false;
+      }
+    }
+
+    function programarBusqueda() {
+      if (esEdicion) return;
+      if (scannerTimer) clearTimeout(scannerTimer);
+
+      const valor = (scannerInput?.value || '').trim();
+      if (!valor) {
+        clearFeedback();
+        hideExistingBox();
+        resetNuevoProducto('');
+        setEstado('Esperando escaneo', 'muted');
+        return;
+      }
+
+      setEstado('Leyendo código...', 'secondary');
+
+      scannerTimer = setTimeout(function () {
+        procesarEscaneo();
+      }, 180);
+    }
+
+    function enfocarScanner() {
+      if (!scannerInput || esEdicion) return;
+      setTimeout(function () {
+        scannerInput.focus();
+      }, 40);
+    }
+
+    if (btnLimpiarScanner) {
+      btnLimpiarScanner.addEventListener('click', function () {
+        if (scannerInput) scannerInput.value = '';
+        clearFeedback();
+        hideExistingBox();
+        resetNuevoProducto('');
+        setEstado('Esperando escaneo', 'muted');
+        enfocarScanner();
+      });
+    }
+
+    if (scannerInput && !esEdicion) {
+      scannerInput.addEventListener('input', function () {
+        programarBusqueda();
+      });
+
+      scannerInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          if (scannerTimer) clearTimeout(scannerTimer);
+          procesarEscaneo();
+        }
+      });
+    }
+
+    enfocarScanner();
+    setEstado(esEdicion ? 'Edición manual' : 'Esperando escaneo', 'muted');
+  })();
+</script>
+{% endblock scripts %}

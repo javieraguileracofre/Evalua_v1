@@ -1,0 +1,127 @@
+{# templates/finanzas/plan_cuenta_form.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}
+  {% if modo == 'editar' %}Editar cuenta contable{% else %}Nueva cuenta contable{% endif %} · Evalua ERP
+{% endblock %}
+
+{% block page_title %}
+  {% if modo == 'editar' %}Editar cuenta contable{% else %}Nueva cuenta contable{% endif %}
+{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  Define una cuenta del plan contable con estructura jerárquica, clasificación financiera y reglas de movimiento.
+</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('contabilidad_plan_cuentas') }}">Plan de cuentas</a></li>
+<li class="breadcrumb-item active" aria-current="page">
+  {% if modo == 'editar' %}Editar{% else %}Nuevo{% endif %}
+</li>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Código</label>
+          <input type="text" name="codigo" class="form-control" value="{{ cuenta.codigo if cuenta else '' }}" required>
+        </div>
+
+        <div class="col-md-5">
+          <label class="form-label">Nombre</label>
+          <input type="text" name="nombre" class="form-control" value="{{ cuenta.nombre if cuenta else '' }}" required>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Nivel</label>
+          <input type="number" name="nivel" class="form-control" min="1" max="9" value="{{ cuenta.nivel if cuenta else 1 }}" required>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Estado</label>
+          <select name="estado" class="form-select">
+            <option value="ACTIVO" {% if not cuenta or cuenta.estado == 'ACTIVO' %}selected{% endif %}>ACTIVO</option>
+            <option value="INACTIVO" {% if cuenta and cuenta.estado == 'INACTIVO' %}selected{% endif %}>INACTIVO</option>
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Cuenta padre</label>
+          <select name="cuenta_padre_id" class="form-select">
+            <option value="">Sin padre</option>
+            {% for p in padres %}
+            <option value="{{ p.id }}" {% if cuenta and cuenta.cuenta_padre_id == p.id %}selected{% endif %}>
+              {{ p.codigo }} · {{ p.nombre }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Tipo</label>
+          <select name="tipo" class="form-select" required>
+            {% for item in ['ACTIVO','PASIVO','PATRIMONIO','INGRESO','COSTO','GASTO'] %}
+            <option value="{{ item }}" {% if cuenta and cuenta.tipo == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Naturaleza</label>
+          <select name="naturaleza" class="form-select" required>
+            <option value="DEUDORA" {% if not cuenta or cuenta.naturaleza == 'DEUDORA' %}selected{% endif %}>DEUDORA</option>
+            <option value="ACREEDORA" {% if cuenta and cuenta.naturaleza == 'ACREEDORA' %}selected{% endif %}>ACREEDORA</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Clasificación</label>
+          <input type="text" name="clasificacion" class="form-control" value="{{ cuenta.clasificacion if cuenta else '' }}" required>
+        </div>
+
+        <div class="col-md-3">
+          <div class="form-check mt-4 pt-2">
+            <input class="form-check-input" type="checkbox" name="acepta_movimiento" id="acepta_movimiento"
+                   {% if not cuenta or cuenta.acepta_movimiento %}checked{% endif %}>
+            <label class="form-check-label" for="acepta_movimiento">
+              Acepta movimiento
+            </label>
+          </div>
+        </div>
+
+        <div class="col-md-3">
+          <div class="form-check mt-4 pt-2">
+            <input class="form-check-input" type="checkbox" name="requiere_centro_costo" id="requiere_centro_costo"
+                   {% if cuenta and cuenta.requiere_centro_costo %}checked{% endif %}>
+            <label class="form-check-label" for="requiere_centro_costo">
+              Requiere centro de costo
+            </label>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Descripción</label>
+          <textarea name="descripcion" class="form-control" rows="4">{{ cuenta.descripcion if cuenta else '' }}</textarea>
+        </div>
+
+        <div class="col-12 d-flex gap-2">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check2-circle"></i>
+            {% if modo == 'editar' %}Guardar cambios{% else %}Crear cuenta{% endif %}
+          </button>
+
+          <a href="{{ request.url_for('contabilidad_plan_cuentas') }}" class="btn btn-outline-secondary">
+            Volver
+          </a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

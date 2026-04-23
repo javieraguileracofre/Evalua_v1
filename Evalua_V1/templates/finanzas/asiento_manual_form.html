@@ -1,0 +1,194 @@
+{# templates/finanzas/asiento_manual_form.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Asiento manual · Evalua ERP{% endblock %}
+{% block page_title %}Nuevo asiento manual{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  Registra ajustes o saldos de apertura con cuadratura debe/haber. El periodo debe estar abierto para la fecha indicada.
+</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('contabilidad_asientos') }}">Asientos contables</a></li>
+<li class="breadcrumb-item active" aria-current="page">Manual</li>
+{% endblock %}
+
+{% block page_actions %}
+<div class="d-flex gap-2 flex-wrap">
+  <a href="{{ request.url_for('contabilidad_asientos') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left"></i> Volver al libro diario
+  </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<datalist id="cuentas-dl">
+  {% for c in cuentas %}
+  <option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.nombre }}</option>
+  {% endfor %}
+</datalist>
+
+<form method="post" action="{{ request.url_for('contabilidad_asiento_manual_crear') }}" id="form-asiento-manual" class="card shadow-sm">
+  <div class="card-body">
+    <div class="row g-3 mb-3">
+      <div class="col-md-3">
+        <label class="form-label" for="fecha">Fecha del asiento</label>
+        <input type="date" class="form-control" name="fecha" id="fecha" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label" for="glosa">Glosa</label>
+        <input type="text" class="form-control" name="glosa" id="glosa" maxlength="255" required placeholder="Descripción del movimiento">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="usuario">Usuario / auditoría</label>
+        <input type="text" class="form-control" name="usuario" id="usuario" placeholder="Opcional">
+      </div>
+    </div>
+    <div class="form-check mb-4">
+      <input class="form-check-input" type="checkbox" name="es_apertura" id="es_apertura" value="on">
+      <label class="form-check-label" for="es_apertura">Marcar como asiento de apertura (origen MANUAL_APERTURA)</label>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h3 class="h6 fw-semibold mb-0">Líneas</h3>
+      <button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-linea">
+        <i class="bi bi-plus-lg"></i> Agregar línea
+      </button>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle" id="tabla-lineas">
+        <thead class="table-light">
+          <tr>
+            <th style="width:28%">Código cuenta</th>
+            <th>Descripción línea</th>
+            <th class="text-end" style="width:14%">Debe</th>
+            <th class="text-end" style="width:14%">Haber</th>
+            <th style="width:6%"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot class="table-light">
+          <tr>
+            <th colspan="2" class="text-end">Totales</th>
+            <th class="text-end" id="sum-debe">0</th>
+            <th class="text-end" id="sum-haber">0</th>
+            <th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <input type="hidden" name="detalles_json" id="detalles_json">
+
+    <div id="form-error" class="alert alert-danger d-none mt-3" role="alert"></div>
+
+    <div class="mt-4 d-flex gap-2">
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-check2-circle"></i> Registrar asiento
+      </button>
+    </div>
+  </div>
+</form>
+
+<script>
+(function () {
+  const tbody = document.querySelector('#tabla-lineas tbody');
+  const detallesInput = document.getElementById('detalles_json');
+  const sumDebe = document.getElementById('sum-debe');
+  const sumHaber = document.getElementById('sum-haber');
+  const errBox = document.getElementById('form-error');
+  const fechaInput = document.getElementById('fecha');
+
+  function todayISO() {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + day;
+  }
+  fechaInput.value = todayISO();
+
+  function parseNum(v) {
+    const s = String(v || '').trim().replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(s);
+    return isFinite(n) ? n : 0;
+  }
+
+  function fmt(n) {
+    return n.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function recalc() {
+    let td = 0, th = 0;
+    tbody.querySelectorAll('tr').forEach(function (tr) {
+      const ins = tr.querySelectorAll('input');
+      td += parseNum(ins[2].value);
+      th += parseNum(ins[3].value);
+    });
+    sumDebe.textContent = fmt(td);
+    sumHaber.textContent = fmt(th);
+  }
+
+  function addRow() {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><input type="text" class="form-control form-control-sm" list="cuentas-dl" autocomplete="off" placeholder="Ej. 410101"></td>' +
+      '<td><input type="text" class="form-control form-control-sm" placeholder="Opcional"></td>' +
+      '<td><input type="text" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0"></td>' +
+      '<td><input type="text" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0"></td>' +
+      '<td><button type="button" class="btn btn-sm btn-outline-danger" title="Quitar"><i class="bi bi-x-lg"></i></button></td>';
+    tr.querySelector('button').addEventListener('click', function () {
+      tr.remove();
+      recalc();
+    });
+    tr.querySelectorAll('input').forEach(function (inp) {
+      inp.addEventListener('input', recalc);
+    });
+    tbody.appendChild(tr);
+    recalc();
+  }
+
+  document.getElementById('btn-add-linea').addEventListener('click', addRow);
+  addRow();
+  addRow();
+
+  document.getElementById('form-asiento-manual').addEventListener('submit', function (e) {
+    errBox.classList.add('d-none');
+    const rows = tbody.querySelectorAll('tr');
+    const lineas = [];
+    let td = 0, th = 0;
+    rows.forEach(function (tr) {
+      const ins = tr.querySelectorAll('input');
+      const cod = (ins[0].value || '').trim();
+      if (!cod) return;
+      const debe = parseNum(ins[2].value);
+      const haber = parseNum(ins[3].value);
+      td += debe;
+      th += haber;
+      lineas.push({
+        codigo_cuenta: cod,
+        descripcion: (ins[1].value || '').trim() || null,
+        debe: debe,
+        haber: haber
+      });
+    });
+    if (lineas.length < 2) {
+      e.preventDefault();
+      errBox.textContent = 'Indique al menos dos líneas con código de cuenta.';
+      errBox.classList.remove('d-none');
+      return;
+    }
+    if (Math.abs(td - th) > 0.005) {
+      e.preventDefault();
+      errBox.textContent = 'El asiento no cuadra: total debe (' + fmt(td) + ') debe igual total haber (' + fmt(th) + ').';
+      errBox.classList.remove('d-none');
+      return;
+    }
+    detallesInput.value = JSON.stringify(lineas);
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,1047 @@
+ESTRUCTURA DE BASE DE DATOS
+================================================================================
+
+ESQUEMA: fin
+--------------------------------------------------------------------------------
+fin.adjunto [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.adjunto_id_seq'::regclass)
+  -  2. entidad : character varying(40) | NOT NULL
+  -  3. entidad_id : bigint | NOT NULL
+  -  4. nombre : character varying(220) | NOT NULL
+  -  5. mime : character varying(120)
+  -  6. storage_path : character varying(500) | NOT NULL
+  -  7. hash_sha256 : character varying(80)
+  -  8. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * adjunto_pkey
+        CREATE UNIQUE INDEX adjunto_pkey ON fin.adjunto USING btree (id)
+      * ix_adj_entidad
+        CREATE INDEX ix_adj_entidad ON fin.adjunto USING btree (entidad, entidad_id)
+
+fin.ap_documento [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.ap_documento_id_seq'::regclass)
+  -  2. uuid : uuid | NOT NULL | DEFAULT=gen_random_uuid()
+  -  3. proveedor_id : bigint | NOT NULL
+  -  4. tipo : USER-DEFINED::ap_doc_tipo | NOT NULL
+  -  5. estado : USER-DEFINED::ap_doc_estado | NOT NULL | DEFAULT='BORRADOR'::fin.ap_doc_estado
+  -  6. folio : character varying(40) | NOT NULL
+  -  7. fecha_emision : date | NOT NULL
+  -  8. fecha_recepcion : date
+  -  9. fecha_vencimiento : date | NOT NULL
+  - 10. moneda : USER-DEFINED::moneda_iso | NOT NULL | DEFAULT='CLP'::fin.moneda_iso
+  - 11. tipo_cambio : numeric(18,6) | NOT NULL | DEFAULT=1
+  - 12. neto : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 13. exento : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 14. iva : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 15. otros_impuestos : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 16. total : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 17. saldo_pendiente : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 18. referencia : character varying(180)
+  - 19. observaciones : text
+  - 20. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 21. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ap_documento_pkey
+        CREATE UNIQUE INDEX ap_documento_pkey ON fin.ap_documento USING btree (id)
+      * ix_ap_doc_estado
+        CREATE INDEX ix_ap_doc_estado ON fin.ap_documento USING btree (estado)
+      * ix_ap_doc_fechas
+        CREATE INDEX ix_ap_doc_fechas ON fin.ap_documento USING btree (fecha_emision, fecha_vencimiento)
+      * ix_ap_doc_proveedor
+        CREATE INDEX ix_ap_doc_proveedor ON fin.ap_documento USING btree (proveedor_id)
+      * ux_ap_doc_unique
+        CREATE UNIQUE INDEX ux_ap_doc_unique ON fin.ap_documento USING btree (proveedor_id, tipo, folio)
+      * ux_ap_documento_uuid
+        CREATE UNIQUE INDEX ux_ap_documento_uuid ON fin.ap_documento USING btree (uuid)
+
+fin.ap_documento_detalle [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.ap_documento_detalle_id_seq'::regclass)
+  -  2. documento_id : bigint | NOT NULL
+  -  3. linea : integer | NOT NULL
+  -  4. descripcion : character varying(260) | NOT NULL
+  -  5. cantidad : numeric(18,6) | NOT NULL | DEFAULT=1
+  -  6. precio_unitario : numeric(18,6) | NOT NULL | DEFAULT=0
+  -  7. descuento : numeric(18,2) | NOT NULL | DEFAULT=0
+  -  8. neto_linea : numeric(18,2) | NOT NULL | DEFAULT=0
+  -  9. iva_linea : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 10. otros_impuestos : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 11. total_linea : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 12. categoria_gasto_id : bigint
+  - 13. centro_costo_id : bigint
+  - 14. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 15. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ap_documento_detalle_pkey
+        CREATE UNIQUE INDEX ap_documento_detalle_pkey ON fin.ap_documento_detalle USING btree (id)
+      * ix_ap_doc_det_categoria
+        CREATE INDEX ix_ap_doc_det_categoria ON fin.ap_documento_detalle USING btree (categoria_gasto_id)
+      * ix_ap_doc_det_centro
+        CREATE INDEX ix_ap_doc_det_centro ON fin.ap_documento_detalle USING btree (centro_costo_id)
+      * ix_ap_doc_det_documento
+        CREATE INDEX ix_ap_doc_det_documento ON fin.ap_documento_detalle USING btree (documento_id)
+      * ux_ap_doc_det_linea
+        CREATE UNIQUE INDEX ux_ap_doc_det_linea ON fin.ap_documento_detalle USING btree (documento_id, linea)
+
+fin.ap_documento_impuesto [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.ap_documento_impuesto_id_seq'::regclass)
+  -  2. documento_id : bigint | NOT NULL
+  -  3. tipo : USER-DEFINED::impuesto_tipo | NOT NULL | DEFAULT='OTRO'::fin.impuesto_tipo
+  -  4. codigo : character varying(40)
+  -  5. nombre : character varying(120)
+  -  6. monto : numeric(18,2) | NOT NULL | DEFAULT=0
+  -  7. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ap_documento_impuesto_pkey
+        CREATE UNIQUE INDEX ap_documento_impuesto_pkey ON fin.ap_documento_impuesto USING btree (id)
+      * ix_ap_doc_imp_documento
+        CREATE INDEX ix_ap_doc_imp_documento ON fin.ap_documento_impuesto USING btree (documento_id)
+      * ux_ap_doc_imp_unique
+        CREATE UNIQUE INDEX ux_ap_doc_imp_unique ON fin.ap_documento_impuesto USING btree (documento_id, tipo, COALESCE(codigo, ''::character varying))
+
+fin.ap_pago [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.ap_pago_id_seq'::regclass)
+  -  2. uuid : uuid | NOT NULL | DEFAULT=gen_random_uuid()
+  -  3. proveedor_id : bigint | NOT NULL
+  -  4. estado : USER-DEFINED::ap_pago_estado | NOT NULL | DEFAULT='BORRADOR'::fin.ap_pago_estado
+  -  5. fecha_pago : date | NOT NULL
+  -  6. medio_pago : USER-DEFINED::medio_pago | NOT NULL | DEFAULT='TRANSFERENCIA'::fin.medio_pago
+  -  7. referencia : character varying(180)
+  -  8. banco_proveedor_id : bigint
+  -  9. moneda : USER-DEFINED::moneda_iso | NOT NULL | DEFAULT='CLP'::fin.moneda_iso
+  - 10. tipo_cambio : numeric(18,6) | NOT NULL | DEFAULT=1
+  - 11. monto_total : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 12. observaciones : text
+  - 13. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 14. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ap_pago_pkey
+        CREATE UNIQUE INDEX ap_pago_pkey ON fin.ap_pago USING btree (id)
+
+fin.ap_pago_aplicacion [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.ap_pago_aplicacion_id_seq'::regclass)
+  -  2. pago_id : bigint | NOT NULL
+  -  3. documento_id : bigint | NOT NULL
+  -  4. monto_aplicado : numeric(18,2) | NOT NULL | DEFAULT=0
+  -  5. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ap_pago_aplicacion_pkey
+        CREATE UNIQUE INDEX ap_pago_aplicacion_pkey ON fin.ap_pago_aplicacion USING btree (id)
+      * ux_pago_doc
+        CREATE UNIQUE INDEX ux_pago_doc ON fin.ap_pago_aplicacion USING btree (pago_id, documento_id)
+
+fin.categoria_gasto [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.categoria_gasto_id_seq'::regclass)
+  -  2. codigo : character varying(30) | NOT NULL
+  -  3. nombre : character varying(160) | NOT NULL
+  -  4. tipo : USER-DEFINED::tipo_gasto | NOT NULL | DEFAULT='OPERACIONAL'::fin.tipo_gasto
+  -  5. estado : USER-DEFINED::estado_activo | NOT NULL | DEFAULT='ACTIVO'::fin.estado_activo
+  -  6. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  -  7. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * categoria_gasto_pkey
+        CREATE UNIQUE INDEX categoria_gasto_pkey ON fin.categoria_gasto USING btree (id)
+      * ux_cat_gasto_codigo
+        CREATE UNIQUE INDEX ux_cat_gasto_codigo ON fin.categoria_gasto USING btree (codigo)
+
+fin.centro_costo [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.centro_costo_id_seq'::regclass)
+  -  2. codigo : character varying(30) | NOT NULL
+  -  3. nombre : character varying(120) | NOT NULL
+  -  4. estado : USER-DEFINED::estado_activo | NOT NULL | DEFAULT='ACTIVO'::fin.estado_activo
+  -  5. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  -  6. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * centro_costo_pkey
+        CREATE UNIQUE INDEX centro_costo_pkey ON fin.centro_costo USING btree (id)
+      * ux_centro_costo_codigo
+        CREATE UNIQUE INDEX ux_centro_costo_codigo ON fin.centro_costo USING btree (codigo)
+
+fin.config_contable [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.config_contable_id_seq'::regclass)
+  -  2. codigo_evento : character varying(50) | NOT NULL
+  -  3. nombre_evento : character varying(150) | NOT NULL
+  -  4. lado : character varying(10) | NOT NULL
+  -  5. codigo_cuenta : character varying(30) | FK -> fin.plan_cuenta.codigo | NOT NULL
+  -  6. orden : integer | NOT NULL | DEFAULT=1
+  -  7. requiere_centro_costo : boolean | NOT NULL | DEFAULT=false
+  -  8. requiere_documento : boolean | NOT NULL | DEFAULT=false
+  -  9. estado : character varying(20) | NOT NULL | DEFAULT='ACTIVO'::character varying
+  - 10. descripcion : text
+  - 11. created_at : timestamp without time zone(6) | NOT NULL | DEFAULT=now()
+  - 12. updated_at : timestamp without time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * config_contable_pkey
+        CREATE UNIQUE INDEX config_contable_pkey ON fin.config_contable USING btree (id)
+      * ix_config_contable_cuenta
+        CREATE INDEX ix_config_contable_cuenta ON fin.config_contable USING btree (codigo_cuenta)
+      * ix_config_contable_estado
+        CREATE INDEX ix_config_contable_estado ON fin.config_contable USING btree (estado)
+      * ix_config_contable_evento
+        CREATE INDEX ix_config_contable_evento ON fin.config_contable USING btree (codigo_evento)
+      * ix_fin_config_contable_cuenta
+        CREATE INDEX ix_fin_config_contable_cuenta ON fin.config_contable USING btree (codigo_cuenta)
+      * ix_fin_config_contable_estado
+        CREATE INDEX ix_fin_config_contable_estado ON fin.config_contable USING btree (estado)
+      * ix_fin_config_contable_evento
+        CREATE INDEX ix_fin_config_contable_evento ON fin.config_contable USING btree (codigo_evento)
+      * uq_config_contable_evento_lado_orden
+        CREATE UNIQUE INDEX uq_config_contable_evento_lado_orden ON fin.config_contable USING btree (codigo_evento, lado, orden)
+
+fin.config_contable_detalle_modulo [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.config_contable_detalle_modulo_id_seq'::regclass)
+  -  2. modulo : character varying(50) | NOT NULL
+  -  3. submodulo : character varying(50)
+  -  4. tipo_documento : character varying(50)
+  -  5. codigo_evento : character varying(50) | NOT NULL
+  -  6. nombre_evento : character varying(150) | NOT NULL
+  -  7. lado : character varying(10) | NOT NULL
+  -  8. codigo_cuenta : character varying(30) | FK -> fin.plan_cuenta.codigo | NOT NULL
+  -  9. orden : integer | NOT NULL | DEFAULT=1
+  - 10. requiere_centro_costo : boolean | NOT NULL | DEFAULT=false
+  - 11. requiere_documento : boolean | NOT NULL | DEFAULT=false
+  - 12. requiere_cliente : boolean | NOT NULL | DEFAULT=false
+  - 13. requiere_proveedor : boolean | NOT NULL | DEFAULT=false
+  - 14. estado : character varying(20) | NOT NULL | DEFAULT='ACTIVO'::character varying
+  - 15. descripcion : text
+  - 16. created_at : timestamp without time zone(6) | NOT NULL | DEFAULT=now()
+  - 17. updated_at : timestamp without time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * config_contable_detalle_modulo_pkey
+        CREATE UNIQUE INDEX config_contable_detalle_modulo_pkey ON fin.config_contable_detalle_modulo USING btree (id)
+      * ix_fin_cfg_modulo_estado
+        CREATE INDEX ix_fin_cfg_modulo_estado ON fin.config_contable_detalle_modulo USING btree (estado)
+      * ix_fin_cfg_modulo_evento
+        CREATE INDEX ix_fin_cfg_modulo_evento ON fin.config_contable_detalle_modulo USING btree (codigo_evento)
+      * ix_fin_cfg_modulo_modulo
+        CREATE INDEX ix_fin_cfg_modulo_modulo ON fin.config_contable_detalle_modulo USING btree (modulo)
+      * ix_fin_cfg_modulo_submodulo
+        CREATE INDEX ix_fin_cfg_modulo_submodulo ON fin.config_contable_detalle_modulo USING btree (submodulo)
+      * ix_fin_cfg_modulo_tipo_doc
+        CREATE INDEX ix_fin_cfg_modulo_tipo_doc ON fin.config_contable_detalle_modulo USING btree (tipo_documento)
+      * uq_fin_cfg_modulo_evento_lado_orden
+        CREATE UNIQUE INDEX uq_fin_cfg_modulo_evento_lado_orden ON fin.config_contable_detalle_modulo USING btree (modulo, submodulo, tipo_documento, codigo_evento, lado, orden)
+
+fin.evento [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.evento_id_seq'::regclass)
+  -  2. entidad : character varying(40) | NOT NULL
+  -  3. entidad_id : bigint | NOT NULL
+  -  4. evento : character varying(80) | NOT NULL
+  -  5. detalle : text
+  -  6. user_email : USER-DEFINED::citext
+  -  7. ip_origen : character varying(80)
+  -  8. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * evento_pkey
+        CREATE UNIQUE INDEX evento_pkey ON fin.evento USING btree (id)
+      * ix_evento_entidad
+        CREATE INDEX ix_evento_entidad ON fin.evento USING btree (entidad, entidad_id)
+      * ix_evento_fecha
+        CREATE INDEX ix_evento_fecha ON fin.evento USING btree (created_at)
+
+fin.periodo [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.periodo_id_seq'::regclass)
+  -  2. anio : integer | NOT NULL
+  -  3. mes : integer | NOT NULL
+  -  4. estado : USER-DEFINED::periodo_estado | NOT NULL | DEFAULT='ABIERTO'::fin.periodo_estado
+  -  5. cerrado_at : timestamp with time zone(6)
+  -  6. cerrado_por : USER-DEFINED::citext
+  -  7. notas : text
+  -  8. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  -  9. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * periodo_pkey
+        CREATE UNIQUE INDEX periodo_pkey ON fin.periodo USING btree (id)
+      * ux_periodo
+        CREATE UNIQUE INDEX ux_periodo ON fin.periodo USING btree (anio, mes)
+
+fin.plan_cuenta [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.plan_cuenta_id_seq'::regclass)
+  -  2. codigo : character varying(30) | NOT NULL
+  -  3. nombre : character varying(180) | NOT NULL
+  -  4. nivel : integer | NOT NULL | DEFAULT=1
+  -  5. cuenta_padre_id : bigint | FK -> fin.plan_cuenta.id
+  -  6. tipo : character varying(30) | NOT NULL
+  -  7. clasificacion : character varying(50) | NOT NULL
+  -  8. naturaleza : character varying(20) | NOT NULL
+  -  9. acepta_movimiento : boolean | NOT NULL | DEFAULT=true
+  - 10. requiere_centro_costo : boolean | NOT NULL | DEFAULT=false
+  - 11. estado : character varying(20) | NOT NULL | DEFAULT='ACTIVO'::character varying
+  - 12. descripcion : text
+  - 13. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 14. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ix_fin_plan_cuenta_clasificacion
+        CREATE INDEX ix_fin_plan_cuenta_clasificacion ON fin.plan_cuenta USING btree (clasificacion)
+      * ix_fin_plan_cuenta_codigo
+        CREATE UNIQUE INDEX ix_fin_plan_cuenta_codigo ON fin.plan_cuenta USING btree (codigo)
+      * ix_fin_plan_cuenta_estado
+        CREATE INDEX ix_fin_plan_cuenta_estado ON fin.plan_cuenta USING btree (estado)
+      * ix_fin_plan_cuenta_padre
+        CREATE INDEX ix_fin_plan_cuenta_padre ON fin.plan_cuenta USING btree (cuenta_padre_id)
+      * ix_fin_plan_cuenta_tipo
+        CREATE INDEX ix_fin_plan_cuenta_tipo ON fin.plan_cuenta USING btree (tipo)
+      * pk_plan_cuenta
+        CREATE UNIQUE INDEX pk_plan_cuenta ON fin.plan_cuenta USING btree (id)
+      * uq_plan_cuenta_codigo
+        CREATE UNIQUE INDEX uq_plan_cuenta_codigo ON fin.plan_cuenta USING btree (codigo)
+
+fin.proveedor_fin [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin.proveedor_fin_id_seq'::regclass)
+  -  2. proveedor_id : bigint | NOT NULL
+  -  3. condicion_pago_dias : integer | NOT NULL | DEFAULT=30
+  -  4. limite_credito : numeric(18,2) | NOT NULL | DEFAULT=0
+  -  5. estado : USER-DEFINED::estado_simple | NOT NULL | DEFAULT='ACTIVO'::fin.estado_simple
+  -  6. notas : text
+  -  7. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  -  8. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ix_proveedor_fin_estado
+        CREATE INDEX ix_proveedor_fin_estado ON fin.proveedor_fin USING btree (estado)
+      * ix_proveedor_fin_proveedor
+        CREATE INDEX ix_proveedor_fin_proveedor ON fin.proveedor_fin USING btree (proveedor_id)
+      * proveedor_fin_pkey
+        CREATE UNIQUE INDEX proveedor_fin_pkey ON fin.proveedor_fin USING btree (id)
+      * ux_proveedor_fin_proveedor
+        CREATE UNIQUE INDEX ux_proveedor_fin_proveedor ON fin.proveedor_fin USING btree (proveedor_id)
+
+fin.vw_config_contable [VIEW]
+  -  1. id : bigint
+  -  2. codigo_evento : character varying(50)
+  -  3. nombre_evento : character varying(150)
+  -  4. lado : character varying(10)
+  -  5. codigo_cuenta : character varying(30)
+  -  6. nombre_cuenta : character varying(180)
+  -  7. tipo : character varying(30)
+  -  8. clasificacion : character varying(50)
+  -  9. orden : integer
+  - 10. requiere_centro_costo : boolean
+  - 11. requiere_documento : boolean
+  - 12. estado : character varying(20)
+  - 13. descripcion : text
+
+fin.vw_config_contable_modulo [VIEW]
+  -  1. id : bigint
+  -  2. modulo : character varying(50)
+  -  3. submodulo : character varying(50)
+  -  4. tipo_documento : character varying(50)
+  -  5. codigo_evento : character varying(50)
+  -  6. nombre_evento : character varying(150)
+  -  7. lado : character varying(10)
+  -  8. codigo_cuenta : character varying(30)
+  -  9. nombre_cuenta : character varying(180)
+  - 10. tipo : character varying(30)
+  - 11. clasificacion : character varying(50)
+  - 12. orden : integer
+  - 13. requiere_centro_costo : boolean
+  - 14. requiere_documento : boolean
+  - 15. requiere_cliente : boolean
+  - 16. requiere_proveedor : boolean
+  - 17. estado : character varying(20)
+  - 18. descripcion : text
+
+fin.vw_kpi_dashboard_fin [VIEW]
+  -  1. docs_total : bigint
+  -  2. monto_total : numeric(18,2)
+  -  3. saldo_pendiente : numeric(18,2)
+  -  4. saldo_vencido : numeric(18,2)
+  -  5. pagado_mes : numeric(18,2)
+  -  6. gasto_mes : numeric(18,2)
+
+
+ESQUEMA: public
+--------------------------------------------------------------------------------
+public.ap_documento_compra [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('ap_documento_compra_id_seq'::regclass)
+  -  2. proveedor_id : bigint | NOT NULL
+  -  3. tipo : USER-DEFINED::ap_documento_tipo | NOT NULL
+  -  4. estado : USER-DEFINED::ap_estado_documento | NOT NULL | DEFAULT='BORRADOR'::ap_estado_documento
+  -  5. folio : character varying(40) | NOT NULL
+  -  6. fecha_emision : date | NOT NULL
+  -  7. fecha_recepcion : date
+  -  8. fecha_vencimiento : date | NOT NULL
+  -  9. moneda : character varying(10) | NOT NULL | DEFAULT='CLP'::character varying
+  - 10. tipo_cambio : numeric(18,6) | NOT NULL | DEFAULT=1
+  - 11. neto : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 12. exento : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 13. iva : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 14. otros_impuestos : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 15. total : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 16. saldo_pendiente : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 17. referencia : character varying(180)
+  - 18. observaciones : text
+  - 19. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 20. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ap_documento_compra_pkey
+        CREATE UNIQUE INDEX ap_documento_compra_pkey ON public.ap_documento_compra USING btree (id)
+      * ix_ap_doc_estado
+        CREATE INDEX ix_ap_doc_estado ON public.ap_documento_compra USING btree (estado)
+      * ix_ap_doc_fechas
+        CREATE INDEX ix_ap_doc_fechas ON public.ap_documento_compra USING btree (fecha_emision, fecha_vencimiento)
+      * ix_ap_doc_proveedor
+        CREATE INDEX ix_ap_doc_proveedor ON public.ap_documento_compra USING btree (proveedor_id)
+      * ux_ap_doc_unique
+        CREATE UNIQUE INDEX ux_ap_doc_unique ON public.ap_documento_compra USING btree (proveedor_id, tipo, folio)
+
+public.ap_documento_compra_detalle [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('ap_documento_compra_detalle_id_seq'::regclass)
+  -  2. documento_id : bigint | NOT NULL
+  -  3. linea : integer | NOT NULL
+  -  4. descripcion : character varying(260) | NOT NULL
+  -  5. cantidad : numeric(18,6) | NOT NULL | DEFAULT=1
+  -  6. precio_unitario : numeric(18,6) | NOT NULL | DEFAULT=0
+  -  7. descuento : numeric(18,2) | NOT NULL | DEFAULT=0
+  -  8. neto_linea : numeric(18,2) | NOT NULL | DEFAULT=0
+  -  9. iva_linea : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 10. otros_impuestos : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 11. total_linea : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 12. categoria_gasto_id : bigint
+  - 13. centro_costo_id : bigint
+  - 14. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 15. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ap_documento_compra_detalle_pkey
+        CREATE UNIQUE INDEX ap_documento_compra_detalle_pkey ON public.ap_documento_compra_detalle USING btree (id)
+      * ix_ap_doc_det_categoria
+        CREATE INDEX ix_ap_doc_det_categoria ON public.ap_documento_compra_detalle USING btree (categoria_gasto_id)
+      * ix_ap_doc_det_centro
+        CREATE INDEX ix_ap_doc_det_centro ON public.ap_documento_compra_detalle USING btree (centro_costo_id)
+      * ix_ap_doc_det_documento
+        CREATE INDEX ix_ap_doc_det_documento ON public.ap_documento_compra_detalle USING btree (documento_id)
+      * ux_ap_doc_det_linea
+        CREATE UNIQUE INDEX ux_ap_doc_det_linea ON public.ap_documento_compra_detalle USING btree (documento_id, linea)
+
+public.ap_pago [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('ap_pago_id_seq'::regclass)
+  -  2. proveedor_id : bigint | NOT NULL
+  -  3. estado : USER-DEFINED::ap_estado_pago | NOT NULL | DEFAULT='BORRADOR'::ap_estado_pago
+  -  4. fecha_pago : date | NOT NULL
+  -  5. medio_pago : USER-DEFINED::fin_medio_pago | NOT NULL | DEFAULT='TRANSFERENCIA'::fin_medio_pago
+  -  6. referencia : character varying(180)
+  -  7. moneda : character varying(10) | NOT NULL | DEFAULT='CLP'::character varying
+  -  8. tipo_cambio : numeric(18,6) | NOT NULL | DEFAULT=1
+  -  9. monto_total : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 10. observaciones : text
+  - 11. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 12. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ap_pago_pkey
+        CREATE UNIQUE INDEX ap_pago_pkey ON public.ap_pago USING btree (id)
+      * ix_ap_pago_estado
+        CREATE INDEX ix_ap_pago_estado ON public.ap_pago USING btree (estado)
+      * ix_ap_pago_fecha
+        CREATE INDEX ix_ap_pago_fecha ON public.ap_pago USING btree (fecha_pago)
+      * ix_ap_pago_proveedor
+        CREATE INDEX ix_ap_pago_proveedor ON public.ap_pago USING btree (proveedor_id)
+
+public.ap_pago_aplicacion [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('ap_pago_aplicacion_id_seq'::regclass)
+  -  2. pago_id : bigint | NOT NULL
+  -  3. documento_id : bigint | NOT NULL
+  -  4. monto_aplicado : numeric(18,2) | NOT NULL | DEFAULT=0
+  -  5. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ap_pago_aplicacion_pkey
+        CREATE UNIQUE INDEX ap_pago_aplicacion_pkey ON public.ap_pago_aplicacion USING btree (id)
+      * ix_ap_pago_apl_doc
+        CREATE INDEX ix_ap_pago_apl_doc ON public.ap_pago_aplicacion USING btree (documento_id)
+      * ix_ap_pago_apl_pago
+        CREATE INDEX ix_ap_pago_apl_pago ON public.ap_pago_aplicacion USING btree (pago_id)
+      * ux_ap_pago_doc
+        CREATE UNIQUE INDEX ux_ap_pago_doc ON public.ap_pago_aplicacion USING btree (pago_id, documento_id)
+
+public.asientos_contables [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('asientos_contables_id_seq'::regclass)
+  -  2. fecha : date | NOT NULL
+  -  3. descripcion : text
+  -  4. origen_tipo : character varying(30)
+  -  5. origen_id : bigint
+  -  6. fecha_creacion : timestamp without time zone(6) | NOT NULL
+  -  7. glosa : character varying(255)
+    Índices:
+      * asientos_contables_pkey
+        CREATE UNIQUE INDEX asientos_contables_pkey ON public.asientos_contables USING btree (id)
+      * ix_asientos_contables_id
+        CREATE INDEX ix_asientos_contables_id ON public.asientos_contables USING btree (id)
+
+public.asientos_detalle [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('asientos_detalle_id_seq'::regclass)
+  -  2. asiento_id : bigint | FK -> public.asientos_contables.id | NOT NULL
+  -  3. cuenta_contable : character varying(50)
+  -  4. descripcion : character varying(255)
+  -  5. debe : numeric(14,2) | NOT NULL
+  -  6. haber : numeric(14,2) | NOT NULL
+  -  7. codigo_cuenta : character varying(20) | NOT NULL
+  -  8. nombre_cuenta : character varying(255) | NOT NULL
+    Índices:
+      * asientos_detalle_pkey
+        CREATE UNIQUE INDEX asientos_detalle_pkey ON public.asientos_detalle USING btree (id)
+      * ix_asientos_detalle_id
+        CREATE INDEX ix_asientos_detalle_id ON public.asientos_detalle USING btree (id)
+
+public.cajas [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('cajas_id_seq'::regclass)
+  -  2. nombre : character varying(100) | NOT NULL
+  -  3. descripcion : character varying(255)
+  -  4. saldo_inicial : numeric(14,2) | NOT NULL
+  -  5. saldo_actual : numeric(14,2) | NOT NULL
+  -  6. fecha_apertura : timestamp without time zone(6)
+  -  7. fecha_cierre : timestamp without time zone(6)
+  -  8. estado : character varying(20) | NOT NULL
+  -  9. activa : boolean | NOT NULL
+    Índices:
+      * cajas_pkey
+        CREATE UNIQUE INDEX cajas_pkey ON public.cajas USING btree (id)
+      * ix_cajas_id
+        CREATE INDEX ix_cajas_id ON public.cajas USING btree (id)
+
+public.categorias_producto [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('categorias_producto_id_seq'::regclass)
+  -  2. nombre : character varying(150) | NOT NULL
+  -  3. descripcion : text
+  -  4. activo : boolean | NOT NULL
+  -  5. fecha_creacion : timestamp without time zone(6) | NOT NULL
+    Índices:
+      * categorias_producto_nombre_key
+        CREATE UNIQUE INDEX categorias_producto_nombre_key ON public.categorias_producto USING btree (nombre)
+      * categorias_producto_pkey
+        CREATE UNIQUE INDEX categorias_producto_pkey ON public.categorias_producto USING btree (id)
+      * ix_categorias_producto_id
+        CREATE INDEX ix_categorias_producto_id ON public.categorias_producto USING btree (id)
+
+public.clientes [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('clientes_id_seq'::regclass)
+  -  2. rut : character varying(20) | NOT NULL
+  -  3. razon_social : character varying(200) | NOT NULL
+  -  4. nombre_fantasia : character varying(200)
+  -  5. giro : character varying(200)
+  -  6. direccion : character varying(250)
+  -  7. comuna : character varying(100)
+  -  8. ciudad : character varying(100)
+  -  9. telefono : character varying(50)
+  - 10. email : character varying(150)
+  - 11. activo : boolean | NOT NULL
+  - 12. fecha_creacion : timestamp without time zone(6) | NOT NULL
+  - 13. fecha_actualizacion : timestamp without time zone(6) | NOT NULL
+    Índices:
+      * clientes_pkey
+        CREATE UNIQUE INDEX clientes_pkey ON public.clientes USING btree (id)
+      * ix_clientes_id
+        CREATE INDEX ix_clientes_id ON public.clientes USING btree (id)
+      * ix_clientes_rut
+        CREATE UNIQUE INDEX ix_clientes_rut ON public.clientes USING btree (rut)
+
+public.cuentas_por_cobrar [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('cuentas_por_cobrar_id_seq'::regclass)
+  -  2. cliente_id : bigint | FK -> public.clientes.id | NOT NULL
+  -  3. nota_venta_id : bigint | FK -> public.notas_venta.id
+  -  4. fecha_emision : date | NOT NULL
+  -  5. fecha_vencimiento : date | NOT NULL
+  -  6. monto_original : numeric(14,2) | NOT NULL
+  -  7. saldo_pendiente : numeric(14,2) | NOT NULL
+  -  8. estado : character varying(20) | NOT NULL
+  -  9. observacion : text
+  - 10. fecha_creacion : timestamp without time zone(6) | NOT NULL
+  - 11. fecha_actualizacion : timestamp without time zone(6) | NOT NULL
+  - 12. razon_social : character varying(255)
+    Índices:
+      * cuentas_por_cobrar_pkey
+        CREATE UNIQUE INDEX cuentas_por_cobrar_pkey ON public.cuentas_por_cobrar USING btree (id)
+      * ix_cuentas_por_cobrar_id
+        CREATE INDEX ix_cuentas_por_cobrar_id ON public.cuentas_por_cobrar USING btree (id)
+
+public.cuentas_por_pagar [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('cuentas_por_pagar_id_seq'::regclass)
+  -  2. proveedor_id : bigint | FK -> public.proveedores.id | NOT NULL
+  -  3. factura_compra_id : bigint | FK -> public.facturas_compra.id
+  -  4. fecha_emision : date | NOT NULL
+  -  5. fecha_vencimiento : date | NOT NULL
+  -  6. monto_original : numeric(14,2) | NOT NULL
+  -  7. saldo_pendiente : numeric(14,2) | NOT NULL
+  -  8. estado : character varying(20) | NOT NULL
+  -  9. observacion : text
+  - 10. fecha_creacion : timestamp without time zone(6) | NOT NULL
+  - 11. fecha_actualizacion : timestamp without time zone(6) | NOT NULL
+    Índices:
+      * cuentas_por_pagar_pkey
+        CREATE UNIQUE INDEX cuentas_por_pagar_pkey ON public.cuentas_por_pagar USING btree (id)
+      * ix_cuentas_por_pagar_id
+        CREATE INDEX ix_cuentas_por_pagar_id ON public.cuentas_por_pagar USING btree (id)
+
+public.email_log [TABLE]
+  -  1. id : integer | PK | NOT NULL | DEFAULT=nextval('email_log_id_seq'::regclass)
+  -  2. created_at : timestamp without time zone(6) | NOT NULL | DEFAULT=CURRENT_TIMESTAMP
+  -  3. modulo : character varying(50) | NOT NULL | DEFAULT='COBRANZA'::character varying
+  -  4. evento : character varying(50) | NOT NULL | DEFAULT='RECORDATORIO'::character varying
+  -  5. cliente_id : integer
+  -  6. cxc_id : integer
+  -  7. to_email : character varying(255) | NOT NULL
+  -  8. subject : character varying(255) | NOT NULL
+  -  9. include_detalle : boolean | NOT NULL | DEFAULT=true
+  - 10. status : character varying(20) | NOT NULL | DEFAULT='PENDIENTE'::character varying
+  - 11. sent_at : timestamp without time zone(6)
+  - 12. error_message : text
+  - 13. meta_json : text
+    Índices:
+      * email_log_pkey
+        CREATE UNIQUE INDEX email_log_pkey ON public.email_log USING btree (id)
+      * ix_email_log_cliente_id
+        CREATE INDEX ix_email_log_cliente_id ON public.email_log USING btree (cliente_id)
+      * ix_email_log_created_at
+        CREATE INDEX ix_email_log_created_at ON public.email_log USING btree (created_at)
+      * ix_email_log_status
+        CREATE INDEX ix_email_log_status ON public.email_log USING btree (status)
+
+public.facturas_compra [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('facturas_compra_id_seq'::regclass)
+  -  2. proveedor_id : bigint | FK -> public.proveedores.id | NOT NULL
+  -  3. numero_documento : character varying(50) | NOT NULL
+  -  4. fecha_emision : date | NOT NULL
+  -  5. fecha_vencimiento : date
+  -  6. neto : numeric(14,2) | NOT NULL
+  -  7. iva : numeric(14,2) | NOT NULL
+  -  8. total : numeric(14,2) | NOT NULL
+  -  9. estado : character varying(20) | NOT NULL
+  - 10. observacion : text
+  - 11. fecha_creacion : timestamp without time zone(6) | NOT NULL
+  - 12. fecha_actualizacion : timestamp without time zone(6) | NOT NULL
+    Índices:
+      * facturas_compra_pkey
+        CREATE UNIQUE INDEX facturas_compra_pkey ON public.facturas_compra USING btree (id)
+      * ix_facturas_compra_id
+        CREATE INDEX ix_facturas_compra_id ON public.facturas_compra USING btree (id)
+
+public.facturas_compra_detalle [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('facturas_compra_detalle_id_seq'::regclass)
+  -  2. factura_compra_id : bigint | FK -> public.facturas_compra.id | NOT NULL
+  -  3. producto_id : bigint | FK -> public.productos.id
+  -  4. descripcion : character varying(250)
+  -  5. cantidad : numeric(14,2) | NOT NULL
+  -  6. costo_unitario : numeric(14,4) | NOT NULL
+  -  7. subtotal : numeric(14,2) | NOT NULL
+    Índices:
+      * facturas_compra_detalle_pkey
+        CREATE UNIQUE INDEX facturas_compra_detalle_pkey ON public.facturas_compra_detalle USING btree (id)
+      * ix_facturas_compra_detalle_id
+        CREATE INDEX ix_facturas_compra_detalle_id ON public.facturas_compra_detalle USING btree (id)
+
+public.fin_adjunto [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin_adjunto_id_seq'::regclass)
+  -  2. entidad : character varying(40) | NOT NULL
+  -  3. entidad_id : bigint | NOT NULL
+  -  4. nombre : character varying(220) | NOT NULL
+  -  5. mime : character varying(120)
+  -  6. storage_path : character varying(500) | NOT NULL
+  -  7. hash_sha256 : character varying(80)
+  -  8. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * fin_adjunto_pkey
+        CREATE UNIQUE INDEX fin_adjunto_pkey ON public.fin_adjunto USING btree (id)
+      * ix_fin_adjunto_entidad
+        CREATE INDEX ix_fin_adjunto_entidad ON public.fin_adjunto USING btree (entidad, entidad_id)
+
+public.fin_categoria_gasto [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin_categoria_gasto_id_seq'::regclass)
+  -  2. codigo : character varying(30) | NOT NULL
+  -  3. nombre : character varying(160) | NOT NULL
+  -  4. tipo : USER-DEFINED::fin_tipo_gasto | NOT NULL | DEFAULT='OPERACIONAL'::fin_tipo_gasto
+  -  5. activo : boolean | NOT NULL | DEFAULT=true
+  -  6. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  -  7. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * fin_categoria_gasto_pkey
+        CREATE UNIQUE INDEX fin_categoria_gasto_pkey ON public.fin_categoria_gasto USING btree (id)
+      * ux_cat_gasto_codigo
+        CREATE UNIQUE INDEX ux_cat_gasto_codigo ON public.fin_categoria_gasto USING btree (codigo)
+
+public.fin_centro_costo [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin_centro_costo_id_seq'::regclass)
+  -  2. codigo : character varying(30) | NOT NULL
+  -  3. nombre : character varying(120) | NOT NULL
+  -  4. activo : boolean | NOT NULL | DEFAULT=true
+  -  5. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  -  6. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * fin_centro_costo_pkey
+        CREATE UNIQUE INDEX fin_centro_costo_pkey ON public.fin_centro_costo USING btree (id)
+      * ux_centro_costo_codigo
+        CREATE UNIQUE INDEX ux_centro_costo_codigo ON public.fin_centro_costo USING btree (codigo)
+
+public.fin_evento [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin_evento_id_seq'::regclass)
+  -  2. entidad : character varying(40) | NOT NULL
+  -  3. entidad_id : bigint | NOT NULL
+  -  4. evento : character varying(80) | NOT NULL
+  -  5. detalle : text
+  -  6. user_email : character varying(180)
+  -  7. ip_origen : character varying(80)
+  -  8. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * fin_evento_pkey
+        CREATE UNIQUE INDEX fin_evento_pkey ON public.fin_evento USING btree (id)
+      * ix_fin_evento_entidad
+        CREATE INDEX ix_fin_evento_entidad ON public.fin_evento USING btree (entidad, entidad_id)
+      * ix_fin_evento_fecha
+        CREATE INDEX ix_fin_evento_fecha ON public.fin_evento USING btree (created_at)
+
+public.fin_gasto [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('fin_gasto_id_seq'::regclass)
+  -  2. estado : USER-DEFINED::fin_estado_gasto | NOT NULL | DEFAULT='BORRADOR'::fin_estado_gasto
+  -  3. fecha : date | NOT NULL
+  -  4. proveedor_id : bigint
+  -  5. documento_ref : character varying(80)
+  -  6. categoria_gasto_id : bigint | NOT NULL
+  -  7. centro_costo_id : bigint
+  -  8. medio_pago : USER-DEFINED::fin_medio_pago | NOT NULL | DEFAULT='OTRO'::fin_medio_pago
+  -  9. moneda : character varying(10) | NOT NULL | DEFAULT='CLP'::character varying
+  - 10. tipo_cambio : numeric(18,6) | NOT NULL | DEFAULT=1
+  - 11. neto : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 12. exento : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 13. iva : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 14. otros_impuestos : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 15. total : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 16. descripcion : character varying(260) | NOT NULL
+  - 17. observaciones : text
+  - 18. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 19. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * fin_gasto_pkey
+        CREATE UNIQUE INDEX fin_gasto_pkey ON public.fin_gasto USING btree (id)
+      * ix_fin_gasto_categoria
+        CREATE INDEX ix_fin_gasto_categoria ON public.fin_gasto USING btree (categoria_gasto_id)
+      * ix_fin_gasto_centro
+        CREATE INDEX ix_fin_gasto_centro ON public.fin_gasto USING btree (centro_costo_id)
+      * ix_fin_gasto_estado
+        CREATE INDEX ix_fin_gasto_estado ON public.fin_gasto USING btree (estado)
+      * ix_fin_gasto_fecha
+        CREATE INDEX ix_fin_gasto_fecha ON public.fin_gasto USING btree (fecha)
+      * ix_fin_gasto_proveedor
+        CREATE INDEX ix_fin_gasto_proveedor ON public.fin_gasto USING btree (proveedor_id)
+
+public.inventario_movimientos [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('inventario_movimientos_id_seq'::regclass)
+  -  2. producto_id : bigint | FK -> public.productos.id | NOT NULL
+  -  3. fecha : timestamp without time zone(6) | NOT NULL
+  -  4. tipo_movimiento : character varying(20) | NOT NULL
+  -  5. cantidad : numeric(14,2) | NOT NULL
+  -  6. costo_unitario : numeric(14,4) | NOT NULL
+  -  7. referencia_tipo : character varying(30)
+  -  8. referencia_id : bigint
+  -  9. observacion : text
+    Índices:
+      * inventario_movimientos_pkey
+        CREATE UNIQUE INDEX inventario_movimientos_pkey ON public.inventario_movimientos USING btree (id)
+      * ix_inventario_movimientos_id
+        CREATE INDEX ix_inventario_movimientos_id ON public.inventario_movimientos USING btree (id)
+
+public.movimientos_caja [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('movimientos_caja_id_seq'::regclass)
+  -  2. caja_id : bigint | FK -> public.cajas.id | NOT NULL
+  -  3. fecha : timestamp without time zone(6) | NOT NULL
+  -  4. tipo_movimiento : character varying(20) | NOT NULL
+  -  5. medio_pago : character varying(20) | NOT NULL
+  -  6. monto : numeric(14,2) | NOT NULL
+  -  7. referencia_tipo : character varying(30)
+  -  8. referencia_id : bigint
+  -  9. observacion : text
+    Índices:
+      * ix_movimientos_caja_id
+        CREATE INDEX ix_movimientos_caja_id ON public.movimientos_caja USING btree (id)
+      * movimientos_caja_pkey
+        CREATE UNIQUE INDEX movimientos_caja_pkey ON public.movimientos_caja USING btree (id)
+
+public.notas_venta [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('notas_venta_id_seq'::regclass)
+  -  2. numero : character varying(50) | NOT NULL
+  -  3. fecha : timestamp without time zone(6) | NOT NULL
+  -  4. cliente_id : bigint | FK -> public.clientes.id
+  -  5. caja_id : bigint | FK -> public.cajas.id
+  -  6. tipo_pago : character varying(20) | NOT NULL
+  -  7. estado : character varying(20) | NOT NULL
+  -  8. subtotal_neto : numeric(14,2) | NOT NULL
+  -  9. descuento_total : numeric(14,2) | NOT NULL
+  - 10. total_neto : numeric(14,2) | NOT NULL
+  - 11. total_iva : numeric(14,2) | NOT NULL
+  - 12. total_total : numeric(14,2) | NOT NULL
+  - 13. observacion : text
+  - 14. usuario_emisor : character varying(100)
+  - 15. fecha_creacion : timestamp without time zone(6) | NOT NULL
+  - 16. fecha_actualizacion : timestamp without time zone(6) | NOT NULL
+  - 17. fecha_vencimiento : date | NOT NULL
+    Índices:
+      * ix_notas_venta_fecha_vencimiento
+        CREATE INDEX ix_notas_venta_fecha_vencimiento ON public.notas_venta USING btree (fecha_vencimiento)
+      * ix_notas_venta_id
+        CREATE INDEX ix_notas_venta_id ON public.notas_venta USING btree (id)
+      * ix_notas_venta_numero
+        CREATE UNIQUE INDEX ix_notas_venta_numero ON public.notas_venta USING btree (numero)
+      * notas_venta_pkey
+        CREATE UNIQUE INDEX notas_venta_pkey ON public.notas_venta USING btree (id)
+
+public.notas_venta_detalle [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('notas_venta_detalle_id_seq'::regclass)
+  -  2. nota_venta_id : bigint | FK -> public.notas_venta.id | NOT NULL
+  -  3. producto_id : bigint | FK -> public.productos.id
+  -  4. descripcion : character varying(250)
+  -  5. cantidad : numeric(14,2) | NOT NULL
+  -  6. precio_unitario : numeric(14,2) | NOT NULL
+  -  7. descuento_porcentaje : numeric(5,2) | NOT NULL
+  -  8. descuento_monto : numeric(14,2) | NOT NULL
+  -  9. subtotal : numeric(14,2) | NOT NULL
+    Índices:
+      * ix_notas_venta_detalle_id
+        CREATE INDEX ix_notas_venta_detalle_id ON public.notas_venta_detalle USING btree (id)
+      * notas_venta_detalle_pkey
+        CREATE UNIQUE INDEX notas_venta_detalle_pkey ON public.notas_venta_detalle USING btree (id)
+
+public.pagos_clientes [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('pagos_clientes_id_seq'::regclass)
+  -  2. cuenta_cobrar_id : bigint | FK -> public.cuentas_por_cobrar.id | NOT NULL
+  -  3. fecha_pago : timestamp without time zone(6) | NOT NULL
+  -  4. monto_pago : numeric(14,2) | NOT NULL
+  -  6. caja_id : bigint | FK -> public.cajas.id
+  -  7. referencia : character varying(100)
+  -  8. observacion : text
+  -  9. forma_pago : text
+    Índices:
+      * ix_pagos_clientes_id
+        CREATE INDEX ix_pagos_clientes_id ON public.pagos_clientes USING btree (id)
+      * pagos_clientes_pkey
+        CREATE UNIQUE INDEX pagos_clientes_pkey ON public.pagos_clientes USING btree (id)
+
+public.pagos_proveedores [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('pagos_proveedores_id_seq'::regclass)
+  -  2. cuenta_pagar_id : bigint | FK -> public.cuentas_por_pagar.id | NOT NULL
+  -  3. fecha_pago : timestamp without time zone(6) | NOT NULL
+  -  4. monto_pago : numeric(14,2) | NOT NULL
+  -  5. medio_pago : character varying(20) | NOT NULL
+  -  6. referencia : character varying(100)
+  -  7. observacion : text
+    Índices:
+      * ix_pagos_proveedores_id
+        CREATE INDEX ix_pagos_proveedores_id ON public.pagos_proveedores USING btree (id)
+      * pagos_proveedores_pkey
+        CREATE UNIQUE INDEX pagos_proveedores_pkey ON public.pagos_proveedores USING btree (id)
+
+public.productos [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('productos_id_seq'::regclass)
+  -  2. codigo : character varying(50) | NOT NULL
+  -  3. nombre : character varying(200) | NOT NULL
+  -  4. descripcion : text
+  -  5. categoria_id : bigint | FK -> public.categorias_producto.id
+  -  6. unidad_medida_id : bigint | FK -> public.unidades_medida.id
+  -  7. precio_compra : numeric(14,2) | NOT NULL
+  -  8. precio_venta : numeric(14,2) | NOT NULL
+  -  9. stock_minimo : numeric(14,2) | NOT NULL
+  - 10. stock_actual : numeric(14,2) | NOT NULL
+  - 11. activo : boolean | NOT NULL
+  - 12. fecha_creacion : timestamp without time zone(6) | NOT NULL
+  - 13. fecha_actualizacion : timestamp without time zone(6) | NOT NULL
+  - 14. codigo_barra : character varying(80)
+  - 15. controla_stock : boolean | NOT NULL | DEFAULT=true
+  - 16. permite_venta_fraccionada : boolean | NOT NULL | DEFAULT=false
+  - 17. es_servicio : boolean | NOT NULL | DEFAULT=false
+    Índices:
+      * ix_productos_codigo
+        CREATE UNIQUE INDEX ix_productos_codigo ON public.productos USING btree (codigo)
+      * ix_productos_codigo_barra
+        CREATE INDEX ix_productos_codigo_barra ON public.productos USING btree (codigo_barra)
+      * ix_productos_id
+        CREATE INDEX ix_productos_id ON public.productos USING btree (id)
+      * productos_pkey
+        CREATE UNIQUE INDEX productos_pkey ON public.productos USING btree (id)
+      * ux_productos_codigo_barra
+        CREATE UNIQUE INDEX ux_productos_codigo_barra ON public.productos USING btree (codigo_barra) WHERE (codigo_barra IS NOT NULL)
+
+public.proveedor [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('proveedor_id_seq'::regclass)
+  -  2. rut : character varying(20) | NOT NULL
+  -  3. rut_normalizado : character varying(20)
+  -  4. razon_social : character varying(180) | NOT NULL
+  -  5. nombre_fantasia : character varying(180)
+  -  6. giro : character varying(180)
+  -  7. email : character varying(180)
+  -  8. telefono : character varying(50)
+  -  9. sitio_web : character varying(180)
+  - 10. condicion_pago_dias : integer | NOT NULL | DEFAULT=30
+  - 11. limite_credito : numeric(18,2) | NOT NULL | DEFAULT=0
+  - 12. activo : boolean | NOT NULL | DEFAULT=true
+  - 13. notas : text
+  - 14. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 15. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ix_proveedor_razon_social
+        CREATE INDEX ix_proveedor_razon_social ON public.proveedor USING btree (razon_social)
+      * proveedor_pkey
+        CREATE UNIQUE INDEX proveedor_pkey ON public.proveedor USING btree (id)
+      * ux_proveedor_rut_normalizado
+        CREATE UNIQUE INDEX ux_proveedor_rut_normalizado ON public.proveedor USING btree (rut_normalizado)
+
+public.proveedor_banco [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('proveedor_banco_id_seq'::regclass)
+  -  2. proveedor_id : bigint | NOT NULL
+  -  3. banco : character varying(120) | NOT NULL
+  -  4. tipo_cuenta : character varying(60) | NOT NULL
+  -  5. numero_cuenta : character varying(60) | NOT NULL
+  -  6. titular : character varying(180)
+  -  7. rut_titular : character varying(20)
+  -  8. email_pago : character varying(180)
+  -  9. es_principal : boolean | NOT NULL | DEFAULT=false
+  - 10. activo : boolean | NOT NULL | DEFAULT=true
+  - 11. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 12. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ix_prov_banco_proveedor
+        CREATE INDEX ix_prov_banco_proveedor ON public.proveedor_banco USING btree (proveedor_id)
+      * proveedor_banco_pkey
+        CREATE UNIQUE INDEX proveedor_banco_pkey ON public.proveedor_banco USING btree (id)
+      * ux_prov_banco_unique
+        CREATE UNIQUE INDEX ux_prov_banco_unique ON public.proveedor_banco USING btree (proveedor_id, banco, tipo_cuenta, numero_cuenta)
+
+public.proveedor_contacto [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('proveedor_contacto_id_seq'::regclass)
+  -  2. proveedor_id : bigint | NOT NULL
+  -  3. nombre : character varying(120) | NOT NULL
+  -  4. cargo : character varying(120)
+  -  5. email : character varying(180)
+  -  6. telefono : character varying(50)
+  -  7. es_principal : boolean | NOT NULL | DEFAULT=false
+  -  8. activo : boolean | NOT NULL | DEFAULT=true
+  -  9. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 10. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ix_prov_contacto_proveedor
+        CREATE INDEX ix_prov_contacto_proveedor ON public.proveedor_contacto USING btree (proveedor_id)
+      * proveedor_contacto_pkey
+        CREATE UNIQUE INDEX proveedor_contacto_pkey ON public.proveedor_contacto USING btree (id)
+
+public.proveedor_direccion [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('proveedor_direccion_id_seq'::regclass)
+  -  2. proveedor_id : bigint | NOT NULL
+  -  3. linea1 : character varying(180) | NOT NULL
+  -  4. linea2 : character varying(180)
+  -  5. comuna : character varying(120)
+  -  6. ciudad : character varying(120)
+  -  7. region : character varying(120)
+  -  8. pais : character varying(120) | NOT NULL | DEFAULT='Chile'::character varying
+  -  9. codigo_postal : character varying(20)
+  - 10. es_principal : boolean | NOT NULL | DEFAULT=false
+  - 11. activo : boolean | NOT NULL | DEFAULT=true
+  - 12. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 13. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ix_prov_direccion_proveedor
+        CREATE INDEX ix_prov_direccion_proveedor ON public.proveedor_direccion USING btree (proveedor_id)
+      * proveedor_direccion_pkey
+        CREATE UNIQUE INDEX proveedor_direccion_pkey ON public.proveedor_direccion USING btree (id)
+
+public.proveedores [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('proveedores_id_seq'::regclass)
+  -  2. rut : character varying(20) | NOT NULL
+  -  3. razon_social : character varying(200) | NOT NULL
+  -  4. nombre_fantasia : character varying(200)
+  -  5. giro : character varying(200)
+  -  6. direccion : character varying(250)
+  -  7. comuna : character varying(100)
+  -  8. ciudad : character varying(100)
+  -  9. telefono : character varying(50)
+  - 10. email : character varying(150)
+  - 11. activo : boolean | NOT NULL
+  - 12. fecha_creacion : timestamp without time zone(6) | NOT NULL
+  - 13. fecha_actualizacion : timestamp without time zone(6) | NOT NULL
+    Índices:
+      * ix_proveedores_id
+        CREATE INDEX ix_proveedores_id ON public.proveedores USING btree (id)
+      * ix_proveedores_rut
+        CREATE UNIQUE INDEX ix_proveedores_rut ON public.proveedores USING btree (rut)
+      * proveedores_pkey
+        CREATE UNIQUE INDEX proveedores_pkey ON public.proveedores USING btree (id)
+
+public.tenant_domains [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('tenant_domains_id_seq'::regclass)
+  -  2. tenant_id : bigint | NOT NULL
+  -  3. domain : character varying(255) | NOT NULL
+  -  4. is_primary : boolean | NOT NULL | DEFAULT=false
+  -  5. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ix_tenant_domains_tenant
+        CREATE INDEX ix_tenant_domains_tenant ON public.tenant_domains USING btree (tenant_id)
+      * tenant_domains_domain_key
+        CREATE UNIQUE INDEX tenant_domains_domain_key ON public.tenant_domains USING btree (domain)
+      * tenant_domains_pkey
+        CREATE UNIQUE INDEX tenant_domains_pkey ON public.tenant_domains USING btree (id)
+
+public.tenants [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('tenants_id_seq'::regclass)
+  -  2. tenant_code : character varying(60) | NOT NULL
+  -  3. tenant_name : character varying(160) | NOT NULL
+  -  4. db_driver : character varying(80) | NOT NULL | DEFAULT='postgresql+psycopg'::character varying
+  -  5. db_host : character varying(120) | NOT NULL
+  -  6. db_port : integer | NOT NULL | DEFAULT=5432
+  -  7. db_name : character varying(120) | NOT NULL
+  -  8. db_user : character varying(120) | NOT NULL
+  -  9. db_password : text | NOT NULL
+  - 10. db_sslmode : character varying(20)
+  - 11. is_active : boolean | NOT NULL | DEFAULT=true
+  - 12. created_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+  - 13. updated_at : timestamp with time zone(6) | NOT NULL | DEFAULT=now()
+    Índices:
+      * ix_tenants_code_active
+        CREATE INDEX ix_tenants_code_active ON public.tenants USING btree (tenant_code, is_active)
+      * tenants_db_name_key
+        CREATE UNIQUE INDEX tenants_db_name_key ON public.tenants USING btree (db_name)
+      * tenants_pkey
+        CREATE UNIQUE INDEX tenants_pkey ON public.tenants USING btree (id)
+      * tenants_tenant_code_key
+        CREATE UNIQUE INDEX tenants_tenant_code_key ON public.tenants USING btree (tenant_code)
+
+public.unidades_medida [TABLE]
+  -  1. id : bigint | PK | NOT NULL | DEFAULT=nextval('unidades_medida_id_seq'::regclass)
+  -  2. codigo : character varying(20) | NOT NULL
+  -  3. nombre : character varying(100) | NOT NULL
+  -  4. simbolo : character varying(20)
+  -  5. activo : boolean | NOT NULL
+  -  6. fecha_creacion : timestamp without time zone(6) | NOT NULL
+    Índices:
+      * ix_unidades_medida_id
+        CREATE INDEX ix_unidades_medida_id ON public.unidades_medida USING btree (id)
+      * unidades_medida_codigo_key
+        CREATE UNIQUE INDEX unidades_medida_codigo_key ON public.unidades_medida USING btree (codigo)
+      * unidades_medida_pkey
+        CREATE UNIQUE INDEX unidades_medida_pkey ON public.unidades_medida USING btree (id)
+
+public.vw_ap_aging [VIEW]
+  -  1. proveedor_id : bigint
+  -  2. razon_social : character varying(180)
+  -  3. documento_id : bigint
+  -  4. tipo : USER-DEFINED::ap_documento_tipo
+  -  5. folio : character varying(40)
+  -  6. fecha_emision : date
+  -  7. fecha_vencimiento : date
+  -  8. total : numeric(18,2)
+  -  9. saldo_pendiente : numeric(18,2)
+  - 10. dias_vencido : integer
+  - 11. tramo : text
+
+public.vw_ap_ranking_proveedores [VIEW]
+  -  1. proveedor_id : bigint
+  -  2. razon_social : character varying(180)
+  -  3. compras_total : numeric
+  -  4. saldo_pendiente : numeric
+
+public.vw_ap_resumen_proveedor [VIEW]
+  -  1. proveedor_id : bigint
+  -  2. razon_social : character varying(180)
+  -  3. docs_con_saldo : bigint
+  -  4. saldo_total : numeric
+  -  5. saldo_vencido : numeric
+  -  6. saldo_por_vencer : numeric
+
+public.vw_gastos_mensual_categoria [VIEW]
+  -  1. mes : date
+  -  2. categoria_id : bigint
+  -  3. categoria_codigo : character varying(30)
+  -  4. categoria_nombre : character varying(160)
+  -  5. categoria_tipo : USER-DEFINED::fin_tipo_gasto
+  -  6. total_gasto : numeric
+

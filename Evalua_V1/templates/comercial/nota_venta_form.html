@@ -1,0 +1,713 @@
+{# templates/comercial/nota_venta_form.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Nueva venta · Evalua_V1{% endblock title %}
+{% block nav_comercial_active %}active{% endblock nav_comercial_active %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('nota_venta_lista') }}">Notas de venta</a></li>
+<li class="breadcrumb-item active" aria-current="page">Nueva venta</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Nueva nota de venta{% endblock page_title %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="h4 fw-semibold mb-1">Generación de nota de venta</h2>
+    <div class="text-muted small">
+      Registra una venta, agrega productos por escáner o manualmente y consolida el resumen comercial en tiempo real.
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-list-ul"></i> Ir al listado
+    </a>
+  </div>
+</div>
+
+<form id="formVenta" method="post" action="{{ request.url_for('nota_venta_create') }}" novalidate>
+  <div class="row g-3">
+
+    <div class="col-lg-8">
+
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-0 pb-0 pt-3">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+              <h3 class="h6 fw-semibold mb-1">Datos del documento</h3>
+              <div class="text-muted small">
+                Define cliente, fechas, condición de pago y régimen tributario de la operación.
+              </div>
+            </div>
+            <span class="badge rounded-pill bg-light text-dark border">Cabecera comercial</span>
+          </div>
+        </div>
+
+        <div class="card-body pt-3">
+          <div class="row g-3">
+            <div class="col-md-5">
+              <label class="form-label small fw-semibold">Cliente <span class="text-danger">*</span></label>
+              <select name="cliente_id" class="form-select" required>
+                <option value="" selected disabled>— Selecciona cliente —</option>
+                {% for c in clientes %}
+                <option value="{{ c.id }}">{{ c.razon_social }} · {{ c.rut }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text">Obligatorio. La venta puede generar CxC según la condición de pago.</div>
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Fecha emisión</label>
+              <input type="date"
+                     name="fecha"
+                     id="fechaEmision"
+                     class="form-control"
+                     value="{{ hoy }}"
+                     required>
+            </div>
+
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">Fecha vencimiento</label>
+              <input type="date"
+                     name="fecha_vencimiento"
+                     id="fechaVencimiento"
+                     class="form-control"
+                     value="{{ hoy }}">
+            </div>
+
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">Tipo de pago</label>
+              <select name="tipo_pago" id="tipoPago" class="form-select">
+                <option value="CONTADO">Contado</option>
+                <option value="CREDITO">Crédito</option>
+              </select>
+            </div>
+
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">IVA</label>
+              <select name="afecta_iva" id="afectaIvaSelect" class="form-select">
+                <option value="true" selected>Afecta</option>
+                <option value="false">Exenta</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-0 pb-0 pt-3">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+              <h3 class="h6 fw-semibold mb-1">Ingreso automático por lector</h3>
+              <div class="text-muted small">
+                Acerca el producto al lector. El sistema buscará y agregará automáticamente al listado sin hacer click.
+              </div>
+            </div>
+            <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle">
+              Auto scan
+            </span>
+          </div>
+        </div>
+
+        <div class="card-body pt-3">
+          <div class="row g-3 align-items-end">
+            <div class="col-md-8">
+              <label class="form-label small fw-semibold">Escáner / código</label>
+              <input
+                type="text"
+                id="scannerInput"
+                class="form-control form-control-lg"
+                placeholder="Escanea código de barra o código interno"
+                autocomplete="off"
+                autofocus
+              >
+              <div class="form-text">
+                Compatible con Honeywell. Si el lector no manda Enter, el sistema igual agregará el producto automáticamente.
+              </div>
+            </div>
+
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">Cantidad</label>
+              <input
+                type="number"
+                id="scannerCantidad"
+                class="form-control"
+                min="1"
+                step="1"
+                value="1"
+              >
+            </div>
+
+            <div class="col-md-2">
+              <div class="small text-muted mb-2">Estado</div>
+              <div id="scannerEstado" class="fw-semibold text-muted">Esperando escaneo</div>
+            </div>
+          </div>
+
+          <div id="scannerFeedback" class="small mt-3 d-none"></div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-0 pb-0 pt-3">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+              <h3 class="h6 fw-semibold mb-1">Constructor manual de ítems</h3>
+              <div class="text-muted small">
+                Usa esta opción si no escaneas o quieres corregir/agregar productos manualmente.
+              </div>
+            </div>
+            <span class="badge rounded-pill bg-light text-dark border">Detalle de venta</span>
+          </div>
+        </div>
+
+        <div class="card-body pt-3">
+          <div class="row g-3 align-items-end">
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Producto</label>
+              <select id="productoSelect" class="form-select">
+                <option value="">— Buscar producto —</option>
+                {% for p in productos %}
+                <option value="{{ p.id }}"
+                        data-nombre="{{ p.nombre }}"
+                        data-precio="{{ p.precio_venta or 0 }}"
+                        data-codigo="{{ p.codigo }}"
+                        data-codigo-barra="{{ p.codigo_barra or '' }}"
+                        data-controla-stock="{{ 'true' if p.controla_stock else 'false' }}"
+                        data-fraccionado="{{ 'true' if p.permite_venta_fraccionada else 'false' }}"
+                        data-es-servicio="{{ 'true' if p.es_servicio else 'false' }}">
+                  {{ p.codigo }}{% if p.codigo_barra %} · {{ p.codigo_barra }}{% endif %} · {{ p.nombre }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">Cantidad</label>
+              <input type="number"
+                     id="cantidadInput"
+                     class="form-control"
+                     min="1"
+                     step="1"
+                     value="1">
+            </div>
+
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">Precio unitario</label>
+              <input type="number"
+                     id="precioInput"
+                     class="form-control"
+                     min="0"
+                     step="1">
+            </div>
+
+            <div class="col-md-2 d-grid">
+              <button type="button" id="btnAgregarItem" class="btn btn-primary">
+                <i class="bi bi-plus-lg"></i> Agregar
+              </button>
+            </div>
+          </div>
+
+          <div class="table-responsive mt-4">
+            <table class="table table-hover align-middle mb-0" id="tablaItems">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:60px;"></th>
+                  <th>Producto</th>
+                  <th class="text-end" style="width:120px;">Cantidad</th>
+                  <th class="text-end" style="width:140px;">P. unit.</th>
+                  <th class="text-end" style="width:140px;">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr id="filaVaciaItems">
+                  <td colspan="5" class="text-center text-muted py-4">
+                    Aún no hay ítems agregados. Escanea o selecciona un producto para comenzar.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <input type="hidden" name="items_json" id="itemsJson" value="[]">
+        </div>
+      </div>
+
+    </div>
+
+    <div class="col-lg-4">
+
+      <div class="card border-0 shadow-sm mb-4 position-sticky" style="top: 96px;">
+        <div class="card-header bg-white border-0 pb-0 pt-3">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h3 class="h6 fw-semibold mb-1">Resumen financiero</h3>
+              <div class="text-muted small">
+                Consolidación automática de la venta.
+              </div>
+            </div>
+            <span class="badge rounded-pill bg-light text-dark border">Cálculo en línea</span>
+          </div>
+        </div>
+
+        <div class="card-body pt-3">
+
+          <div class="p-3 rounded-4 border bg-light mb-3">
+            <div class="small text-muted mb-1">Estado actual del documento</div>
+            <div class="fw-semibold">Borrador de venta</div>
+          </div>
+
+          <dl class="row mb-2">
+            <dt class="col-6 small text-muted">Subtotal neto</dt>
+            <dd class="col-6 text-end fw-semibold" id="resSubtotal">$0</dd>
+          </dl>
+
+          <dl class="row mb-2">
+            <dt class="col-6 small text-muted">Descuento</dt>
+            <dd class="col-6 text-end fw-semibold" id="resDescuento">$0</dd>
+          </dl>
+
+          <dl class="row mb-2">
+            <dt class="col-6 small text-muted" id="labelIva">IVA (19%)</dt>
+            <dd class="col-6 text-end fw-semibold" id="resIva">$0</dd>
+          </dl>
+
+          <hr>
+
+          <dl class="row mb-3">
+            <dt class="col-6 small text-muted">Total</dt>
+            <dd class="col-6 text-end fs-4 fw-bold" id="resTotal">$0</dd>
+          </dl>
+
+          <div class="small text-muted mb-3">
+            El total se actualiza automáticamente según los ítems agregados y la condición tributaria seleccionada.
+          </div>
+
+          <div class="d-grid gap-2">
+            <button type="button" class="btn btn-primary" onclick="enviarVenta()">
+              <i class="bi bi-check2-circle"></i> Confirmar venta
+            </button>
+
+            <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-light">
+              <i class="bi bi-x-circle"></i> Cancelar
+            </a>
+
+            <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-outline-secondary">
+              <i class="bi bi-list-ul"></i> Ir al listado
+            </a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+  {# Solo requestSubmit/request desde enviarVenta() debe enviar el POST; Enter u otros disparos nativos quedan bloqueados. #}
+  <button type="submit" id="ventaSubmitHelper" hidden tabindex="-1" aria-hidden="true"></button>
+</form>
+
+{% endblock content %}
+
+{% block scripts %}
+<script>
+(function () {
+  const formVenta = document.getElementById('formVenta');
+  const ventaSubmitHelper = document.getElementById('ventaSubmitHelper');
+  let allowVentaSubmit = false;
+
+  if (formVenta) {
+    formVenta.addEventListener('submit', function (e) {
+      if (!allowVentaSubmit) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+      allowVentaSubmit = false;
+    });
+  }
+
+  const productoSelect = document.getElementById('productoSelect');
+  const cantidadInput = document.getElementById('cantidadInput');
+  const precioInput = document.getElementById('precioInput');
+  const btnAgregar = document.getElementById('btnAgregarItem');
+
+  const scannerInput = document.getElementById('scannerInput');
+  const scannerCantidad = document.getElementById('scannerCantidad');
+  const scannerFeedback = document.getElementById('scannerFeedback');
+  const scannerEstado = document.getElementById('scannerEstado');
+
+  const tablaBody = document.querySelector('#tablaItems tbody');
+  const itemsJson = document.getElementById('itemsJson');
+
+  const resSubtotal = document.getElementById('resSubtotal');
+  const resDescuento = document.getElementById('resDescuento');
+  const resIva = document.getElementById('resIva');
+  const resTotal = document.getElementById('resTotal');
+  const labelIva = document.getElementById('labelIva');
+  const afectaIvaSelect = document.getElementById('afectaIvaSelect');
+
+  const fechaEmision = document.getElementById('fechaEmision');
+  const fechaVenc = document.getElementById('fechaVencimiento');
+
+  let items = [];
+  let scannerTimer = null;
+  let scannerBusy = false;
+  let ultimoCodigoProcesado = '';
+
+  function formatear(monto) {
+    return '$' + (monto || 0).toLocaleString('es-CL', { maximumFractionDigits: 0 });
+  }
+
+  function setEstadoScanner(texto, tipo = 'muted') {
+    if (!scannerEstado) return;
+    scannerEstado.className = `fw-semibold text-${tipo}`;
+    scannerEstado.textContent = texto;
+  }
+
+  function mostrarFeedback(message, type = 'muted') {
+    if (!scannerFeedback) return;
+    scannerFeedback.className = `small mt-3 text-${type}`;
+    scannerFeedback.textContent = message;
+    scannerFeedback.classList.remove('d-none');
+  }
+
+  function limpiarFeedback() {
+    if (!scannerFeedback) return;
+    scannerFeedback.textContent = '';
+    scannerFeedback.classList.add('d-none');
+  }
+
+  function recalcular() {
+    let subtotal = 0;
+    items.forEach(it => { subtotal += it.cantidad * it.precio_unitario; });
+
+    const descuento = 0;
+    const aplicaIva = !afectaIvaSelect || afectaIvaSelect.value === 'true';
+    const iva = aplicaIva ? Math.round(subtotal * 0.19) : 0;
+    const total = subtotal + iva - descuento;
+
+    resSubtotal.textContent = formatear(subtotal);
+    resDescuento.textContent = formatear(descuento);
+    resIva.textContent = formatear(iva);
+    resTotal.textContent = formatear(total);
+
+    labelIva.textContent = aplicaIva ? 'IVA (19%)' : 'IVA (0%) – Exenta';
+
+    itemsJson.value = JSON.stringify(
+      items.map(it => ({
+        producto_id: it.producto_id,
+        cantidad: it.cantidad,
+        precio_unitario: it.precio_unitario
+      }))
+    );
+  }
+
+  function renderTabla() {
+    tablaBody.innerHTML = "";
+
+    if (items.length === 0) {
+      tablaBody.innerHTML = `
+        <tr id="filaVaciaItems">
+          <td colspan="5" class="text-center text-muted py-4">
+            Aún no hay ítems agregados. Escanea o selecciona un producto para comenzar.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    items.forEach((it, idx) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="text-center">
+          <button type="button" class="btn btn-sm btn-outline-danger" data-idx="${idx}">
+            <i class="bi bi-x"></i>
+          </button>
+        </td>
+        <td>
+          <div class="fw-semibold">${it.nombre}</div>
+          <div class="small text-muted">
+            ${it.codigo || ''}${it.codigo_barra ? ' · ' + it.codigo_barra : ''}
+          </div>
+        </td>
+        <td class="text-end">${it.cantidad}</td>
+        <td class="text-end">${formatear(it.precio_unitario)}</td>
+        <td class="text-end fw-semibold">${formatear(it.cantidad * it.precio_unitario)}</td>
+      `;
+      tablaBody.appendChild(tr);
+    });
+
+    tablaBody.querySelectorAll('button[data-idx]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-idx'));
+        items.splice(idx, 1);
+        renderTabla();
+        recalcular();
+        enfocarScanner();
+      });
+    });
+  }
+
+  function encontrarItem(productoId) {
+    return items.findIndex(x => Number(x.producto_id) === Number(productoId));
+  }
+
+  function agregarProductoAlCarrito(producto, cantidad, precioManual = null) {
+    const qty = Number(cantidad || 1);
+    if (!qty || qty <= 0) {
+      throw new Error('La cantidad debe ser mayor a 0.');
+    }
+
+    const precio = precioManual !== null
+      ? Number(precioManual)
+      : Number(producto.precio_venta || 0);
+
+    if (precio < 0) {
+      throw new Error('El precio no puede ser negativo.');
+    }
+
+    const idx = encontrarItem(producto.id);
+
+    if (idx >= 0) {
+      items[idx].cantidad = Number(items[idx].cantidad) + qty;
+      if (precioManual !== null) {
+        items[idx].precio_unitario = precio;
+      }
+    } else {
+      items.push({
+        producto_id: Number(producto.id),
+        codigo: producto.codigo || '',
+        codigo_barra: producto.codigo_barra || '',
+        nombre: producto.nombre,
+        cantidad: qty,
+        precio_unitario: precio
+      });
+    }
+
+    renderTabla();
+    recalcular();
+  }
+
+  function obtenerProductoDesdeSelect() {
+    const opt = productoSelect.selectedOptions[0];
+    if (!opt || !opt.value) return null;
+
+    return {
+      id: Number(opt.value),
+      codigo: opt.dataset.codigo || '',
+      codigo_barra: opt.dataset.codigoBarra || '',
+      nombre: opt.dataset.nombre || '',
+      precio_venta: Number(opt.dataset.precio || 0),
+      controla_stock: opt.dataset.controlaStock === 'true',
+      permite_venta_fraccionada: opt.dataset.fraccionado === 'true',
+      es_servicio: opt.dataset.esServicio === 'true'
+    };
+  }
+
+  async function buscarProductoPorScanner(codigo) {
+    const response = await fetch(
+      `/ventas/pos/buscar-producto?codigo=${encodeURIComponent(codigo)}`,
+      {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || 'No fue posible buscar el producto.');
+    }
+
+    return data.producto;
+  }
+
+  async function procesarEscaneo(origen = 'auto') {
+    if (scannerBusy) return;
+
+    const codigo = (scannerInput.value || '').trim();
+    const cantidad = Number(scannerCantidad.value || 1);
+
+    if (!codigo) {
+      setEstadoScanner('Esperando escaneo', 'muted');
+      return;
+    }
+
+    if (!cantidad || cantidad <= 0) {
+      mostrarFeedback('La cantidad del escaneo debe ser mayor a 0.', 'warning');
+      setEstadoScanner('Cantidad inválida', 'warning');
+      enfocarScanner();
+      return;
+    }
+
+    if (codigo === ultimoCodigoProcesado && origen === 'debounce') {
+      return;
+    }
+
+    scannerBusy = true;
+    limpiarFeedback();
+    setEstadoScanner('Buscando producto...', 'primary');
+
+    try {
+      const producto = await buscarProductoPorScanner(codigo);
+      agregarProductoAlCarrito(producto, cantidad);
+      ultimoCodigoProcesado = codigo;
+      scannerInput.value = '';
+      scannerCantidad.value = '1';
+      mostrarFeedback(`Producto agregado automáticamente: ${producto.nombre}`, 'success');
+      setEstadoScanner('Producto agregado', 'success');
+      enfocarScanner();
+    } catch (error) {
+      mostrarFeedback(error.message || 'No fue posible agregar el producto.', 'danger');
+      setEstadoScanner('Producto no encontrado', 'danger');
+      scannerInput.select();
+      enfocarScanner();
+    } finally {
+      scannerBusy = false;
+      setTimeout(() => {
+        if ((scannerInput.value || '').trim() === '') {
+          ultimoCodigoProcesado = '';
+          setEstadoScanner('Esperando escaneo', 'muted');
+        }
+      }, 600);
+    }
+  }
+
+  function programarAutoEscaneo() {
+    if (scannerTimer) {
+      clearTimeout(scannerTimer);
+    }
+
+    const valor = (scannerInput.value || '').trim();
+    if (!valor) {
+      ultimoCodigoProcesado = '';
+      limpiarFeedback();
+      setEstadoScanner('Esperando escaneo', 'muted');
+      return;
+    }
+
+    setEstadoScanner('Leyendo código...', 'secondary');
+
+    scannerTimer = setTimeout(() => {
+      procesarEscaneo('debounce');
+    }, 180);
+  }
+
+  function enfocarScanner() {
+    if (!scannerInput) return;
+    setTimeout(() => {
+      scannerInput.focus();
+    }, 20);
+  }
+
+  btnAgregar.addEventListener('click', () => {
+    limpiarFeedback();
+
+    const producto = obtenerProductoDesdeSelect();
+    if (!producto) {
+      alert('Selecciona un producto.');
+      return;
+    }
+
+    const cantidad = parseFloat(cantidadInput.value || '1');
+    const precio = parseFloat(precioInput.value || String(producto.precio_venta || 0));
+
+    if (!cantidad || cantidad <= 0 || precio < 0) {
+      alert('Cantidad y precio deben ser válidos.');
+      return;
+    }
+
+    try {
+      agregarProductoAlCarrito(producto, cantidad, precio);
+      cantidadInput.value = "1";
+      precioInput.value = "";
+      productoSelect.value = "";
+      enfocarScanner();
+    } catch (error) {
+      alert(error.message || 'No fue posible agregar el producto.');
+    }
+  });
+
+  productoSelect.addEventListener('change', () => {
+    const producto = obtenerProductoDesdeSelect();
+    if (producto) {
+      precioInput.value = String(producto.precio_venta || 0);
+      cantidadInput.step = producto.permite_venta_fraccionada ? '0.01' : '1';
+    }
+  });
+
+  scannerInput.addEventListener('input', () => {
+    programarAutoEscaneo();
+  });
+
+  scannerInput.addEventListener('keydown', async (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (scannerTimer) {
+        clearTimeout(scannerTimer);
+      }
+      await procesarEscaneo('enter');
+    }
+  });
+
+  if (afectaIvaSelect) {
+    afectaIvaSelect.addEventListener('change', recalcular);
+  }
+
+  window.enviarVenta = function () {
+    allowVentaSubmit = false;
+
+    const clienteSel = document.querySelector('select[name="cliente_id"]');
+    if (!clienteSel || !clienteSel.value) {
+      alert('Debes seleccionar un cliente.');
+      return;
+    }
+
+    if (items.length === 0) {
+      alert('Debes agregar al menos un producto.');
+      return;
+    }
+
+    const fe = new Date(fechaEmision.value);
+    const fv = new Date(fechaVenc.value);
+
+    if (fechaVenc.value && fv < fe) {
+      alert('La fecha de vencimiento no puede ser anterior a la fecha de emisión.');
+      return;
+    }
+
+    recalcular();
+    allowVentaSubmit = true;
+
+    if (formVenta && ventaSubmitHelper && typeof formVenta.requestSubmit === 'function') {
+      try {
+        formVenta.requestSubmit(ventaSubmitHelper);
+        return;
+      } catch (_e) {
+        /* requestSubmit no disponible o rechazado: seguir con .submit() */
+      }
+    }
+
+    if (formVenta) {
+      formVenta.submit();
+    }
+  };
+
+  document.addEventListener('click', function (event) {
+    const tag = (event.target && event.target.tagName ? event.target.tagName.toLowerCase() : '');
+    const ignore = ['input', 'textarea', 'select', 'button'];
+    if (!ignore.includes(tag)) {
+      enfocarScanner();
+    }
+  });
+
+  recalcular();
+  enfocarScanner();
+  setEstadoScanner('Esperando escaneo', 'muted');
+})();
+</script>
+{% endblock scripts %}

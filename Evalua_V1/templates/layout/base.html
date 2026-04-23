@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <title>{% block title %}Evalua ERP{% endblock %}</title>
+
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  >
+
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    rel="stylesheet"
+  >
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap"
+    rel="stylesheet"
+  >
+
+  <style>
+    :root{
+      --font-sans:'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+      --bg:#eef1f7;
+      --surface:#ffffff;
+      --surface-soft:#f6f7fb;
+
+      --text:#0a0f1a;
+      --text-soft:#5c6578;
+      --text-inverse:#f4f6fb;
+
+      --border:#dfe4ed;
+      --border-strong:#c8cfde;
+
+      --primary:#1e3a5f;
+      --primary-hover:#152a45;
+      --primary-soft:#e4eaf4;
+      --primary-ring:rgba(30,58,95,.22);
+
+      --accent-premium:#c4a35a;
+      --accent-premium-soft:rgba(196,163,90,.14);
+      --accent-glow:rgba(196,163,90,.22);
+
+      --secondary:#0a0f1a;
+      --secondary-soft:#3d465a;
+
+      --sidebar-bg:#05080f;
+      --sidebar-bg-mid:#0a101c;
+      --sidebar-bg-top:#0d1526;
+      --sidebar-border:rgba(255,255,255,.06);
+      --sidebar-hover:rgba(255,255,255,.07);
+      --sidebar-text:#e8ecf4;
+      --sidebar-text-soft:#8b95ab;
+
+      --success:#0d7a3e;
+      --warning:#b45309;
+      --danger:#c41e1e;
+      --info:#0b6e66;
+
+      --radius:14px;
+      --radius-lg:18px;
+
+      --shadow-sm:0 1px 2px rgba(10,15,26,.04), 0 4px 12px rgba(10,15,26,.06);
+      --shadow-md:0 8px 24px rgba(10,15,26,.08);
+      --shadow-lg:0 18px 48px rgba(10,15,26,.12);
+
+      --sidebar-width:272px;
+      --sidebar-width-collapsed:78px;
+      --content-max:1400px;
+    }
+
+    body.evalua-sidebar-collapsed{
+      --sidebar-width:var(--sidebar-width-collapsed);
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      *,*::before,*::after{
+        animation-duration:0.01ms !important;
+        animation-iteration-count:1 !important;
+        transition-duration:0.01ms !important;
+      }
+    }
+
+    html, body{
+      min-height:100%;
+    }
+
+    body{
+      font-family:var(--font-sans);
+      background:
+        radial-gradient(1000px 520px at 0% -10%, rgba(30,58,95,.07), transparent 55%),
+        radial-gradient(800px 480px at 100% 0%, rgba(196,163,90,.05), transparent 45%),
+        var(--bg);
+      color:var(--text);
+      font-size:15px;
+      font-weight:450;
+      letter-spacing:-.01em;
+      margin:0;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+
+    a{
+      text-decoration:none;
+    }
+
+    .sidebar{
+      width:var(--sidebar-width);
+      height:100vh;
+      position:fixed;
+      top:0;
+      left:0;
+      overflow-x:hidden;
+      overflow-y:auto;
+      background:
+        linear-gradient(165deg, var(--sidebar-bg-top) 0%, var(--sidebar-bg-mid) 42%, var(--sidebar-bg) 100%);
+      padding:0;
+      display:flex;
+      flex-direction:column;
+      border-right:1px solid var(--sidebar-border);
+      z-index:1030;
+      box-shadow:
+        inset -1px 0 0 rgba(255,255,255,.03),
+        8px 0 40px rgba(2,4,10,.35);
+      transition:width .32s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .sidebar::before{
+      content:"";
+      position:absolute;
+      inset:0 0 0 0;
+      pointer-events:none;
+      background:linear-gradient(180deg, rgba(196,163,90,.06) 0%, transparent 28%);
+    }
+
+    .sidebar::-webkit-scrollbar{ width:6px; }
+    .sidebar::-webkit-scrollbar-thumb{
+      background:rgba(255,255,255,.12);
+      border-radius:10px;
+    }
+
+    .sidebar-brand-row{
+      position:relative;
+      z-index:1;
+      display:flex;
+      align-items:center;
+      gap:.65rem;
+      padding:1rem 1rem .85rem 1rem;
+      border-bottom:1px solid var(--sidebar-border);
+      flex-shrink:0;
+    }
+
+    .brand-logo{
+      width:42px;
+      height:42px;
+      border-radius:12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:linear-gradient(145deg, rgba(196,163,90,.95) 0%, #8a6f2d 100%);
+      color:#0a0f1a;
+      font-weight:800;
+      font-size:17px;
+      letter-spacing:-.03em;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.12) inset,
+        0 10px 28px rgba(0,0,0,.35);
+      flex-shrink:0;
+    }
+
+    .brand-text-wrap{
+      min-width:0;
+      flex:1;
+      transition:opacity .22s ease, transform .22s ease;
+    }
+
+    body.evalua-sidebar-collapsed .brand-text-wrap{
+      display:none;
+    }
+
+    .brand-title{
+      font-weight:800;
+      letter-spacing:-.02em;
+      color:#fff;
+      line-height:1.15;
+      margin:0;
+      font-size:1.02rem;
+    }
+
+    .brand-sub{
+      font-size:.72rem;
+      font-weight:600;
+      text-transform:uppercase;
+      letter-spacing:.12em;
+      color:var(--accent-premium);
+      margin-top:4px;
+      opacity:.95;
+    }
+
+    .sidebar-collapse-btn{
+      flex-shrink:0;
+      width:36px;
+      height:36px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.1);
+      background:rgba(255,255,255,.05);
+      color:var(--sidebar-text-soft);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      transition:background .18s ease, color .18s ease, border-color .18s ease;
+    }
+
+    .sidebar-collapse-btn:hover{
+      background:rgba(255,255,255,.1);
+      color:#fff;
+      border-color:rgba(196,163,90,.35);
+    }
+
+    body.evalua-sidebar-collapsed .sidebar-brand-row{
+      justify-content:center;
+      flex-wrap:wrap;
+      padding:.85rem .45rem;
+      gap:.55rem;
+    }
+
+    .sidebar-nav-wrap{
+      position:relative;
+      z-index:1;
+      padding:.35rem .65rem 1rem .65rem;
+      flex:1;
+    }
+
+    .sidebar-section-title{
+      font-size:.68rem;
+      text-transform:uppercase;
+      letter-spacing:.14em;
+      color:var(--sidebar-text-soft);
+      padding:1rem .85rem .4rem .85rem;
+      font-weight:700;
+      margin:0;
+      transition:opacity .2s ease, padding .28s ease, font-size .28s ease;
+    }
+
+    .sidebar-section-text{
+      display:inline-block;
+    }
+
+    body.evalua-sidebar-collapsed .sidebar-section-title{
+      padding:.55rem .5rem;
+      font-size:0;
+      letter-spacing:0;
+      color:transparent;
+    }
+
+    body.evalua-sidebar-collapsed .sidebar-section-title::after{
+      content:"";
+      display:block;
+      height:1px;
+      margin:0 .35rem;
+      background:linear-gradient(90deg, transparent, rgba(196,163,90,.35), transparent);
+    }
+
+    .nav-item-evalua{
+      position:relative;
+      display:flex;
+      align-items:center;
+      gap:.65rem;
+      padding:.55rem .65rem;
+      border-radius:11px;
+      color:var(--sidebar-text);
+      font-weight:600;
+      font-size:.9rem;
+      letter-spacing:-.015em;
+      transition:background .18s ease, color .18s ease, box-shadow .18s ease;
+      margin-bottom:.2rem;
+      border:1px solid transparent;
+    }
+
+    .nav-item-icon-wrap{
+      width:36px;
+      height:36px;
+      border-radius:10px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      flex-shrink:0;
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.06);
+      transition:background .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+
+    .nav-item-icon-wrap i{
+      font-size:1.05rem;
+      opacity:.92;
+    }
+
+    .nav-item-label{
+      white-space:nowrap;
+      transition:opacity .2s ease, transform .22s ease;
+    }
+
+    body.evalua-sidebar-collapsed .nav-item-label{
+      opacity:0;
+      transform:translateX(-6px);
+      width:0;
+      overflow:hidden;
+      pointer-events:none;
+    }
+
+    body.evalua-sidebar-collapsed .nav-item-evalua{
+      justify-content:center;
+      padding:.55rem .45rem;
+    }
+
+    body.evalua-sidebar-collapsed .nav-item-icon-wrap{
+      margin:0;
+    }
+
+    .nav-item-evalua:hover{
+      background:var(--sidebar-hover);
+      color:#fff;
+    }
+
+    .nav-item-evalua:hover .nav-item-icon-wrap{
+      background:rgba(255,255,255,.1);
+      border-color:rgba(255,255,255,.1);
+    }
+
+    .nav-item-evalua.active{
+      background:linear-gradient(90deg, var(--accent-premium-soft), rgba(255,255,255,.03));
+      border:1px solid rgba(196,163,90,.22);
+      color:#fff;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.02);
+    }
+
+    .nav-item-evalua.active .nav-item-icon-wrap{
+      background:rgba(196,163,90,.2);
+      border-color:rgba(196,163,90,.4);
+      box-shadow:0 0 22px var(--accent-glow);
+    }
+
+    .nav-item-evalua.active::before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:50%;
+      transform:translateY(-50%);
+      width:3px;
+      height:56%;
+      border-radius:0 4px 4px 0;
+      background:linear-gradient(180deg, #e8d9a8, var(--accent-premium), #7d6428);
+      box-shadow:0 0 12px rgba(196,163,90,.5);
+    }
+
+    .sidebar-footer{
+      position:relative;
+      z-index:1;
+      margin-top:auto;
+      padding:1rem .85rem 1rem .85rem;
+      color:var(--sidebar-text-soft);
+      font-size:.74rem;
+      border-top:1px solid var(--sidebar-border);
+      background:linear-gradient(0deg, rgba(0,0,0,.25), transparent);
+    }
+
+    .sidebar-footer-badge{
+      display:inline-flex;
+      align-items:center;
+      gap:.35rem;
+      padding:.2rem .5rem;
+      border-radius:999px;
+      font-size:.65rem;
+      font-weight:800;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      background:rgba(196,163,90,.12);
+      color:var(--accent-premium);
+      border:1px solid rgba(196,163,90,.25);
+      margin-bottom:.45rem;
+    }
+
+    .sidebar-footer-line{
+      font-weight:600;
+      color:rgba(232,236,244,.82);
+    }
+
+    body.evalua-sidebar-collapsed .sidebar-footer .sidebar-footer-meta{
+      display:none;
+    }
+
+    .main{
+      margin-left:var(--sidebar-width);
+      padding:1.1rem 1.35rem 2.25rem 1.35rem;
+      min-height:100vh;
+      max-width:calc(100vw);
+      transition:margin-left .32s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .main-inner{
+      max-width:var(--content-max);
+      margin:0 auto;
+    }
+
+    .topbar{
+      background:rgba(255,255,255,.88);
+      backdrop-filter:blur(14px);
+      -webkit-backdrop-filter:blur(14px);
+      border:1px solid var(--border);
+      border-radius:var(--radius-lg);
+      box-shadow:var(--shadow-sm);
+      padding:.88rem 1.05rem;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:1rem;
+      position:sticky;
+      top:.75rem;
+      z-index:1020;
+    }
+
+    .topbar::after{
+      content:"";
+      position:absolute;
+      left:1rem;
+      right:1rem;
+      bottom:0;
+      height:1px;
+      background:linear-gradient(90deg, transparent, rgba(196,163,90,.25), transparent);
+      opacity:.6;
+      pointer-events:none;
+    }
+
+    .topbar-left{ min-width:0; flex:1; }
+    .topbar-right{
+      display:flex;
+      align-items:center;
+      gap:.55rem;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    .brandline{
+      font-weight:800;
+      font-size:1.02rem;
+      display:flex;
+      align-items:center;
+      gap:.45rem;
+      color:var(--text);
+      margin-bottom:.18rem;
+      line-height:1.15;
+      letter-spacing:-.02em;
+    }
+
+    .brandline i{
+      color:var(--primary);
+    }
+
+    .breadcrumb{
+      font-size:.84rem;
+      margin-bottom:0;
+      --bs-breadcrumb-divider-color:var(--text-soft);
+    }
+
+    .breadcrumb-item a{
+      color:var(--text-soft);
+      font-weight:500;
+    }
+
+    .breadcrumb-item.active{
+      color:var(--text);
+      font-weight:700;
+    }
+
+    .page-header{
+      margin-top:1.05rem;
+      margin-bottom:.75rem;
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:1rem;
+      flex-wrap:wrap;
+    }
+
+    .page-title{
+      font-weight:800;
+      font-size:1.42rem;
+      margin:0;
+      letter-spacing:-.03em;
+      color:var(--text);
+    }
+
+    .page-subtitle{
+      color:var(--text-soft);
+      margin-top:.3rem;
+      font-size:.94rem;
+      font-weight:500;
+      max-width:920px;
+      line-height:1.5;
+    }
+
+    .hero-card{
+      background:linear-gradient(135deg, #fff 0%, #f9fafc 50%, #f1f4f9 100%);
+      border:1px solid var(--border);
+      border-radius:var(--radius-lg);
+      box-shadow:var(--shadow-sm);
+      padding:1.15rem 1.3rem;
+      margin-top:1rem;
+      position:relative;
+      overflow:hidden;
+    }
+
+    .hero-card::before{
+      content:"";
+      position:absolute;
+      inset:0 auto 0 0;
+      width:4px;
+      border-radius:2px 0 0 2px;
+      background:linear-gradient(180deg, var(--accent-premium), var(--primary));
+    }
+
+    .hero-title{
+      font-size:1.08rem;
+      font-weight:800;
+      margin:0 0 .28rem 0;
+      color:var(--text);
+      letter-spacing:-.02em;
+    }
+
+    .hero-desc{
+      margin:0;
+      color:var(--text-soft);
+      line-height:1.55;
+      font-weight:500;
+    }
+
+    .card{
+      border-radius:var(--radius-lg);
+      border:1px solid var(--border);
+      box-shadow:var(--shadow-sm);
+      overflow:hidden;
+      background:#fff;
+    }
+
+    .card:hover{
+      box-shadow:var(--shadow-md);
+      transition:box-shadow .22s ease;
+    }
+
+    .card-header{
+      background:linear-gradient(180deg, #fff, #fafbfe);
+      border-bottom:1px solid var(--border);
+      font-weight:700;
+      letter-spacing:-.01em;
+    }
+
+    .table{
+      --bs-table-bg: transparent;
+      font-size:14px;
+      vertical-align:middle;
+      margin-bottom:0;
+    }
+
+    .table thead{
+      background:linear-gradient(180deg, #f0f2f8, #e8ecf4);
+      font-weight:700;
+    }
+
+    .table thead th{
+      border-bottom:1px solid var(--border);
+      color:var(--secondary-soft);
+      white-space:nowrap;
+      font-size:.82rem;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+    }
+
+    .table-hover tbody tr:hover{
+      background:rgba(30,58,95,.04);
+    }
+
+    .btn{
+      border-radius:10px;
+      font-weight:650;
+      letter-spacing:-.01em;
+    }
+
+    .btn-primary{
+      background:linear-gradient(180deg, #254a7a, var(--primary));
+      border-color:var(--primary);
+      box-shadow:0 4px 14px rgba(30,58,95,.22);
+    }
+
+    .btn-primary:hover{
+      background:linear-gradient(180deg, var(--primary-hover), #0f1f33);
+      border-color:var(--primary-hover);
+    }
+
+    .btn-light{
+      background:#fff;
+      border:1px solid var(--border);
+    }
+
+    .btn-light:hover{
+      background:var(--surface-soft);
+      border-color:var(--border-strong);
+    }
+
+    .alert{
+      border-radius:12px;
+      border:1px solid rgba(0,0,0,.04);
+      box-shadow:var(--shadow-sm);
+      font-weight:550;
+    }
+
+    .surface{
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:var(--radius-lg);
+      box-shadow:var(--shadow-sm);
+    }
+
+    .page-content{
+      margin-top:1rem;
+    }
+
+    .text-soft{
+      color:var(--text-soft);
+    }
+
+    .form-control, .form-select{
+      border-radius:10px;
+      border-color:var(--border);
+      font-weight:500;
+    }
+
+    .form-control:focus, .form-select:focus{
+      border-color:rgba(30,58,95,.45);
+      box-shadow:0 0 0 3px var(--primary-ring);
+    }
+
+    .form-label{
+      font-weight:650;
+      font-size:.86rem;
+      color:var(--secondary-soft);
+      letter-spacing:-.01em;
+    }
+
+    .badge.bg-primary{
+      background-color:var(--primary) !important;
+    }
+
+    h1, h2, h3, h4, h5, h6{
+      font-family:var(--font-sans);
+      letter-spacing:-.02em;
+    }
+
+    .mobile-menu-btn{
+      display:none;
+    }
+
+    .offcanvas.offcanvas-start{
+      width:300px;
+      background:linear-gradient(165deg, var(--sidebar-bg-top) 0%, var(--sidebar-bg) 100%);
+      color:#fff;
+      border-right:none;
+    }
+
+    .offcanvas-header{
+      border-bottom:1px solid var(--sidebar-border);
+    }
+
+    .offcanvas-title{
+      font-weight:800;
+      letter-spacing:-.02em;
+    }
+
+    .offcanvas .nav-item-evalua{
+      color:var(--sidebar-text);
+    }
+
+    .offcanvas .nav-item-evalua:hover,
+    .offcanvas .nav-item-evalua.active{
+      color:#fff;
+    }
+
+    @media (max-width: 991px){
+      .sidebar{
+        display:none !important;
+      }
+
+      .main{
+        margin-left:0;
+        padding:1rem;
+      }
+
+      .topbar{
+        top:.5rem;
+        padding:.82rem .9rem;
+      }
+
+      .mobile-menu-btn{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+      }
+
+      .brandline{
+        font-size:.96rem;
+      }
+
+      .page-title{
+        font-size:1.22rem;
+      }
+
+      .page-header{
+        margin-top:.85rem;
+      }
+    }
+
+    /* Avisos globales (premium): usan msg + sev desde contexto o query string */
+    .alert.evalua-flash-premium{
+      --bs-alert-bg: transparent;
+      --bs-alert-border-color: var(--border);
+      --bs-alert-color: var(--text);
+    }
+    .evalua-flash-premium{
+      display:flex;
+      align-items:flex-start;
+      gap:0.9rem;
+      border-radius:var(--radius);
+      border:1px solid var(--border);
+      padding:1rem 2.75rem 1rem 1.05rem;
+      position:relative;
+      box-shadow:var(--shadow-sm);
+      background:var(--surface);
+      max-width:min(56rem, 100%);
+    }
+    .evalua-flash-premium .evalua-flash__icon{
+      flex-shrink:0;
+      width:2.4rem;
+      height:2.4rem;
+      border-radius:12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:1.2rem;
+    }
+    .evalua-flash-premium__body{min-width:0; flex:1;}
+    .evalua-flash-premium__title{
+      font-size:.68rem;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      font-weight:700;
+      color:var(--text-soft);
+      margin-bottom:.25rem;
+    }
+    .evalua-flash-premium__text{
+      font-size:0.95rem;
+      color:var(--text);
+      line-height:1.45;
+    }
+    .evalua-flash-premium .btn-close{
+      position:absolute;
+      top:0.75rem;
+      right:0.75rem;
+      opacity:0.55;
+    }
+    .evalua-flash-premium .btn-close:hover{opacity:1;}
+    .evalua-flash-premium--success{
+      border-left:4px solid var(--success);
+      background:linear-gradient(135deg, rgba(13,122,62,.07) 0%, var(--surface) 42%);
+    }
+    .evalua-flash-premium--success .evalua-flash__icon{
+      background:rgba(13,122,62,.14);
+      color:var(--success);
+    }
+    .evalua-flash-premium--danger{
+      border-left:4px solid var(--danger);
+      background:linear-gradient(135deg, rgba(196,30,30,.06) 0%, var(--surface) 42%);
+    }
+    .evalua-flash-premium--danger .evalua-flash__icon{
+      background:rgba(196,30,30,.12);
+      color:var(--danger);
+    }
+    .evalua-flash-premium--warning{
+      border-left:4px solid var(--warning);
+      background:linear-gradient(135deg, rgba(180,83,9,.1) 0%, var(--surface) 45%);
+    }
+    .evalua-flash-premium--warning .evalua-flash__icon{
+      background:rgba(180,83,9,.14);
+      color:var(--warning);
+    }
+    .evalua-flash-premium--info{
+      border-left:4px solid var(--info);
+      background:linear-gradient(135deg, rgba(11,110,102,.08) 0%, var(--surface) 42%);
+    }
+    .evalua-flash-premium--info .evalua-flash__icon{
+      background:rgba(11,110,102,.12);
+      color:var(--info);
+    }
+  </style>
+
+  {# Token CSRF global (sesión). El script al final inyecta/actualiza el campo en formularios POST. #}
+  <meta name="csrf-token" content="{{ request.session.get('csrf_global', '') if request.session else '' }}"/>
+
+  {% block head %}{% endblock %}
+</head>
+
+<body>
+  {% set current_menu = active_menu|default('') %}
+  {% import "layout/_nav_macros.html" as erp_nav %}
+
+  <aside class="sidebar d-none d-lg-flex">
+    <div class="sidebar-brand-row">
+      <div class="brand-logo">E</div>
+      <div class="brand-text-wrap">
+        <div class="brand-title">Evalua ERP</div>
+        <div class="brand-sub">Suite empresarial</div>
+      </div>
+      <button type="button" class="sidebar-collapse-btn" id="sidebarToggle" title="Contraer menú" aria-label="Contraer o expandir menú lateral">
+        <i class="bi bi-chevron-double-left" aria-hidden="true"></i>
+      </button>
+    </div>
+
+    <nav class="sidebar-nav-wrap" aria-label="Módulos del sistema">
+      {{ erp_nav.operaciones(request, current_menu, true) }}
+      {{ erp_nav.maestros(request, current_menu, true) }}
+      {% block sidebar_maestros_extra %}{% endblock %}
+      {{ erp_nav.finanzas(request, current_menu, true) }}
+      {% block sidebar_finanzas_extra %}{% endblock %}
+      {{ erp_nav.administracion(request, current_menu, true) }}
+      {% block sidebar_extra %}{% endblock %}
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-badge"><i class="bi bi-gem" aria-hidden="true"></i> Premium</div>
+      <div class="sidebar-footer-line">Evalua ERP</div>
+      <div class="sidebar-footer-meta text-soft" style="color:rgba(139,149,171,.95); margin-top:2px;">
+        Control unificado · Multi-módulo
+      </div>
+    </div>
+  </aside>
+
+  <div class="offcanvas offcanvas-start" tabindex="-1" id="mobileSidebar" aria-labelledby="mobileSidebarLabel">
+    <div class="offcanvas-header">
+      <div class="d-flex align-items-center gap-2">
+        <div class="brand-logo">E</div>
+        <div>
+          <div class="offcanvas-title" id="mobileSidebarLabel">Evalua ERP</div>
+          <div class="brand-sub">Suite empresarial</div>
+        </div>
+      </div>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+    </div>
+
+    <div class="offcanvas-body">
+      <nav aria-label="Módulos del sistema">
+        {{ erp_nav.operaciones(request, current_menu, false) }}
+        {{ erp_nav.maestros(request, current_menu, false) }}
+        {% block mobile_sidebar_maestros_extra %}{% endblock %}
+        {{ erp_nav.finanzas(request, current_menu, false) }}
+        {% block mobile_sidebar_finanzas_extra %}{% endblock %}
+        {{ erp_nav.administracion(request, current_menu, false) }}
+        {% block mobile_sidebar_extra %}{% endblock %}
+      </nav>
+    </div>
+  </div>
+
+  <main class="main">
+    <div class="main-inner">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <button class="btn btn-light mobile-menu-btn"
+                  type="button"
+                  data-bs-toggle="offcanvas"
+                  data-bs-target="#mobileSidebar"
+                  aria-controls="mobileSidebar">
+            <i class="bi bi-list fs-5"></i>
+          </button>
+
+          <div class="brandline">
+            <i class="bi bi-grid-1x2-fill"></i>
+            Evalua ERP
+          </div>
+        </div>
+
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb">
+            {% block breadcrumbs %}
+            <li class="breadcrumb-item">
+              <a href="{{ request.url_for('menu_principal') }}">Inicio</a>
+            </li>
+            {% endblock %}
+          </ol>
+        </nav>
+      </div>
+
+      <div class="topbar-right d-flex align-items-center gap-2">
+        {% block topbar_right %}
+        {% if request.state.auth_user %}
+        <div class="dropdown">
+          <button class="btn btn-light btn-sm dropdown-toggle d-flex align-items-center gap-2 py-1 px-2"
+                  type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                  style="border-radius:999px;border:1px solid var(--border);">
+            <span class="rounded-circle d-inline-flex align-items-center justify-content-center"
+                  style="width:30px;height:30px;background:var(--primary-soft);color:var(--primary);font-weight:800;font-size:.75rem;">
+              {{ (request.state.auth_user.nombre or request.state.auth_user.email or '?')[0]|upper }}
+            </span>
+            <span class="d-none d-md-inline small fw-semibold text-truncate" style="max-width:12rem;">
+              {{ request.state.auth_user.nombre or request.state.auth_user.email }}
+            </span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="min-width:220px;border-radius:14px;">
+            <li class="px-3 py-2 border-bottom border-light">
+              <div class="small fw-bold text-truncate">{{ request.state.auth_user.nombre }}</div>
+              <div class="small text-muted text-truncate">{{ request.state.auth_user.email }}</div>
+              {% if request.state.auth_user.roles %}
+              <div class="mt-1 d-flex flex-wrap gap-1">
+                {% for r in request.state.auth_user.roles %}
+                <span class="badge rounded-pill bg-light text-dark border" style="font-size:.65rem;">{{ r }}</span>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </li>
+            {% if request.state.auth_user and 'ADMIN' in (request.state.auth_user.roles or []) %}
+            <li>
+              <a class="dropdown-item fw-semibold" href="{{ request.url_for('seguridad_usuarios') }}">
+                <i class="bi bi-shield-lock me-1"></i> Usuarios y roles
+              </a>
+            </li>
+            {% endif %}
+            <li>
+              <form method="post" action="{{ request.url_for('auth_logout') }}" class="m-0">
+                <button type="submit" class="dropdown-item text-danger fw-semibold">
+                  <i class="bi bi-box-arrow-right me-1"></i> Cerrar sesión
+                </button>
+              </form>
+            </li>
+          </ul>
+        </div>
+        {% endif %}
+        {% endblock %}
+      </div>
+    </div>
+
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">{% block page_title %}{% endblock %}</h1>
+        {% block page_subtitle %}{% endblock %}
+      </div>
+
+      <div>
+        {% block page_actions %}{% endblock %}
+      </div>
+    </div>
+
+    {% block hero %}
+    {% if self.hero_title()|trim or self.hero_desc()|trim %}
+    <section class="hero-card">
+      {% if self.hero_title()|trim %}
+      <h2 class="hero-title">{% block hero_title %}{% endblock %}</h2>
+      {% endif %}
+      {% if self.hero_desc()|trim %}
+      <p class="hero-desc">{% block hero_desc %}{% endblock %}</p>
+      {% endif %}
+    </section>
+    {% endif %}
+    {% endblock %}
+
+    {% set _msg_ctx = msg|default(None) %}
+    {% set _sev_ctx = sev|default('info') %}
+    {% set _msg_qs = request.query_params.get('msg') if request and request.query_params else None %}
+    {% set _sev_qs = request.query_params.get('sev') if request and request.query_params else 'info' %}
+    {% set _msg = _msg_ctx or _msg_qs %}
+    {% set _sev = _sev_ctx if _msg_ctx else _sev_qs %}
+
+    {% if _msg %}
+      {% set _sev_final = (_sev or 'info')|string %}
+      <div class="alert evalua-flash-premium evalua-flash-premium--{{ _sev_final }} alert-dismissible fade show mt-3 border-0" role="status">
+        <div class="evalua-flash__icon" aria-hidden="true">
+          {% if _sev_final == 'success' %}<i class="bi bi-check-circle-fill"></i>
+          {% elif _sev_final == 'danger' %}<i class="bi bi-exclamation-octagon-fill"></i>
+          {% elif _sev_final == 'warning' %}<i class="bi bi-shield-exclamation"></i>
+          {% else %}<i class="bi bi-info-circle-fill"></i>{% endif %}
+        </div>
+        <div class="evalua-flash-premium__body">
+          <div class="evalua-flash-premium__title">
+            {% if _sev_final == 'success' %}Operación completada
+            {% elif _sev_final == 'danger' %}Requiere su atención
+            {% elif _sev_final == 'warning' %}Importante
+            {% else %}Información{% endif %}
+          </div>
+          <div class="evalua-flash-premium__text">{{ _msg }}</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+      </div>
+    {% endif %}
+
+    <div class="page-content">
+      {% block content %}{% endblock %}
+    </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    (function () {
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      if (meta) {
+        var tok = (meta.getAttribute("content") || "").trim();
+        function isLoginForm(form) {
+          var action = (form.getAttribute("action") || "").toLowerCase();
+          if (action.indexOf("/login") !== -1) return true;
+          var base = action.split("?")[0];
+          if (base.endsWith("/login")) return true;
+          return false;
+        }
+        document.querySelectorAll("form").forEach(function (form) {
+          var m = (form.getAttribute("method") || "get").toLowerCase();
+          if (m !== "post") return;
+          if (isLoginForm(form)) return;
+          var existing = form.querySelector('input[name="csrf_token"]');
+          if (existing) {
+            existing.value = tok;
+            return;
+          }
+          if (!tok) return;
+          var inp = document.createElement("input");
+          inp.type = "hidden";
+          inp.name = "csrf_token";
+          inp.value = tok;
+          inp.setAttribute("autocomplete", "off");
+          form.insertBefore(inp, form.firstChild);
+        });
+      }
+    })();
+  </script>
+  <script>
+    (function () {
+      var KEY = 'evalua-sidebar-collapsed';
+      var body = document.body;
+      var btn = document.getElementById('sidebarToggle');
+      if (!btn) return;
+
+      function apply(collapsed) {
+        body.classList.toggle('evalua-sidebar-collapsed', collapsed);
+        var icon = btn.querySelector('i');
+        if (icon) {
+          icon.className = collapsed ? 'bi bi-chevron-double-right' : 'bi bi-chevron-double-left';
+        }
+        btn.setAttribute('title', collapsed ? 'Expandir menú' : 'Contraer menú');
+        btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      }
+
+      apply(localStorage.getItem(KEY) === '1');
+
+      btn.addEventListener('click', function () {
+        var next = !body.classList.contains('evalua-sidebar-collapsed');
+        apply(next);
+        localStorage.setItem(KEY, next ? '1' : '0');
+      });
+    })();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

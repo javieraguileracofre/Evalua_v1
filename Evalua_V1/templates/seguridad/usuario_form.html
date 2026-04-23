@@ -1,0 +1,104 @@
+{% extends "layout/base.html" %}
+{% block title %}{% if modo == 'nuevo' %}Nuevo usuario{% else %}Editar usuario{% endif %} · Seguridad{% endblock %}
+{% block page_title %}{% if modo == 'nuevo' %}Nuevo usuario{% else %}Editar usuario{% endif %}{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('seguridad_usuarios') }}">Usuarios y roles</a></li>
+<li class="breadcrumb-item active">{% if modo == 'nuevo' %}Nuevo{% else %}Editar{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+{% if form_error is defined and form_error %}
+<div class="alert alert-danger border-0 shadow-sm mb-3">{{ form_error }}</div>
+{% endif %}
+
+<form method="post"
+      action="{% if modo == 'nuevo' %}{{ request.url_for('seguridad_usuario_crear') }}{% else %}{{ request.url_for('seguridad_usuario_actualizar', usuario_id=usuario.id) }}{% endif %}"
+      class="card border-0 shadow-sm">
+  <div class="card-body row g-3">
+    {% if modo == 'nuevo' %}
+    <div class="col-md-6">
+      <label class="form-label">Correo electrónico</label>
+      <input type="email" name="email" class="form-control" required autocomplete="username"
+             value="{{ form_values.email if form_values is defined else '' }}">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Nombre completo</label>
+      <input type="text" name="nombre_completo" class="form-control" required
+             value="{{ form_values.nombre_completo if form_values is defined else '' }}">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Contraseña</label>
+      <input type="password" name="password" class="form-control" required minlength="10" autocomplete="new-password"
+             placeholder="Mínimo 10 caracteres">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Confirmar contraseña</label>
+      <input type="password" name="password_confirm" class="form-control" required minlength="10" autocomplete="new-password">
+    </div>
+    {% else %}
+    <div class="col-12">
+      <label class="form-label">Correo electrónico</label>
+      <input type="email" class="form-control" value="{{ usuario.email }}" disabled readonly>
+      <div class="form-text">El correo no se puede cambiar desde esta pantalla.</div>
+    </div>
+    <div class="col-md-8">
+      <label class="form-label">Nombre completo</label>
+      <input type="text" name="nombre_completo" class="form-control" required value="{{ usuario.nombre_completo }}">
+    </div>
+    <div class="col-md-4 d-flex align-items-end">
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="activo" id="activo" value="on" {% if usuario.activo %}checked{% endif %}>
+        <label class="form-check-label" for="activo">Usuario activo</label>
+      </div>
+    </div>
+    <div class="col-12">
+      <hr class="my-1">
+      <div class="fw-bold mb-2">Cambiar contraseña <span class="text-soft fw-normal small">(opcional)</span></div>
+      <div class="row g-2">
+        <div class="col-md-6">
+          <input type="password" name="password" class="form-control" minlength="10" autocomplete="new-password" placeholder="Nueva contraseña">
+        </div>
+        <div class="col-md-6">
+          <input type="password" name="password_confirm" class="form-control" minlength="10" autocomplete="new-password" placeholder="Repetir nueva contraseña">
+        </div>
+      </div>
+      <div class="form-text">Deje en blanco para mantener la contraseña actual.</div>
+    </div>
+    {% endif %}
+
+    {% if modo == 'nuevo' %}
+    <div class="col-12">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="activo" id="activo_nuevo" value="on"
+               {% if form_values is not defined or (form_values is defined and form_values['activo']) %}checked{% endif %}>
+        <label class="form-check-label" for="activo_nuevo">Usuario activo</label>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="col-12">
+      <label class="form-label">Roles asignados</label>
+      <div class="row g-2">
+        {% for rol in roles_todos %}
+        <div class="col-md-6 col-lg-4">
+          <div class="form-check border rounded-3 px-3 py-2 h-100" style="border-color:var(--border)!important;">
+            <input class="form-check-input" type="checkbox" name="roles" value="{{ rol.codigo }}" id="rol_{{ rol.codigo }}"
+                   {% if rol.codigo in roles_asignados %}checked{% endif %}>
+            <label class="form-check-label w-100" for="rol_{{ rol.codigo }}">
+              <span class="fw-bold">{{ rol.codigo }}</span>
+              <span class="d-block text-soft small">{{ rol.nombre }}</span>
+            </label>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="col-12 pt-2">
+      <button type="submit" class="btn btn-primary">{% if modo == 'nuevo' %}Crear usuario{% else %}Guardar cambios{% endif %}</button>
+      <a href="{{ request.url_for('seguridad_usuarios') }}" class="btn btn-outline-secondary">Volver al listado</a>
+    </div>
+  </div>
+</form>
+{% endblock %}

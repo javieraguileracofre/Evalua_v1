@@ -1,0 +1,48 @@
+{% extends "layout/base.html" %}
+{% block title %}Nuevo anticipo · Fondos por rendir{% endblock %}
+{% block page_title %}Nuevo anticipo{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('fondos_rendir_hub') }}">Fondos por rendir</a></li>
+<li class="breadcrumb-item active">Nuevo</li>
+{% endblock %}
+
+{% block content %}
+<form method="post" action="{{ request.url_for('fondos_rendir_fondo_crear') }}" class="card border-0 shadow-sm">
+  <div class="card-body row g-3">
+    <div class="col-md-6">
+      <label class="form-label">Trabajador</label>
+      <select name="empleado_id" class="form-select" required>
+        <option value="">Seleccione</option>
+        {% for e in empleados %}
+        <option value="{{ e.id }}">{{ e.nombre_completo }} ({{ e.rut }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Vehículo (opcional)</label>
+      <select name="vehiculo_transporte_id" class="form-select">
+        <option value="">—</option>
+        {% for v in vehiculos %}
+        <option value="{{ v.id }}">{{ v.patente }} — {{ v.marca }} {{ v.modelo }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Monto anticipo</label>
+      <input type="text" name="monto_anticipo" class="form-control" required placeholder="0">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Fecha y hora entrega</label>
+      <input type="datetime-local" name="fecha_entrega" class="form-control" required value="{{ fecha_default }}">
+    </div>
+    <div class="col-12">
+      <label class="form-label">Observaciones</label>
+      <textarea name="observaciones" class="form-control" rows="2" placeholder="Viaje, cliente de carga, etc."></textarea>
+    </div>
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">Crear anticipo</button>
+      <a href="{{ request.url_for('fondos_rendir_hub') }}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+  </div>
+</form>
+{% endblock %}

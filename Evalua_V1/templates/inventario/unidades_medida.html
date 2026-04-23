@@ -1,0 +1,231 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Unidades de medida · Evalua_V1{% endblock title %}
+{% block nav_operaciones_active %}active{% endblock nav_operaciones_active %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('productos_list') }}">Inventario</a></li>
+<li class="breadcrumb-item active" aria-current="page">Unidades de medida</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Unidades de medida{% endblock page_title %}
+
+{% block content %}
+
+{% set total_unidades = unidades|length %}
+{% set con_simbolo = unidades|selectattr("simbolo")|list|length %}
+{% set sin_simbolo = total_unidades - con_simbolo %}
+{% set activas = unidades|selectattr("activo")|list|length %}
+{% set inactivas = total_unidades - activas %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+  <div>
+    <h2 class="h4 mb-1 fw-semibold">Unidades de medida</h2>
+    <div class="text-muted small">
+      Administra el maestro de unidades utilizado por productos, inventario, compras y operaciones del sistema.
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('productos_list') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left"></i> Volver a productos
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Total unidades</div>
+        <div class="fs-4 fw-semibold">{{ total_unidades }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Activas</div>
+        <div class="fs-4 fw-semibold text-success">{{ activas }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Con símbolo</div>
+        <div class="fs-4 fw-semibold text-primary">{{ con_simbolo }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Sin símbolo</div>
+        <div class="fs-4 fw-semibold text-warning">{{ sin_simbolo }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-0 pt-3 pb-0">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <h3 class="h6 mb-1 fw-semibold">Nueva unidad de medida</h3>
+        <div class="text-muted small">
+          Registra una unidad estándar para asegurar consistencia en precios, stock, compras y ventas.
+        </div>
+      </div>
+      <span class="badge rounded-pill text-bg-light border">Maestro transversal</span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    {% if error %}
+    <div class="alert alert-danger border-0 shadow-sm d-flex align-items-start gap-2 mb-3" role="alert">
+      <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+      <div>
+        <div class="fw-semibold">No fue posible guardar la unidad de medida</div>
+        <div class="small">{{ error }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <form method="post" action="{{ request.url_for('unidad_medida_create') }}">
+      <div class="row g-3 align-items-end">
+        <div class="col-lg-3">
+          <label class="form-label small fw-semibold">Código <span class="text-danger">*</span></label>
+          <input
+            type="text"
+            name="codigo"
+            class="form-control"
+            placeholder="Ej.: UND, KG, LT, M2"
+            value="{{ form_values.codigo if form_values else '' }}"
+            required
+          >
+          <div class="form-text">Código corto y único para uso operativo.</div>
+        </div>
+
+        <div class="col-lg-5">
+          <label class="form-label small fw-semibold">Nombre <span class="text-danger">*</span></label>
+          <input
+            type="text"
+            name="nombre"
+            class="form-control"
+            placeholder="Ej.: Unidad, Kilogramo, Litro, Metro cuadrado"
+            value="{{ form_values.nombre if form_values else '' }}"
+            required
+          >
+        </div>
+
+        <div class="col-lg-2">
+          <label class="form-label small fw-semibold">Símbolo</label>
+          <input
+            type="text"
+            name="simbolo"
+            class="form-control"
+            placeholder="u, kg, L, m²"
+            value="{{ form_values.simbolo if form_values else '' }}"
+          >
+        </div>
+
+        <div class="col-lg-2 d-grid">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Crear unidad
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <h3 class="h6 mb-1 fw-semibold">Listado de unidades</h3>
+        <div class="text-muted small">
+          Catálogo maestro disponible para productos y movimientos del inventario.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">
+        {{ total_unidades }} registro{{ '' if total_unidades == 1 else 's' }}
+      </span>
+    </div>
+  </div>
+
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width: 70px;">#</th>
+            <th style="min-width: 160px;">Código</th>
+            <th style="min-width: 240px;">Nombre</th>
+            <th style="min-width: 140px;">Símbolo</th>
+            <th class="text-center" style="width: 140px;">Estado</th>
+          </tr>
+        </thead>
+
+        <tbody>
+        {% for u in unidades %}
+          <tr>
+            <td class="text-muted">{{ loop.index }}</td>
+
+            <td>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge rounded-pill bg-primary-subtle text-primary">
+                  <i class="bi bi-rulers"></i>
+                </span>
+                <div>
+                  <div class="fw-semibold">{{ u.codigo }}</div>
+                  <div class="small text-muted">ID {{ u.id }}</div>
+                </div>
+              </div>
+            </td>
+
+            <td>
+              <div class="fw-semibold">{{ u.nombre }}</div>
+            </td>
+
+            <td>
+              {% if u.simbolo %}
+                <span class="badge rounded-pill bg-light text-dark border">
+                  {{ u.simbolo }}
+                </span>
+              {% else %}
+                <span class="text-muted">No informado</span>
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              {% if u.activo %}
+                <span class="badge bg-success">Activa</span>
+              {% else %}
+                <span class="badge bg-secondary">Inactiva</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="5" class="text-center text-muted py-5">
+              <div class="mb-2">
+                <i class="bi bi-rulers fs-2"></i>
+              </div>
+              <div class="fw-semibold">No hay unidades de medida registradas aún.</div>
+              <div class="small">Crea la primera unidad para comenzar a estandarizar el inventario.</div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}

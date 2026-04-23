@@ -1,0 +1,4 @@
+{# Macros compartidos Cuentas por pagar #}
+{% macro cxp_monto(v) -%}
+{{- "{:,.0f}".format((v or 0)|float).replace(",", "X").replace(".", ",").replace("X", ".") -}}
+{%- endmacro %}

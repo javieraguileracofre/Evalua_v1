@@ -1,0 +1,104 @@
+{% extends "layout/base.html" %}
+{% block title %}Hojas de ruta · Transporte{% endblock %}
+{% block page_title %}Hojas de ruta{% endblock %}
+{% block page_subtitle %}{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('transporte_hub') }}">Transporte</a></li>
+<li class="breadcrumb-item active">Listado</li>
+{% endblock %}
+
+{% block head %}
+<style>
+  .tp-list-intro .tp-list-title{ color: var(--text, #0a0f1a); font-weight: 800; letter-spacing: -.02em; }
+  .tp-list-intro .tp-list-sub{ color: #334155; font-weight: 500; max-width: 42rem; }
+  .tp-viajes-table thead{
+    background: linear-gradient(180deg, #e2e8f0, #d8e0ec) !important;
+  }
+  .tp-viajes-table thead th{
+    color: #0f172a !important; font-weight: 700; font-size: .78rem;
+    text-transform: uppercase; letter-spacing: .04em;
+    border-bottom: 1px solid #b8c5d8 !important;
+  }
+  .tp-viajes-toolbar label{ color: #334155; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tp-list-intro mb-3">
+  <h2 class="tp-list-title h5 mb-1">Centro de control · listado de viajes</h2>
+  <p class="tp-list-sub small mb-0">Filtre por estado o chofer; abra el detalle para iniciar salida, cerrar llegada o anular.</p>
+</div>
+
+{% if msg %}
+<div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show border-0 shadow-sm mb-3" role="alert">
+  {{ msg }}
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+</div>
+{% endif %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <form method="get" class="tp-viajes-toolbar d-flex flex-wrap gap-2 align-items-center">
+    <label class="small mb-0">Estado</label>
+    <select name="estado" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+      <option value="">Todos</option>
+      {% for e in estados_viaje %}
+      <option value="{{ e }}" {% if filtro_estado == e %}selected{% endif %}>{{ e|replace('_', ' ') }}</option>
+      {% endfor %}
+    </select>
+    <label class="small mb-0">Chofer</label>
+    <select name="empleado_id" class="form-select form-select-sm" style="width:auto;min-width:11rem" onchange="this.form.submit()">
+      <option value="">Todos</option>
+      {% for emp in empleados %}
+      <option value="{{ emp.id }}" {% if filtro_empleado_id == emp.id %}selected{% endif %}>{{ emp.nombre_completo }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <div class="d-flex gap-2">
+    <a href="{{ request.url_for('transporte_hub') }}" class="btn btn-outline-secondary btn-sm">Tablero</a>
+    <a href="{{ request.url_for('transporte_viaje_nuevo') }}" class="btn btn-primary btn-sm fw-semibold"><i class="bi bi-plus-lg"></i> Nueva</a>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0 tp-viajes-table">
+      <thead><tr>
+        <th>Folio</th><th>Estado</th><th>Chofer</th><th>Origen → Destino</th><th>Vehículo</th><th>Cliente</th><th class="text-end">Acciones</th>
+      </tr></thead>
+      <tbody>
+        {% for v in viajes %}
+        <tr>
+          <td class="fw-semibold">{{ v.folio }}</td>
+          <td>
+            {% if v.estado == 'CERRADO' %}<span class="badge bg-success-subtle text-success border border-success-subtle">{{ v.estado }}</span>
+            {% elif v.estado == 'EN_CURSO' %}<span class="badge bg-primary-subtle text-primary border border-primary-subtle">{{ v.estado }}</span>
+            {% elif v.estado == 'ANULADO' %}<span class="badge bg-secondary-subtle text-secondary border">{{ v.estado }}</span>
+            {% else %}<span class="badge bg-light text-dark border">{{ v.estado }}</span>{% endif %}
+          </td>
+          <td>{{ v.empleado.nombre_completo if v.empleado else '—' }}</td>
+          <td class="small">{{ v.origen }} → {{ v.destino }}</td>
+          <td class="small">{{ v.vehiculo.patente if v.vehiculo else '—' }}</td>
+          <td class="small">{{ v.cliente.razon_social if v.cliente else '—' }}</td>
+          <td class="text-end">
+            <div class="d-inline-flex gap-1">
+              <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('transporte_viaje_detalle', viaje_id=v.id) }}">Detalle</a>
+              {% if v.estado in ('BORRADOR', 'CERRADO') %}
+              <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('transporte_viaje_editar', viaje_id=v.id) }}">Editar</a>
+              {% endif %}
+              {% if v.estado in ('BORRADOR', 'ANULADO') %}
+              <form method="post" action="{{ request.url_for('transporte_viaje_eliminar', viaje_id=v.id) }}" onsubmit="return confirm('¿Borrar definitivamente esta hoja de ruta?');" class="d-inline">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Borrar</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-muted p-4">Sin registros con los filtros actuales.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

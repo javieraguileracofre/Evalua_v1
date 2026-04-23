@@ -1,0 +1,90 @@
+{% extends "layout/base.html" %}
+{% block title %}Orden {{ orden.folio }} · Taller{% endblock %}
+
+{% block page_title %}Orden {{ orden.folio }}{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('taller_hub') }}">Taller</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('taller_ordenes_lista') }}">Órdenes</a></li>
+<li class="breadcrumb-item active">{{ orden.folio }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a href="{{ request.url_for('taller_ordenes_lista') }}" class="btn btn-outline-secondary btn-sm">Listado</a>
+  <a href="{{ request.url_for('taller_orden_editar', orden_id=orden.id) }}" class="btn btn-primary btn-sm">Editar</a>
+  <a href="{{ request.url_for('taller_orden_imprimir', orden_id=orden.id) }}" class="btn btn-outline-dark btn-sm" target="_blank">Imprimir orden</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="text-muted text-uppercase small">Cliente</h6>
+        <p class="mb-1 fw-semibold">{{ orden.cliente.razon_social if orden.cliente else '—' }}</p>
+        <p class="mb-0 small text-muted">RUT: {{ orden.cliente.rut if orden.cliente else '—' }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="text-muted text-uppercase small">Vehículo</h6>
+        {% if orden.vehiculo %}
+        <p class="mb-1 fw-semibold">{{ orden.vehiculo.patente }}</p>
+        <p class="mb-0 small">{{ orden.vehiculo.marca }} {{ orden.vehiculo.modelo }} {% if orden.vehiculo.color %}· {{ orden.vehiculo.color }}{% endif %}</p>
+        {% else %}<p class="mb-0">—</p>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<dl class="row mt-3 small">
+  <dt class="col-sm-3">Estado</dt><dd class="col-sm-9">{{ orden.estado }}</dd>
+  <dt class="col-sm-3">Recepción</dt><dd class="col-sm-9">{{ orden.fecha_recepcion.strftime('%d-%m-%Y %H:%M') if orden.fecha_recepcion else '—' }}</dd>
+  <dt class="col-sm-3">Entrega est.</dt><dd class="col-sm-9">{{ orden.fecha_entrega_estimada.strftime('%d-%m-%Y %H:%M') if orden.fecha_entrega_estimada else '—' }}</dd>
+  <dt class="col-sm-3">Trabajo solicitado</dt><dd class="col-sm-9">{{ orden.trabajo_solicitado or '—' }}</dd>
+  <dt class="col-sm-3">Observaciones</dt><dd class="col-sm-9">{{ orden.observaciones or '—' }}</dd>
+  <dt class="col-sm-3">Combustible</dt><dd class="col-sm-9">{{ orden.nivel_combustible or '—' }}</dd>
+  <dt class="col-sm-3">Grúa</dt><dd class="col-sm-9">{% if orden.ingreso_grua is sameas true %}Sí{% elif orden.ingreso_grua is sameas false %}No{% else %}—{% endif %}</dd>
+  <dt class="col-sm-3">O.T.E / N°</dt><dd class="col-sm-9">{{ orden.ote_num or '—' }}</dd>
+  <dt class="col-sm-3">E-mail</dt><dd class="col-sm-9">{{ orden.email_contacto or '—' }}</dd>
+</dl>
+
+<div class="card border-0 shadow-sm mt-3">
+  <div class="card-header bg-white border-bottom py-2">
+    <h6 class="mb-0 fw-semibold">Cotización</h6>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead class="table-light small">
+          <tr><th>Cant.</th><th>Descripción</th><th class="text-end">P. unit.</th><th class="text-end">Neto</th></tr>
+        </thead>
+        <tbody class="small">
+          {% for L in orden.lineas_cotizacion|sort(attribute='linea') %}
+          <tr>
+            <td>{{ L.cantidad }}</td>
+            <td>{{ L.descripcion }}</td>
+            <td class="text-end">${{ '{:,.0f}'.format((L.precio_unitario or 0)|float).replace(',', '.') }}</td>
+            <td class="text-end fw-medium">${{ '{:,.0f}'.format(L.valor_neto|float).replace(',', '.') }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-muted text-center py-3">Sin líneas de cotización.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="border-top p-3 bg-light">
+      <div class="row justify-content-end">
+        <div class="col-md-4 small">
+          <div class="d-flex justify-content-between"><span>Subtotal neto</span><strong>${{ '{:,.0f}'.format(totales_cot.subtotal_neto|float).replace(',', '.') }}</strong></div>
+          <div class="d-flex justify-content-between text-muted"><span>IVA {% if orden.cotizacion_afecta_iva %}19%{% else %}—{% endif %}</span><span>${{ '{:,.0f}'.format(totales_cot.iva|float).replace(',', '.') }}</span></div>
+          <div class="d-flex justify-content-between fs-6 mt-1 pt-1 border-top"><span>Total</span><strong class="text-primary">${{ '{:,.0f}'.format(totales_cot.total|float).replace(',', '.') }}</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

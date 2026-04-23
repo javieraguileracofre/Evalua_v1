@@ -1,0 +1,324 @@
+{# templates/cobranza/cobranza_detalle_cliente.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Cobranza · Detalle Cliente{% endblock title %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item">
+  <a href="{{ request.url_for('menu_principal') }}">Inicio</a>
+</li>
+<li class="breadcrumb-item">
+  <a href="{{ request.url_for('cobranza_resumen') }}">Cobranza</a>
+</li>
+<li class="breadcrumb-item active" aria-current="page">Detalle cliente</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Detalle de cobranza{% endblock page_title %}
+
+{% block content %}
+
+{% macro clp(valor) -%}
+  {% set v = (valor or 0) | float %}
+  $ {{ "{:,.0f}".format(v).replace(",", ".") }}
+{%- endmacro %}
+
+{% set total_cuentas = cuentas|length %}
+{% set total_monto = namespace(value=0) %}
+{% set total_saldo = namespace(value=0) %}
+{% set total_vencidas = namespace(value=0) %}
+{% set total_pagadas = namespace(value=0) %}
+{% set total_parciales = namespace(value=0) %}
+{% set total_pendientes = namespace(value=0) %}
+{% set total_pagos = namespace(value=0) %}
+
+{% for c in cuentas %}
+  {% set total_monto.value = total_monto.value + ((c.monto_original or 0) | float) %}
+  {% set total_saldo.value = total_saldo.value + ((c.saldo_pendiente or 0) | float) %}
+  {% set total_pagos.value = total_pagos.value + (c.pagos|length if c.pagos else 0) %}
+
+  {% if c.estado == "VENCIDA" %}
+    {% set total_vencidas.value = total_vencidas.value + 1 %}
+  {% elif c.estado == "PAGADA" %}
+    {% set total_pagadas.value = total_pagadas.value + 1 %}
+  {% elif c.estado == "PARCIAL" %}
+    {% set total_parciales.value = total_parciales.value + 1 %}
+  {% else %}
+    {% set total_pendientes.value = total_pendientes.value + 1 %}
+  {% endif %}
+{% endfor %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="h4 fw-semibold mb-1">{{ cliente.razon_social }}</h2>
+    <div class="text-muted small">
+      Expediente de cobranza del cliente con detalle de cuentas por cobrar, saldos vigentes y pagos registrados.
+    </div>
+    <div class="small text-muted mt-1">
+      {% if cliente.rut %}
+        <span class="me-3">RUT: <strong>{{ cliente.rut }}</strong></span>
+      {% endif %}
+      {% if cliente.email %}
+        <span class="me-3">Correo: <strong>{{ cliente.email }}</strong></span>
+      {% endif %}
+      {% if cliente.telefono %}
+        <span>Teléfono: <strong>{{ cliente.telefono }}</strong></span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm"
+       href="{{ request.url_for('cobranza_export_cuentas_excel') }}?cliente_id={{ cliente.id }}">
+      <i class="bi bi-file-earmark-excel"></i> Exportar CxC
+    </a>
+
+    <a class="btn btn-outline-secondary btn-sm"
+       href="{{ request.url_for('cobranza_export_pagos_excel') }}?cliente_id={{ cliente.id }}">
+      <i class="bi bi-file-earmark-excel"></i> Exportar pagos
+    </a>
+
+    <a class="btn btn-primary btn-sm"
+       href="{{ request.url_for('cobranza_gestion', cliente_id=cliente.id) }}">
+      <i class="bi bi-lightning-charge"></i> Gestión / Recordatorio
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Documentos</div>
+        <div class="fs-3 fw-bold">{{ total_cuentas }}</div>
+        <div class="small text-muted mt-2">
+          Cantidad total de cuentas por cobrar del cliente.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Monto total</div>
+        <div class="fs-4 fw-bold">{{ clp(total_monto.value) }}</div>
+        <div class="small text-muted mt-2">
+          Valor original acumulado de la cartera del cliente.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Saldo pendiente</div>
+        <div class="fs-4 fw-bold text-danger">{{ clp(total_saldo.value) }}</div>
+        <div class="small text-muted mt-2">
+          Exposición vigente pendiente de recuperación.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Pagos registrados</div>
+        <div class="fs-3 fw-bold text-primary">{{ total_pagos.value }}</div>
+        <div class="small text-muted mt-2">
+          Movimientos de pago asociados a la cartera del cliente.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="p-3 rounded-4 border bg-danger-subtle h-100">
+      <div class="small text-muted mb-1">Vencidas</div>
+      <div class="fs-4 fw-bold text-danger">{{ total_vencidas.value }}</div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="p-3 rounded-4 border bg-warning-subtle h-100">
+      <div class="small text-muted mb-1">Parciales</div>
+      <div class="fs-4 fw-bold text-warning">{{ total_parciales.value }}</div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="p-3 rounded-4 border bg-info-subtle h-100">
+      <div class="small text-muted mb-1">Pendientes</div>
+      <div class="fs-4 fw-bold text-info">{{ total_pendientes.value }}</div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="p-3 rounded-4 border bg-success-subtle h-100">
+      <div class="small text-muted mb-1">Pagadas</div>
+      <div class="fs-4 fw-bold text-success">{{ total_pagadas.value }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Cuentas por cobrar y pagos asociados</h3>
+        <div class="text-muted small">
+          Revisión detallada de documentos emitidos, estado de cobro, saldos pendientes y pagos aplicados.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">
+        {{ total_cuentas }} documento{{ '' if total_cuentas == 1 else 's' }}
+      </span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3 p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:100px;">CxC</th>
+            <th style="min-width:140px;">Documento</th>
+            <th style="min-width:120px;">Emisión</th>
+            <th style="min-width:120px;">Vencimiento</th>
+            <th style="min-width:120px;">Estado</th>
+            <th class="text-end" style="min-width:120px;">Monto</th>
+            <th class="text-end" style="min-width:120px;">Saldo</th>
+            <th class="text-center" style="width:170px;">Acción</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for c in cuentas %}
+          <tr>
+            <td>
+              <span class="badge rounded-pill bg-light text-dark border">#{{ c.id }}</span>
+            </td>
+
+            <td>
+              {% if c.numero_documento %}
+                {{ c.numero_documento }}
+              {% elif c.nota_venta %}
+                {{ c.nota_venta.numero }}
+              {% else %}
+                CxC {{ c.id }}
+              {% endif %}
+            </td>
+
+            <td>
+              {% if c.fecha_emision and c.fecha_emision.strftime is defined %}
+                {{ c.fecha_emision.strftime('%d-%m-%Y') }}
+              {% else %}
+                {{ c.fecha_emision or '—' }}
+              {% endif %}
+            </td>
+
+            <td>
+              {% if c.fecha_vencimiento and c.fecha_vencimiento.strftime is defined %}
+                {{ c.fecha_vencimiento.strftime('%d-%m-%Y') }}
+              {% else %}
+                {{ c.fecha_vencimiento or '—' }}
+              {% endif %}
+            </td>
+
+            <td>
+              {% if c.estado == "PAGADA" %}
+                <span class="badge bg-success">PAGADA</span>
+              {% elif c.estado == "VENCIDA" %}
+                <span class="badge bg-danger">VENCIDA</span>
+              {% elif c.estado == "PARCIAL" %}
+                <span class="badge bg-warning text-dark">PARCIAL</span>
+              {% else %}
+                <span class="badge bg-info text-dark">PENDIENTE</span>
+              {% endif %}
+            </td>
+
+            <td class="text-end">{{ clp(c.monto_original) }}</td>
+            <td class="text-end fw-bold">{{ clp(c.saldo_pendiente) }}</td>
+
+            <td class="text-center">
+              <a class="btn btn-sm btn-outline-primary"
+                 href="{{ request.url_for('cobranza_pago_form', cxc_id=c.id) }}">
+                <i class="bi bi-cash-coin"></i> Registrar pago
+              </a>
+            </td>
+          </tr>
+
+          <tr class="bg-light-subtle">
+            <td colspan="8" class="py-3 px-3">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <div class="small fw-semibold text-muted">
+                  Pagos registrados ({{ c.pagos|length if c.pagos else 0 }})
+                </div>
+                {% if c.pagos and c.pagos|length > 0 %}
+                  <span class="badge rounded-pill bg-light text-dark border">Detalle de aplicación</span>
+                {% endif %}
+              </div>
+
+              {% if c.pagos and c.pagos|length > 0 %}
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th style="width:90px;">ID</th>
+                        <th style="min-width:120px;">Fecha</th>
+                        <th class="text-end" style="min-width:120px;">Monto</th>
+                        <th style="min-width:120px;">Forma</th>
+                        <th style="min-width:120px;">Referencia</th>
+                        <th style="min-width:90px;">Caja</th>
+                        <th>Observación</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for p in c.pagos %}
+                      <tr>
+                        <td>#{{ p.id }}</td>
+                        <td>
+                          {% if p.fecha_pago and p.fecha_pago.strftime is defined %}
+                            {{ p.fecha_pago.strftime('%d-%m-%Y') }}
+                          {% else %}
+                            {{ p.fecha_pago or '—' }}
+                          {% endif %}
+                        </td>
+                        <td class="text-end fw-semibold">{{ clp(p.monto_pago) }}</td>
+                        <td>{{ p.forma_pago or '—' }}</td>
+                        <td>{{ p.referencia or '—' }}</td>
+                        <td>{{ p.caja_id or '—' }}</td>
+                        <td class="text-muted">{{ p.observacion or '—' }}</td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                <div class="small text-muted">
+                  Sin pagos registrados para este documento.
+                </div>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center text-muted py-5">
+              <div class="mb-2">
+                <i class="bi bi-cash-stack fs-3"></i>
+              </div>
+              <div class="fw-semibold">No hay cuentas por cobrar registradas para este cliente.</div>
+              <div class="small">Cuando existan documentos y pagos asociados, aparecerán en esta vista.</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}

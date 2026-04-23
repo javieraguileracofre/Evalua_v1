@@ -1,0 +1,39 @@
+{% extends "layout/base.html" %}
+{% block title %}{% if modo == 'nuevo' %}Nuevo trabajador{% else %}Editar trabajador{% endif %} · Fondos por rendir{% endblock %}
+{% block page_title %}{% if modo == 'nuevo' %}Nuevo trabajador{% else %}Editar trabajador{% endif %}{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('fondos_rendir_hub') }}">Fondos por rendir</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('fondos_rendir_empleados') }}">Trabajadores</a></li>
+<li class="breadcrumb-item active">{% if modo == 'nuevo' %}Nuevo{% else %}Editar{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+<form method="post" action="{% if modo == 'nuevo' %}{{ request.url_for('fondos_rendir_empleado_crear') }}{% else %}{{ request.url_for('fondos_rendir_empleado_actualizar', empleado_id=empleado.id) }}{% endif %}" class="card border-0 shadow-sm">
+  <div class="card-body row g-3">
+    <div class="col-md-4">
+      <label class="form-label">RUT</label>
+      <input type="text" name="rut" class="form-control" required placeholder="12345678-9" value="{{ empleado.rut if empleado else '' }}">
+      <div class="form-text">Formato: números-dígito verificador (ej. 12345678-K)</div>
+    </div>
+    <div class="col-md-8">
+      <label class="form-label">Nombre completo</label>
+      <input type="text" name="nombre_completo" class="form-control" required value="{{ empleado.nombre_completo if empleado else '' }}">
+    </div>
+    <div class="col-md-4"><label class="form-label">Cargo</label><input type="text" name="cargo" class="form-control" value="{{ empleado.cargo if empleado else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Teléfono</label><input type="text" name="telefono" class="form-control" value="{{ empleado.telefono if empleado else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">E-mail</label><input type="email" name="email" class="form-control" value="{{ empleado.email if empleado else '' }}"></div>
+    {% if modo == 'editar' and empleado %}
+    <div class="col-12">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="activo" id="activo" value="on" {% if empleado.activo %}checked{% endif %}>
+        <label class="form-check-label" for="activo">Activo</label>
+      </div>
+    </div>
+    {% endif %}
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">{% if modo == 'nuevo' %}Registrar{% else %}Guardar{% endif %}</button>
+      <a href="{{ request.url_for('fondos_rendir_empleados') }}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+  </div>
+</form>
+{% endblock %}

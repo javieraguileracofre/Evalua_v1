@@ -1,0 +1,147 @@
+{# templates/finanzas/asiento_detalle.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Detalle de asiento · Evalua ERP{% endblock %}
+{% block page_title %}Detalle de asiento contable{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  Visualiza la partida contable con su trazabilidad operativa y cuadratura debe/haber.
+</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('contabilidad_asientos') }}">Asientos contables</a></li>
+<li class="breadcrumb-item active" aria-current="page">Detalle</li>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="small text-muted">Asiento</div>
+        <div class="fs-4 fw-bold">#{{ cabecera.id }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="small text-muted">Fecha</div>
+        <div class="fw-semibold">{{ cabecera.fecha }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="small text-muted">Origen</div>
+        <div class="fw-semibold">{{ cabecera.origen_tipo or '—' }}</div>
+        {% set _ot = (cabecera.origen_tipo or '')|upper %}
+        {% if _ot == 'MANUAL_APERTURA' %}
+        <span class="badge bg-primary mt-1">Apertura manual</span>
+        {% elif _ot == 'MANUAL_AJUSTE' %}
+        <span class="badge bg-info text-dark mt-1">Ajuste manual</span>
+        {% elif _ot == 'REV_MANUAL' %}
+        <span class="badge bg-secondary mt-1">Reversión manual</span>
+        {% endif %}
+        <div class="small text-muted mt-1">ID {{ cabecera.origen_id if cabecera.origen_id is not none else '—' }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="small text-muted">Estado</div>
+        <div class="fw-semibold">{{ cabecera.estado or 'PUBLICADO' }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="small text-muted mb-1">Glosa</div>
+    <div class="fw-semibold">{{ cabecera.glosa or 'Sin glosa' }}</div>
+    {% if cabecera.usuario %}
+    <div class="small text-muted mt-2 mb-0">Usuario: <span class="text-dark fw-medium">{{ cabecera.usuario }}</span></div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <h3 class="h6 fw-semibold mb-1">Partidas</h3>
+    <div class="text-muted small">Detalle debe/haber del asiento.</div>
+  </div>
+  <div class="card-body pt-3">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Código</th>
+            <th>Cuenta</th>
+            <th>Descripción</th>
+            <th class="text-end">Debe</th>
+            <th class="text-end">Haber</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in detalles %}
+          <tr>
+            <td class="fw-semibold">{{ d.codigo_cuenta }}</td>
+            <td>{{ d.nombre_cuenta or '—' }}</td>
+            <td>{{ d.descripcion or '—' }}</td>
+            <td class="text-end">{{ "{:,.2f}".format((d.debe or 0)|float).replace(",", "X").replace(".", ",").replace("X", ".") }}</td>
+            <td class="text-end">{{ "{:,.2f}".format((d.haber or 0)|float).replace(",", "X").replace(".", ",").replace("X", ".") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light">
+          <tr>
+            <th colspan="3" class="text-end">Totales</th>
+            <th class="text-end">{{ "{:,.2f}".format((total_debe or 0)|float).replace(",", "X").replace(".", ",").replace("X", ".") }}</th>
+            <th class="text-end">{{ "{:,.2f}".format((total_haber or 0)|float).replace(",", "X").replace(".", ",").replace("X", ".") }}</th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div class="mt-3">
+      {% if total_debe == total_haber %}
+      <div class="alert alert-success mb-0">
+        <i class="bi bi-check-circle"></i> El asiento se encuentra cuadrado.
+      </div>
+      {% else %}
+      <div class="alert alert-danger mb-0">
+        <i class="bi bi-exclamation-triangle"></i> El asiento no cuadra.
+      </div>
+      {% endif %}
+    </div>
+
+    {% if puede_revertir %}
+    <div class="card mt-4 border-warning">
+      <div class="card-body">
+        <h3 class="h6 fw-semibold mb-2"><i class="bi bi-arrow-counterclockwise"></i> Revertir asiento</h3>
+        <p class="text-muted small mb-3">Se creará un nuevo asiento con debe y haber invertidos respecto a este. El periodo de la fecha de reversión debe estar abierto.</p>
+        <form method="post" action="{{ request.url_for('contabilidad_revertir_asiento', asiento_id=cabecera.id) }}" class="row g-2 align-items-end">
+          <div class="col-md-6">
+            <label class="form-label small mb-0" for="glosa_reversion">Glosa de la reversión (opcional)</label>
+            <input type="text" class="form-control form-control-sm" name="glosa_reversion" id="glosa_reversion" maxlength="255" placeholder="Reversión asiento #{{ cabecera.id }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small mb-0" for="usuario_rev">Usuario</label>
+            <input type="text" class="form-control form-control-sm" name="usuario" id="usuario_rev" placeholder="Opcional">
+          </div>
+          <div class="col-md-2">
+            <button type="submit" class="btn btn-sm btn-warning w-100">Revertir</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

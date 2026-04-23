@@ -1,0 +1,328 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Detalle nota {{ nota.numero }}{% endblock title %}
+{% block nav_comercial_active %}active{% endblock nav_comercial_active %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item">
+  <a href="{{ request.url_for('menu_principal') }}">Inicio</a>
+</li>
+<li class="breadcrumb-item">
+  <a href="{{ request.url_for('nota_venta_lista') }}">Notas de venta</a>
+</li>
+<li class="breadcrumb-item active" aria-current="page">
+  {{ nota.numero }}
+</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Nota de venta {{ nota.numero }}{% endblock page_title %}
+
+{% block content %}
+
+{% macro clp(valor) -%}
+  {% set v = (valor or 0) | float %}
+  $ {{ "{:,.0f}".format(v).replace(",", ".") }}
+{%- endmacro %}
+
+{% set tiene_iva = (nota.total_iva or 0) > 0 %}
+{% set total_items = nota.detalles|length if nota.detalles else 0 %}
+{% set cliente_nombre = nota.cliente.razon_social if nota.cliente else 'Cliente de paso' %}
+{% set cliente_rut = nota.cliente.rut if nota.cliente else '—' %}
+{% set estado_nota = nota.estado or '—' %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="h4 fw-semibold mb-1">Documento comercial {{ nota.numero }}</h2>
+    <div class="text-muted small">
+      Revisa el detalle completo de la nota de venta, su composición financiera y sus acciones disponibles.
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left"></i> Volver a notas
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Total documento</div>
+        <div class="fs-4 fw-bold">{{ clp(nota.total_total) }}</div>
+        <div class="small text-muted mt-2">Monto final registrado en la nota de venta.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Ítems</div>
+        <div class="fs-3 fw-bold">{{ total_items }}</div>
+        <div class="small text-muted mt-2">Cantidad de líneas o productos incluidos.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Tipo de pago</div>
+        <div class="fs-5 fw-bold">{{ nota.tipo_pago or '—' }}</div>
+        <div class="small text-muted mt-2">Condición comercial asociada al documento.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Estado</div>
+        <div class="fs-5 fw-bold">
+          {% if estado_nota == 'EMITIDA' %}
+            Emitida
+          {% elif estado_nota == 'ANULADA' %}
+            Anulada
+          {% else %}
+            {{ estado_nota }}
+          {% endif %}
+        </div>
+        <div class="small text-muted mt-2">Estado operacional actual del documento.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-5">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pb-0 pt-3">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <h3 class="h6 fw-semibold mb-1">Contexto comercial</h3>
+            <div class="text-muted small">Información del cliente asociado al documento.</div>
+          </div>
+          <span class="badge rounded-pill bg-light text-dark border">
+            <i class="bi bi-person-vcard"></i>
+          </span>
+        </div>
+      </div>
+
+      <div class="card-body pt-3">
+        <div class="mb-2">
+          <div class="small text-muted">Cliente</div>
+          <div class="fw-semibold">{{ cliente_nombre }}</div>
+        </div>
+
+        <div class="mb-2">
+          <div class="small text-muted">RUT</div>
+          <div class="fw-semibold">{{ cliente_rut }}</div>
+        </div>
+
+        <div class="mb-2">
+          <div class="small text-muted">Emisión</div>
+          <div class="fw-semibold">{{ nota.fecha.date() if nota.fecha else '—' }}</div>
+        </div>
+
+        <div class="mb-0">
+          <div class="small text-muted">Vencimiento</div>
+          <div class="fw-semibold">{{ nota.fecha_vencimiento if nota.fecha_vencimiento else '—' }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-7">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pb-0 pt-3">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <h3 class="h6 fw-semibold mb-1">Resumen financiero</h3>
+            <div class="text-muted small">Composición monetaria y tributaria del documento.</div>
+          </div>
+          <span class="badge rounded-pill bg-light text-dark border">
+            <i class="bi bi-receipt"></i>
+          </span>
+        </div>
+      </div>
+
+      <div class="card-body pt-3">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <div class="small text-muted">Régimen IVA</div>
+            <div class="fw-semibold">
+              {% if tiene_iva %}
+                <span class="badge bg-success">Afecta IVA</span>
+              {% else %}
+                <span class="badge bg-warning text-dark">Exenta de IVA</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="col-md-4">
+            <div class="small text-muted">Subtotal</div>
+            <div class="fw-semibold">{{ clp(nota.subtotal_neto) }}</div>
+          </div>
+
+          <div class="col-md-4">
+            <div class="small text-muted">IVA</div>
+            <div class="fw-semibold">{{ clp(nota.total_iva) }}</div>
+          </div>
+
+          <div class="col-md-4">
+            <div class="small text-muted">Total</div>
+            <div class="fw-semibold">{{ clp(nota.total_total) }}</div>
+          </div>
+
+          <div class="col-md-4">
+            <div class="small text-muted">Estado</div>
+            <div class="fw-semibold">
+              {% if nota.estado == 'EMITIDA' %}
+                <span class="badge bg-primary">Emitida</span>
+              {% elif nota.estado == 'ANULADA' %}
+                <span class="badge bg-danger">Anulada</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ nota.estado }}</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="col-md-4">
+            <div class="small text-muted">Tipo de pago</div>
+            <div class="fw-semibold">
+              <span class="badge rounded-pill bg-light text-dark border">
+                {{ nota.tipo_pago }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Detalle de productos / servicios</h3>
+        <div class="text-muted small">
+          Ítems incluidos en la nota de venta con cantidades, precios y subtotal de cada línea.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">
+        {{ total_items }} ítem{{ '' if total_items == 1 else 's' }}
+      </span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3 p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:60px;">#</th>
+            <th>Producto / descripción</th>
+            <th class="text-end" style="width:120px;">Cantidad</th>
+            <th class="text-end" style="width:140px;">Precio unit.</th>
+            <th class="text-end" style="width:150px;">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in nota.detalles %}
+          <tr>
+            <td class="text-muted">{{ loop.index }}</td>
+            <td>
+              <div class="fw-semibold">{{ d.descripcion }}</div>
+            </td>
+            <td class="text-end">{{ d.cantidad }}</td>
+            <td class="text-end">{{ clp(d.precio_unitario) }}</td>
+            <td class="text-end fw-semibold">{{ clp(d.subtotal) }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="text-center text-muted py-5">
+              <div class="mb-2">
+                <i class="bi bi-box-seam fs-3"></i>
+              </div>
+              <div class="fw-semibold">Esta nota no tiene ítems registrados.</div>
+              <div class="small">Cuando existan productos o servicios asociados, aparecerán aquí.</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+
+        {% if nota.detalles %}
+        <tfoot>
+          <tr>
+            <th colspan="4" class="text-end">
+              {% if tiene_iva %}Subtotal neto{% else %}Subtotal{% endif %}
+            </th>
+            <th class="text-end">{{ clp(nota.subtotal_neto) }}</th>
+          </tr>
+
+          {% if tiene_iva %}
+          <tr>
+            <th colspan="4" class="text-end">IVA</th>
+            <th class="text-end">{{ clp(nota.total_iva) }}</th>
+          </tr>
+          {% endif %}
+
+          <tr>
+            <th colspan="4" class="text-end">
+              {% if tiene_iva %}Total{% else %}Total (exento){% endif %}
+            </th>
+            <th class="text-end fw-bold">{{ clp(nota.total_total) }}</th>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Acciones del documento</h3>
+        <div class="text-muted small">
+          Ejecuta acciones administrativas sobre la nota de venta según su estado actual.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">Gestión documental</span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-light">
+        <i class="bi bi-arrow-left"></i> Volver
+      </a>
+
+      <div class="d-flex flex-wrap gap-2">
+        {% if nota.estado != 'ANULADA' %}
+        <form method="post"
+              action="{{ request.url_for('nota_venta_anular', nota_id=nota.id) }}"
+              onsubmit="return confirm('¿Anular esta nota de venta? Esta acción no modificará movimientos de caja ni CxC.');">
+          <button type="submit" class="btn btn-outline-warning">
+            <i class="bi bi-slash-circle"></i> Anular
+          </button>
+        </form>
+        {% endif %}
+
+        <form method="post"
+              action="{{ request.url_for('nota_venta_eliminar', nota_id=nota.id) }}"
+              onsubmit="return confirm('¿Eliminar definitivamente esta nota de venta? Se revertirá el stock y se eliminarán los registros asociados. Esta acción NO se puede deshacer.');">
+          <button type="submit" class="btn btn-outline-danger">
+            <i class="bi bi-trash"></i> Eliminar
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}

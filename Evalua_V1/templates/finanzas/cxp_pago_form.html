@@ -1,0 +1,206 @@
+{# templates/finanzas/cxp_pago_form.html #}
+{% extends "layout/base.html" %}
+{% import "finanzas/_cxp_macros.html" as cxp %}
+
+{% block title %}Registrar pago · Cuentas por pagar{% endblock %}
+{% block page_title %}Registrar pago{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  {{ data.proveedor.razon_social if data.proveedor else '' }} · Documento {{ data.documento.tipo }} #{{ data.documento.folio }} · Distribuya el pago entre documentos abiertos del mismo proveedor.
+</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="/finanzas/hub">Finanzas</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('cxp_lista') }}">Cuentas por pagar</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('cxp_detalle', documento_id=data.documento.id) }}">#{{ data.documento.id }}</a></li>
+<li class="breadcrumb-item active" aria-current="page">Pago</li>
+{% endblock %}
+
+{% block page_actions %}
+<a href="{{ request.url_for('cxp_detalle', documento_id=data.documento.id) }}" class="btn btn-outline-secondary btn-sm">
+  <i class="bi bi-arrow-left"></i> Volver al documento
+</a>
+{% endblock %}
+
+{% block hero_title %}Liquidación a proveedor{% endblock %}
+{% block hero_desc %}
+El total del pago es la suma de los montos a aplicar. No puede superar el saldo de cada documento. Requiere periodo contable abierto para la fecha de pago.
+{% endblock %}
+
+{% block content %}
+{% if cxp_schema_ok is defined and not cxp_schema_ok %}
+<div class="alert alert-warning border-0 shadow-sm mb-3" role="alert">
+  <strong>Esquema CxP incompleto.</strong> Complete el despliegue de tablas <code>fin.ap_*</code> antes de registrar pagos.
+</div>
+{% endif %}
+{% set doc = data.documento %}
+{% set prov = data.proveedor %}
+
+<form method="post" action="{{ request.url_for('cxp_pagar', documento_id=doc.id) }}" id="form-pago" class="row g-4">
+  <input type="hidden" name="proveedor_id" value="{{ proveedor_public_id }}">
+  <input type="hidden" name="aplicaciones_json" id="aplicaciones_json">
+
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h3 class="h6 fw-semibold mb-0"><i class="bi bi-credit-card text-primary"></i> Cabecera del pago</h3>
+      </div>
+      <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold" for="fecha_pago">Fecha pago</label>
+            <input type="date" name="fecha_pago" id="fecha_pago" class="form-control" required value="{{ fecha_hoy }}">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" for="medio_pago">Medio de pago</label>
+            <select name="medio_pago" id="medio_pago" class="form-select" required>
+              {% for mp in ['TRANSFERENCIA','EFECTIVO','CHEQUE','TARJETA','DEPOSITO','OTRO'] %}
+              <option value="{{ mp }}">{{ mp }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" for="banco_proveedor_id">Cuenta bancaria proveedor</label>
+            <select name="banco_proveedor_id" id="banco_proveedor_id" class="form-select">
+              <option value="">Sin especificar</option>
+              {% for b in bancos %}
+              <option value="{{ b.id }}">{{ b.banco }} · {{ b.numero_cuenta }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" for="referencia">Referencia</label>
+            <input type="text" name="referencia" id="referencia" class="form-control" maxlength="180" placeholder="N° transferencia, cheque, etc.">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" for="moneda">Moneda</label>
+            <input type="text" name="moneda" id="moneda" class="form-control" value="CLP">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" for="tipo_cambio">Tipo de cambio</label>
+            <input type="number" step="0.000001" name="tipo_cambio" id="tipo_cambio" class="form-control" value="1" min="0.000001">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" for="observaciones">Observaciones</label>
+            <textarea name="observaciones" id="observaciones" class="form-control" rows="2" placeholder="Opcional"></textarea>
+          </div>
+
+          <div class="alert alert-primary border-0 mb-0 d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">Total a pagar</span>
+            <span class="fs-5 fw-bold" id="total_pago_label">$ 0</span>
+          </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          <h3 class="h6 fw-semibold mb-0">Aplicación del pago</h3>
+          <div class="small text-muted">Distribución por documento abierto del proveedor.</div>
+        </div>
+        <span class="badge bg-light text-dark border">{{ documentos_abiertos|length }} documento(s)</span>
+      </div>
+      {% if documentos_abiertos %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>ID</th>
+              <th>Documento</th>
+              <th>Vencimiento</th>
+              <th class="text-end">Total</th>
+              <th class="text-end">Saldo</th>
+              <th class="text-end" style="min-width:140px">A aplicar</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in documentos_abiertos %}
+            <tr>
+              <td class="fw-semibold">#{{ d.id }}</td>
+              <td>{{ d.tipo }} #{{ d.folio }}</td>
+              <td>{{ d.fecha_vencimiento }}</td>
+              <td class="text-end">$ {{ cxp.cxp_monto(d.total) }}</td>
+              <td class="text-end fw-medium">$ {{ cxp.cxp_monto(d.saldo_pendiente) }}</td>
+              <td>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="form-control form-control-sm app-monto"
+                  data-documento-id="{{ d.id }}"
+                  data-saldo="{{ (d.saldo_pendiente or 0)|float }}"
+                  value="{% if d.id == doc.id %}{{ (d.saldo_pendiente or 0)|float }}{% else %}0{% endif %}"
+                >
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card-body border-top d-flex justify-content-end gap-2">
+        <button type="submit" class="btn btn-success px-4" {% if not documentos_abiertos %}disabled{% endif %}>
+          <i class="bi bi-check2-circle"></i> Registrar pago
+        </button>
+      </div>
+      {% else %}
+      <div class="card-body">
+        <div class="alert alert-warning border-0 mb-0">
+          <i class="bi bi-exclamation-triangle me-2"></i>
+          No hay otros documentos abiertos para este proveedor. Si el saldo de este documento es cero, vuelva al detalle.
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function actualizarPago() {
+    var aplicaciones = [];
+    var total = 0;
+    document.querySelectorAll('.app-monto').forEach(function (input) {
+      var saldo = Number(input.getAttribute('data-saldo') || 0);
+      var monto = Number(input.value || 0);
+      if (monto < 0) monto = 0;
+      if (monto > saldo) {
+        monto = saldo;
+        input.value = String(saldo);
+      }
+      if (monto > 0) {
+        aplicaciones.push({
+          documento_id: Number(input.getAttribute('data-documento-id')),
+          monto_aplicado: monto
+        });
+        total += monto;
+      }
+    });
+    var hidden = document.getElementById('aplicaciones_json');
+    var label = document.getElementById('total_pago_label');
+    if (hidden) hidden.value = JSON.stringify(aplicaciones);
+    if (label) {
+      label.textContent = '$ ' + Math.round(total).toLocaleString('es-CL');
+    }
+  }
+
+  document.querySelectorAll('.app-monto').forEach(function (i) {
+    i.addEventListener('input', actualizarPago);
+  });
+  var form = document.getElementById('form-pago');
+  if (form) form.addEventListener('submit', actualizarPago);
+  actualizarPago();
+})();
+</script>
+{% endblock %}

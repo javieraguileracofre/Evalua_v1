@@ -1,0 +1,188 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Categorías · Evalua_V1{% endblock title %}
+{% block nav_operaciones_active %}active{% endblock nav_operaciones_active %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('productos_list') }}">Inventario</a></li>
+<li class="breadcrumb-item active" aria-current="page">Categorías</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Categorías de productos{% endblock page_title %}
+
+{% block content %}
+
+{% set total_categorias = categorias|length %}
+{% set categorias_con_descripcion = categorias|selectattr("descripcion")|list|length %}
+{% set categorias_sin_descripcion = total_categorias - categorias_con_descripcion %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+  <div>
+    <h2 class="h4 mb-1 fw-semibold">Categorías de productos</h2>
+    <div class="text-muted small">
+      Administra la clasificación maestra del inventario para mantener orden, trazabilidad y consistencia operativa.
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('productos_list') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left"></i> Volver a productos
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Total categorías</div>
+        <div class="fs-4 fw-semibold">{{ total_categorias }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Con descripción</div>
+        <div class="fs-4 fw-semibold text-primary">{{ categorias_con_descripcion }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small mb-1">Pendientes de completar</div>
+        <div class="fs-4 fw-semibold text-warning">{{ categorias_sin_descripcion }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-0 pt-3 pb-0">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <h3 class="h6 mb-1 fw-semibold">Nueva categoría</h3>
+        <div class="text-muted small">
+          Registra una categoría para estructurar correctamente tus productos dentro del inventario.
+        </div>
+      </div>
+      <span class="badge rounded-pill text-bg-light border">Maestro de inventario</span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <form method="post" action="{{ request.url_for('categoria_create') }}">
+      <div class="row g-3 align-items-end">
+        <div class="col-lg-4">
+          <label class="form-label small fw-semibold">Nombre <span class="text-danger">*</span></label>
+          <input
+            type="text"
+            name="nombre"
+            class="form-control"
+            placeholder="Ej.: Repuestos, Insumos, Servicios"
+            required
+          >
+        </div>
+
+        <div class="col-lg-6">
+          <label class="form-label small fw-semibold">Descripción</label>
+          <input
+            type="text"
+            name="descripcion"
+            class="form-control"
+            placeholder="Descripción breve para identificar el uso de la categoría"
+          >
+        </div>
+
+        <div class="col-lg-2 d-grid">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Crear categoría
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <h3 class="h6 mb-1 fw-semibold">Listado de categorías</h3>
+        <div class="text-muted small">
+          Visualiza las categorías registradas para el módulo de inventario.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">
+        {{ total_categorias }} registro{{ '' if total_categorias == 1 else 's' }}
+      </span>
+    </div>
+  </div>
+
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width: 70px;">#</th>
+            <th style="min-width: 220px;">Categoría</th>
+            <th>Descripción</th>
+            <th class="text-center" style="width: 150px;">Estado</th>
+          </tr>
+        </thead>
+
+        <tbody>
+        {% for c in categorias %}
+          <tr>
+            <td class="text-muted">{{ loop.index }}</td>
+
+            <td>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge rounded-pill bg-primary-subtle text-primary">
+                  <i class="bi bi-tag"></i>
+                </span>
+                <div>
+                  <div class="fw-semibold">{{ c.nombre }}</div>
+                  <div class="small text-muted">ID {{ c.id }}</div>
+                </div>
+              </div>
+            </td>
+
+            <td>
+              {% if c.descripcion %}
+                <span>{{ c.descripcion }}</span>
+              {% else %}
+                <span class="text-muted">Sin descripción registrada</span>
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              {% if c.activo %}
+                <span class="badge bg-success">Activa</span>
+              {% else %}
+                <span class="badge bg-secondary">Inactiva</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="4" class="text-center text-muted py-5">
+              <div class="mb-2">
+                <i class="bi bi-tags fs-2"></i>
+              </div>
+              <div class="fw-semibold">No hay categorías registradas aún.</div>
+              <div class="small">Crea la primera categoría para comenzar a estructurar el inventario.</div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}

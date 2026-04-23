@@ -1,0 +1,150 @@
+{% extends "layout/base.html" %}
+{% block title %}{{ viaje.folio }} · Viaje{% endblock %}
+{% block page_title %}{{ viaje.folio }}{% endblock %}
+{% block page_subtitle %}Hoja de ruta · {{ viaje.estado|replace('_', ' ') }}{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('transporte_hub') }}">Transporte</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('transporte_viajes_lista') }}">Viajes</a></li>
+<li class="breadcrumb-item active">{{ viaje.folio }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+  <a href="{{ request.url_for('transporte_viajes_lista') }}" class="btn btn-outline-secondary btn-sm">Listado</a>
+  <div class="d-flex gap-2">
+    {% if viaje.estado in ('BORRADOR', 'CERRADO') %}
+    <a href="{{ request.url_for('transporte_viaje_editar', viaje_id=viaje.id) }}" class="btn btn-outline-primary btn-sm">
+      {% if viaje.estado == 'CERRADO' %}Corregir datos{% else %}Editar borrador{% endif %}
+    </a>
+    {% endif %}
+    <a href="{{ request.url_for('transporte_hub') }}" class="btn btn-outline-primary btn-sm">Tablero</a>
+  </div>
+</div>
+
+{% if msg %}
+<div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show border-0 shadow-sm mb-3" role="alert">
+  {{ msg }}
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-white border-0"><h3 class="h6 fw-bold mb-0">Ruta y asignación</h3></div>
+      <div class="card-body">
+        <p class="mb-1"><strong>Chofer:</strong> {{ viaje.empleado.nombre_completo if viaje.empleado else '—' }}</p>
+        <p class="mb-1"><strong>Vehículo:</strong> {% if viaje.vehiculo %}{{ viaje.vehiculo.patente }} — {{ viaje.vehiculo.marca }} {{ viaje.vehiculo.modelo }}{% else %}—{% endif %}</p>
+        <p class="mb-1"><strong>Cliente:</strong> {{ viaje.cliente.razon_social if viaje.cliente else '—' }}</p>
+        <p class="mb-1"><strong>Anticipo:</strong> {% if viaje.fondo %}<a href="{{ request.url_for('fondos_rendir_fondo_detalle', fondo_id=viaje.fondo.id) }}">{{ viaje.fondo.folio }}</a>{% else %}—{% endif %}</p>
+        <hr>
+        <p class="mb-1"><strong>Origen:</strong> {{ viaje.origen }}</p>
+        <p class="mb-1"><strong>Destino:</strong> {{ viaje.destino }}</p>
+        {% if viaje.referencia_carga %}<p class="mb-1"><strong>Ref. carga:</strong> {{ viaje.referencia_carga }}</p>{% endif %}
+        {% if viaje.notas %}<p class="mb-0 small text-muted"><strong>Notas:</strong> {{ viaje.notas }}</p>{% endif %}
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-white border-0"><h3 class="h6 fw-bold mb-0">Cronología</h3></div>
+      <div class="card-body row g-2 small">
+        <div class="col-md-6"><span class="text-muted">Prog. salida</span><br>{% if viaje.programado_salida %}{{ viaje.programado_salida.strftime('%d-%m-%Y %H:%M') }}{% else %}—{% endif %}</div>
+        <div class="col-md-6"><span class="text-muted">Prog. llegada</span><br>{% if viaje.programado_llegada %}{{ viaje.programado_llegada.strftime('%d-%m-%Y %H:%M') }}{% else %}—{% endif %}</div>
+        <div class="col-md-6"><span class="text-muted">Real salida</span><br>{% if viaje.real_salida %}{{ viaje.real_salida.strftime('%d-%m-%Y %H:%M') }}{% else %}—{% endif %}</div>
+        <div class="col-md-6"><span class="text-muted">Real llegada</span><br>{% if viaje.real_llegada %}{{ viaje.real_llegada.strftime('%d-%m-%Y %H:%M') }}{% else %}—{% endif %}</div>
+        <div class="col-md-6"><span class="text-muted">Odómetro inicio / fin</span><br>{{ viaje.odometro_inicio or '—' }} / {{ viaje.odometro_fin or '—' }}</div>
+        <div class="col-md-6"><span class="text-muted">Litros combustible</span><br>{% if viaje.litros_combustible is not none %}{{ viaje.litros_combustible }}{% else %}—{% endif %}</div>
+      </div>
+    </div>
+
+    {% if viaje.estado == 'ANULADO' and viaje.motivo_anulacion %}
+    <div class="alert alert-warning border-0 shadow-sm"><strong>Anulado:</strong> {{ viaje.motivo_anulacion }}</div>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm mb-3" style="background:linear-gradient(180deg,#f8fafc,#eef2f9);border:1px solid #e2e8f0 !important;">
+      <div class="card-body">
+        <h3 class="h6 fw-bold mb-3">Métricas calculadas</h3>
+        {% if viaje.estado == 'CERRADO' %}
+        <ul class="list-unstyled small mb-0">
+          <li class="mb-2"><strong>Km recorrido:</strong> {% if metricas.km is not none %}{{ "{:,.0f}".format(metricas.km).replace(",", ".") }}{% else %}—{% endif %}</li>
+          <li class="mb-2"><strong>Horas de viaje:</strong> {% if metricas.horas is not none %}{{ metricas.horas }} h{% else %}—{% endif %}</li>
+          <li class="mb-2"><strong>Vel. media implícita:</strong> {% if metricas.vel_media_kmh is not none %}{{ metricas.vel_media_kmh }} km/h{% else %}—{% endif %}</li>
+          <li class="mb-2"><strong>Consumo L/100 km:</strong> {% if metricas.litros_100km is not none %}{{ metricas.litros_100km }}{% else %}—{% endif %}</li>
+          <li class="mb-2"><strong>Rendimiento km/L:</strong> {% if metricas.rendimiento_km_l is not none %}100 / {{ metricas.litros_100km }} = {{ metricas.rendimiento_km_l }}{% else %}—{% endif %}</li>
+          <li><strong>Desvío vs referencial:</strong> {% if metricas.desvio_consumo_pct is not none %}{{ metricas.desvio_consumo_pct }}%{% else %}—{% endif %}</li>
+        </ul>
+        {% else %}
+        <p class="small text-muted mb-0">Las métricas se calculan automáticamente al cerrar el viaje con odómetro y fechas coherentes.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if viaje.estado == 'BORRADOR' %}
+    <div class="card border-0 shadow-sm border-primary border-opacity-25">
+      <div class="card-header bg-primary text-white py-2"><span class="small fw-bold text-uppercase">Iniciar viaje</span></div>
+      <div class="card-body">
+        <form method="post" action="{{ request.url_for('transporte_viaje_iniciar', viaje_id=viaje.id) }}">
+          <div class="mb-2">
+            <label class="form-label small">Salida real</label>
+            <input type="datetime-local" name="real_salida" class="form-control form-control-sm" value="{{ fecha_default }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Odómetro salida</label>
+            <input type="number" name="odometro_inicio" class="form-control form-control-sm" required min="0" step="1" placeholder="Km">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm w-100">Marcar en curso</button>
+        </form>
+      </div>
+    </div>
+    {% elif viaje.estado == 'EN_CURSO' %}
+    <div class="card border-0 shadow-sm border-success border-opacity-25">
+      <div class="card-header bg-success text-white py-2"><span class="small fw-bold text-uppercase">Cerrar viaje</span></div>
+      <div class="card-body">
+        <form method="post" action="{{ request.url_for('transporte_viaje_cerrar', viaje_id=viaje.id) }}">
+          <div class="mb-2">
+            <label class="form-label small">Llegada real</label>
+            <input type="datetime-local" name="real_llegada" class="form-control form-control-sm" value="{{ fecha_default }}" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Odómetro llegada</label>
+            <input type="number" name="odometro_fin" class="form-control form-control-sm" required min="0" step="1">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Litros cargados (opcional)</label>
+            <input type="text" name="litros_combustible" class="form-control form-control-sm" inputmode="decimal" placeholder="Ej. 180,5">
+          </div>
+          <button type="submit" class="btn btn-success btn-sm w-100">Cerrar y calcular métricas</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if viaje.estado in ('BORRADOR', 'EN_CURSO') %}
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-body">
+        <h4 class="h6 text-danger fw-bold">Anular</h4>
+        <form method="post" action="{{ request.url_for('transporte_viaje_anular', viaje_id=viaje.id) }}" onsubmit="return confirm('¿Anular esta hoja de ruta?');">
+          <textarea name="motivo_anulacion" class="form-control form-control-sm mb-2" rows="2" required placeholder="Motivo obligatorio"></textarea>
+          <button type="submit" class="btn btn-outline-danger btn-sm w-100">Anular viaje</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if viaje.estado in ('BORRADOR', 'ANULADO') %}
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-body">
+        <h4 class="h6 text-danger fw-bold">Borrar hoja de ruta</h4>
+        <p class="small text-muted mb-2">El borrado es definitivo y quita el registro del listado.</p>
+        <form method="post" action="{{ request.url_for('transporte_viaje_eliminar', viaje_id=viaje.id) }}" onsubmit="return confirm('¿Borrar definitivamente esta hoja de ruta?');">
+          <button type="submit" class="btn btn-danger btn-sm w-100">Borrar definitivamente</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

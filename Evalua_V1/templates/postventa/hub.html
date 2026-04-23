@@ -1,0 +1,513 @@
+{# Postventa — portada con KPIs y gráficos #}
+{% extends "layout/base.html" %}
+
+{% block title %}Postventa · CRM clientes{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item active" aria-current="page">Postventa</li>
+{% endblock %}
+
+{% block page_title %}Postventa{% endblock %}
+{% block page_subtitle %}{% endblock %}
+
+{% block hero %}{% endblock %}
+
+{% block page_actions %}
+<a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('clientes_list') }}">
+  <i class="bi bi-people"></i> Maestro clientes
+</a>
+{% endblock %}
+
+{% block head %}
+<style>
+  .pv-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 22px;
+    padding: 1.75rem 1.85rem;
+    margin-bottom: 1.5rem;
+    color: #e8eef8;
+    background:
+      radial-gradient(ellipse 80% 70% at 95% -30%, rgba(99, 102, 241, 0.35), transparent 52%),
+      radial-gradient(ellipse 60% 50% at 0% 100%, rgba(34, 211, 238, 0.12), transparent 48%),
+      linear-gradient(135deg, #0f0a1a 0%, #1a1030 42%, #0d1526 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 20px 50px rgba(8, 5, 22, 0.45);
+  }
+  .pv-hero h2 {
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    font-size: clamp(1.35rem, 2.5vw, 1.75rem);
+    margin-bottom: 0.35rem;
+    color: #f8fafc;
+  }
+  .pv-hero p {
+    color: #94a3b8;
+    margin: 0;
+    max-width: 40rem;
+    line-height: 1.5;
+  }
+  .pv-kpi-card {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(9, 18, 38, 0.97));
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 18px;
+    padding: 1rem 1.15rem;
+    color: #e2e8f0;
+    box-shadow: 0 14px 36px rgba(2, 6, 23, 0.28);
+    height: 100%;
+  }
+  .pv-kpi-card .lbl {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    color: #94a3b8;
+    margin-bottom: 0.35rem;
+  }
+  .pv-kpi-card .num {
+    font-size: 1.85rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+  .pv-board {
+    background:
+      radial-gradient(circle at 100% 0%, rgba(129, 140, 248, 0.12), transparent 40%),
+      linear-gradient(165deg, #0c1220 0%, #101b32 100%);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 20px;
+    padding: 1.25rem 1.35rem;
+    color: #e2e8f0;
+    box-shadow: 0 16px 40px rgba(2, 6, 23, 0.25);
+    height: 100%;
+  }
+  .pv-board .ttl {
+    font-weight: 700;
+    font-size: 1rem;
+    color: #f1f5f9;
+    margin-bottom: 0.15rem;
+  }
+  .pv-board .sub {
+    font-size: 0.82rem;
+    color: #94a3b8;
+    margin-bottom: 0.75rem;
+  }
+  .pv-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #c4b5fd;
+    margin-bottom: 0.5rem;
+  }
+  .pv-search-card {
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+  .pv-search-card .head {
+    padding: 0.85rem 1.15rem;
+    background: linear-gradient(180deg, var(--surface-soft), var(--surface));
+    border-bottom: 1px solid var(--border);
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+  .pv-table-wrap {
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+  .pv-table-wrap .thead-pv th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+    color: var(--text-soft);
+    background: var(--surface-soft);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<section class="pv-hero" aria-labelledby="pv-hero-title">
+  <h2 id="pv-hero-title">Seguimiento y relación con clientes</h2>
+  <p>
+    Actividad de contacto, casos por estado y tendencia mensual. Luego buscá la ficha para registrar interacciones o solicitudes.
+  </p>
+</section>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3">
+    <div class="pv-kpi-card">
+      <div class="lbl">Interacciones · 30 días</div>
+      <div class="num" style="color:#a5b4fc;">{{ stats.n_interacciones_30d }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="pv-kpi-card">
+      <div class="lbl">Casos abiertos</div>
+      <div class="num" style="color:#fcd34d;">{{ stats.n_solicitudes_abiertas }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="pv-kpi-card">
+      <div class="lbl">Interacciones total</div>
+      <div class="num" style="color:#67e8f9;">{{ stats.n_interacciones_total }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="pv-kpi-card">
+      <div class="lbl">Solicitudes total</div>
+      <div class="num" style="color:#c4b5fd;">{{ stats.n_solicitudes_total }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-xl-7">
+    <div class="pv-board h-100">
+      <span class="pv-badge"><i class="bi bi-bar-chart-steps"></i> Últimos 90 días</span>
+      <div class="ttl">Interacciones por canal</div>
+      <div class="sub">Llamadas, correos, WhatsApp y otros contactos registrados.</div>
+      <div id="chartPvTipos" style="min-height: 280px;"></div>
+    </div>
+  </div>
+  <div class="col-12 col-xl-5">
+    <div class="pv-board h-100">
+      <span class="pv-badge"><i class="bi bi-pie-chart-fill"></i> Cartera de casos</span>
+      <div class="ttl">Solicitudes por estado</div>
+      <div class="sub">Distribución histórica de todos los casos.</div>
+      <div id="chartPvEstados" style="min-height: 300px;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="pv-board">
+      <span class="pv-badge"><i class="bi bi-graph-up-arrow"></i> Tendencia</span>
+      <div class="ttl">Actividad mensual (6 meses)</div>
+      <div class="sub">Interacciones registradas vs. solicitudes nuevas abiertas por mes.</div>
+      <div id="chartPvMeses" style="min-height: 320px;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="pv-board">
+      <span class="pv-badge"><i class="bi bi-exclamation-triangle-fill"></i> Prioridad</span>
+      <div class="ttl">Casos abiertos por prioridad</div>
+      <div class="sub">Solo solicitudes no resueltas ni descartadas.</div>
+      <div id="chartPvPrioridad" style="min-height: 220px;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="pv-search-card mb-3">
+  <div class="head d-flex align-items-center gap-2">
+    <i class="bi bi-search text-primary"></i> Buscar cliente
+  </div>
+  <div class="card-body p-3">
+    <form class="row g-2 align-items-end" method="get" action="{{ request.url_for('postventa_hub') }}">
+      <div class="col-md-9">
+        <label class="form-label small fw-semibold" for="q">Razón social, RUT, fantasía, teléfono o correo</label>
+        <input
+          class="form-control"
+          id="q"
+          name="q"
+          type="search"
+          placeholder="Ej. nombre del cliente o 76.…"
+          value="{{ q or '' }}"
+          autocomplete="off"
+        >
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary flex-grow-1" type="submit">
+          <i class="bi bi-search"></i> Buscar
+        </button>
+        {% if q %}
+        <a class="btn btn-outline-secondary" href="{{ request.url_for('postventa_hub') }}" title="Limpiar">Limpiar</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if msg %}
+<div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show border-0 shadow-sm mb-3" role="alert">
+  {{ msg }}
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+</div>
+{% endif %}
+
+<div class="pv-table-wrap">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 px-3 py-2 border-bottom" style="background:var(--surface-soft);">
+    <span class="fw-bold">Clientes</span>
+    <span class="text-muted small">{{ (filas or [])|length }} registro(s){% if q %} · filtrado{% endif %}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="thead-pv">
+        <tr>
+          <th>Cliente</th>
+          <th>RUT</th>
+          <th>Contacto</th>
+          <th class="text-center">Int. 30d</th>
+          <th class="text-center">Casos abiertos</th>
+          <th class="text-end">Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in filas or [] %}
+        {% set c = row.cliente %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ c.razon_social }}</div>
+            {% if c.nombre_fantasia %}
+            <div class="small text-muted">{{ c.nombre_fantasia }}</div>
+            {% endif %}
+          </td>
+          <td><code class="small">{{ c.rut }}</code></td>
+          <td class="small">
+            {% if c.telefono %}<div><i class="bi bi-telephone me-1"></i>{{ c.telefono }}</div>{% endif %}
+            {% if c.email %}<div><i class="bi bi-envelope me-1"></i>{{ c.email }}</div>{% endif %}
+            {% if not c.telefono and not c.email %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="text-center">
+            {% if row.interacciones_30d > 0 %}
+            <span class="badge rounded-pill text-bg-info">{{ row.interacciones_30d }}</span>
+            {% else %}
+            <span class="text-muted">0</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if row.solicitudes_abiertas > 0 %}
+            <span class="badge rounded-pill text-bg-warning text-dark">{{ row.solicitudes_abiertas }}</span>
+            {% else %}
+            <span class="text-muted">0</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-primary" href="{{ request.url_for('postventa_ficha_cliente', cliente_id=c.id) }}">
+              <i class="bi bi-person-lines-fill"></i> Ficha
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-5">
+            {% if q %}
+            No hay clientes que coincidan con la búsqueda.
+            {% else %}
+            Escribí en el buscador para filtrar entre clientes activos, o revisá la lista cargada por defecto.
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const chartData = {{ stats.chart | tojson }};
+  const fmtN = (n) => Math.round(Number(n) || 0).toLocaleString("es-CL");
+
+  const colorsTipo = ["#818cf8", "#22d3ee", "#34d399", "#fbbf24", "#fb7185", "#a78bfa"];
+  const colorsEstado = ["#fbbf24", "#38bdf8", "#a78bfa", "#34d399", "#94a3b8"];
+  const colorsPri = ["#ef4444", "#f97316", "#eab308", "#22c55e"];
+
+  const optTipos = {
+    chart: {
+      type: "bar",
+      height: 300,
+      toolbar: { show: false },
+      background: "transparent",
+      fontFamily: "Plus Jakarta Sans, system-ui, sans-serif",
+    },
+    series: [{ name: "Interacciones", data: chartData.tipo_counts }],
+    plotOptions: {
+      bar: {
+        horizontal: true,
+        borderRadius: 6,
+        barHeight: "72%",
+        distributed: true,
+      },
+    },
+    colors: colorsTipo,
+    dataLabels: { enabled: false },
+    xaxis: {
+      categories: chartData.tipo_labels,
+      labels: { style: { colors: "#94a3b8" } },
+    },
+    yaxis: {
+      labels: { style: { colors: "#cbd5e1", fontSize: "11px", maxWidth: 120 } },
+    },
+    grid: { borderColor: "rgba(148,163,184,.12)", strokeDashArray: 4 },
+    tooltip: { theme: "dark", y: { formatter: (v) => fmtN(v) + " contactos" } },
+    legend: { show: false },
+  };
+
+  const sumTipo = chartData.tipo_counts.reduce((a, b) => a + Number(b || 0), 0);
+  const elT = document.querySelector("#chartPvTipos");
+  if (elT && typeof ApexCharts !== "undefined") {
+    if (sumTipo <= 0) {
+      optTipos.series = [{ name: "Interacciones", data: chartData.tipo_labels.map(() => 0) }];
+      optTipos.colors = chartData.tipo_labels.map(() => "#334155");
+      optTipos.plotOptions.bar.distributed = false;
+    }
+    new ApexCharts(elT, optTipos).render();
+  }
+
+  const optEstados = {
+    chart: {
+      type: "donut",
+      height: 300,
+      background: "transparent",
+      fontFamily: "Plus Jakarta Sans, system-ui, sans-serif",
+    },
+    series: chartData.estado_counts,
+    labels: chartData.estado_labels,
+    colors: colorsEstado,
+    plotOptions: {
+      pie: {
+        donut: {
+          size: "68%",
+          labels: {
+            show: true,
+            name: { color: "#cbd5e1" },
+            value: { color: "#f8fafc", formatter: (v) => fmtN(v) },
+            total: {
+              show: true,
+              label: "Casos",
+              color: "#94a3b8",
+              formatter: (w) =>
+                fmtN(w.globals.seriesTotals.reduce((a, b) => a + b, 0)),
+            },
+          },
+        },
+      },
+    },
+    stroke: { width: 2, colors: ["rgba(15,23,42,.85)"] },
+    dataLabels: { enabled: false },
+    legend: { position: "bottom", labels: { colors: "#cbd5e1" } },
+    tooltip: { theme: "dark", y: { formatter: (v) => fmtN(v) } },
+  };
+
+  const sumEst = chartData.estado_counts.reduce((a, b) => a + Number(b || 0), 0);
+  const elE = document.querySelector("#chartPvEstados");
+  if (elE && typeof ApexCharts !== "undefined") {
+    if (sumEst <= 0) {
+      optEstados.series = [1];
+      optEstados.labels = ["Sin datos"];
+      optEstados.colors = ["#475569"];
+      optEstados.tooltip = { enabled: false };
+      optEstados.legend = { show: false };
+      optEstados.plotOptions = { pie: { donut: { labels: { show: false } } } };
+    }
+    new ApexCharts(elE, optEstados).render();
+  }
+
+  const optMeses = {
+    chart: {
+      type: "bar",
+      height: 320,
+      toolbar: { show: false },
+      background: "transparent",
+      fontFamily: "Plus Jakarta Sans, system-ui, sans-serif",
+    },
+    series: [
+      { name: "Interacciones", data: chartData.mes_int },
+      { name: "Solicitudes nuevas", data: chartData.mes_sol },
+    ],
+    plotOptions: {
+      bar: {
+        horizontal: false,
+        columnWidth: "58%",
+        borderRadius: 6,
+        borderRadiusApplication: "end",
+      },
+    },
+    colors: ["#818cf8", "#f472b6"],
+    dataLabels: { enabled: false },
+    xaxis: {
+      categories: chartData.mes_labels,
+      labels: { style: { colors: "#94a3b8" } },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+    },
+    yaxis: {
+      labels: { style: { colors: "#94a3b8" }, formatter: (v) => fmtN(v) },
+      min: 0,
+    },
+    grid: { borderColor: "rgba(148,163,184,.12)", strokeDashArray: 4 },
+    legend: { position: "top", labels: { colors: "#cbd5e1" } },
+    tooltip: { theme: "dark", shared: true, intersect: false },
+  };
+  const elM = document.querySelector("#chartPvMeses");
+  if (elM && typeof ApexCharts !== "undefined") {
+    new ApexCharts(elM, optMeses).render();
+  }
+
+  const optPri = {
+    chart: {
+      type: "bar",
+      height: 240,
+      toolbar: { show: false },
+      background: "transparent",
+      fontFamily: "Plus Jakarta Sans, system-ui, sans-serif",
+    },
+    series: [{ name: "Abiertos", data: chartData.prioridad_counts }],
+    plotOptions: {
+      bar: {
+        horizontal: true,
+        borderRadius: 6,
+        barHeight: "65%",
+        distributed: true,
+        colors: {
+          ranges: [{ from: 0, to: 1000, color: undefined }],
+        },
+      },
+    },
+    colors: colorsPri,
+    xaxis: {
+      categories: chartData.prioridad_labels,
+      labels: { style: { colors: "#cbd5e1", fontSize: "12px" } },
+    },
+    yaxis: { labels: { style: { colors: "#94a3b8" } } },
+    grid: { borderColor: "rgba(148,163,184,.12)", strokeDashArray: 4 },
+    dataLabels: { enabled: false },
+    legend: { show: false },
+    tooltip: { theme: "dark", y: { formatter: (v) => fmtN(v) + " casos" } },
+  };
+  const sumPri = chartData.prioridad_counts.reduce((a, b) => a + Number(b || 0), 0);
+  const elP = document.querySelector("#chartPvPrioridad");
+  if (elP && typeof ApexCharts !== "undefined") {
+    if (sumPri <= 0) {
+      optPri.series = [{ name: "Abiertos", data: chartData.prioridad_labels.map(() => 0) }];
+      optPri.colors = ["#334155"];
+      optPri.plotOptions.bar.distributed = false;
+    }
+    new ApexCharts(elP, optPri).render();
+  }
+});
+</script>
+{% endblock %}

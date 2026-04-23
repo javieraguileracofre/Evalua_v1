@@ -1,0 +1,246 @@
+{% extends "layout/base.html" %}
+{% block title %}{{ fondo.folio }} · Anticipo{% endblock %}
+{% block page_title %}{{ fondo.folio }}{% endblock %}
+{% block page_subtitle %}
+<div class="page-subtitle">
+  {% if fondo.estado == 'ABIERTO' %}<span class="badge bg-info text-dark">Abierto</span>
+  {% elif fondo.estado == 'PENDIENTE_APROBACION' %}<span class="badge bg-warning text-dark">Pendiente aprobación</span>
+  {% elif fondo.estado == 'APROBADO' %}<span class="badge bg-success">Aprobado</span>
+  {% else %}<span class="badge bg-danger">Rechazado</span>{% endif %}
+  · {{ fondo.empleado.nombre_completo if fondo.empleado else '' }}
+</div>
+{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('fondos_rendir_hub') }}">Fondos por rendir</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('fondos_rendir_anticipos') }}">Anticipos</a></li>
+<li class="breadcrumb-item active">{{ fondo.folio }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+  <a href="{{ request.url_for('fondos_rendir_anticipos') }}" class="btn btn-outline-secondary btn-sm">Volver al listado</a>
+  <a href="{{ request.url_for('fondos_rendir_fondo_imprimir', fondo_id=fondo.id) }}" target="_blank" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-printer"></i> Imprimir PDF
+  </a>
+  {% if fondo.estado != 'APROBADO' and not fondo.asiento_id_liquidacion %}
+  <form method="post" action="{{ request.url_for('fondos_rendir_fondo_eliminar', fondo_id=fondo.id) }}" class="d-inline"
+        onsubmit="return confirm('¿Eliminar definitivamente este anticipo? Se borrarán los gastos cargados y, si existe, el asiento contable de entrega. No aplica si ya está aprobado.');">
+    <button type="submit" class="btn btn-outline-danger btn-sm">Eliminar anticipo</button>
+  </form>
+  {% elif fondo.estado == 'APROBADO' %}
+  <span class="small text-muted">Los anticipos aprobados no se eliminan aquí (hay liquidación contable).</span>
+  {% endif %}
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="p-3 rounded border bg-light">
+      <div class="small text-muted">Anticipo entregado</div>
+      <div class="fs-5 fw-bold">${{ '{:,.0f}'.format(fondo.monto_anticipo|float).replace(',', '.') }}</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="p-3 rounded border bg-light">
+      <div class="small text-muted">Total gastos</div>
+      <div class="fs-5 fw-bold">${{ '{:,.0f}'.format(total_gastos|float).replace(',', '.') }}</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="p-3 rounded border {% if saldo|float >= 0 %}bg-success bg-opacity-10{% else %}bg-danger bg-opacity-10{% endif %}">
+      <div class="small text-muted">Saldo (anticipo − gastos)</div>
+      <div class="fs-5 fw-bold">${{ '{:,.0f}'.format(saldo|float).replace(',', '.') }}</div>
+    </div>
+  </div>
+  <div class="col-md-3 small">
+    <div><strong>Entrega:</strong> {{ fondo.fecha_entrega.strftime('%d-%m-%Y %H:%M') }}</div>
+    {% if fondo.vehiculo %}<div><strong>Vehículo:</strong> {{ fondo.vehiculo.patente }}</div>{% endif %}
+    {% if fondo.fecha_envio_rendicion %}<div><strong>Envío rend.:</strong> {{ fondo.fecha_envio_rendicion.strftime('%d-%m-%Y %H:%M') }}</div>{% endif %}
+    {% if fondo.fecha_aprobacion %}<div><strong>Aprobación:</strong> {{ fondo.fecha_aprobacion.strftime('%d-%m-%Y %H:%M') }}</div>{% endif %}
+    {% if fondo.asiento_id_entrega %}
+    <div class="mt-2"><strong>Asiento entrega:</strong>
+      <a href="{{ request.url_for('contabilidad_asiento_detalle', asiento_id=fondo.asiento_id_entrega) }}">#{{ fondo.asiento_id_entrega }}</a>
+    </div>
+    {% endif %}
+    {% if fondo.asiento_id_liquidacion %}
+    <div><strong>Asiento liquidación:</strong>
+      <a href="{{ request.url_for('contabilidad_asiento_detalle', asiento_id=fondo.asiento_id_liquidacion) }}">#{{ fondo.asiento_id_liquidacion }}</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if fondo.observaciones %}
+<div class="alert alert-light border mb-3 small"><strong>Observaciones:</strong> {{ fondo.observaciones }}</div>
+{% endif %}
+{% if fondo.estado == 'RECHAZADO' and fondo.motivo_rechazo %}
+<div class="alert alert-danger small"><strong>Motivo rechazo:</strong> {{ fondo.motivo_rechazo }}</div>
+{% endif %}
+
+{% if fondo.estado == 'ABIERTO' %}
+<form method="post" action="{{ request.url_for('fondos_rendir_fondo_guardar_gastos', fondo_id=fondo.id) }}" id="form-gastos">
+  <input type="hidden" name="gastos_json" id="gastos_json" value="">
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+      <h6 class="mb-0 fw-semibold">Detalle de gastos</h6>
+      <button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-gasto">+ Línea</button>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle" id="tabla-gastos">
+          <thead class="table-light">
+            <tr>
+              <th style="width:11rem">Fecha</th>
+              <th style="width:9rem">Rubro</th>
+              <th>Descripción</th>
+              <th style="width:7rem" class="text-end">Monto</th>
+              <th style="width:7rem">N° doc.</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="gastos-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer bg-white border-top">
+      <button type="submit" class="btn btn-primary btn-sm">Guardar gastos</button>
+    </div>
+  </div>
+</form>
+
+<form method="post" action="{{ request.url_for('fondos_rendir_fondo_enviar', fondo_id=fondo.id) }}" onsubmit="return confirm('¿Enviar rendición a aprobación?');">
+  <button type="submit" class="btn btn-warning text-dark">Enviar rendición a aprobación</button>
+</form>
+
+<script type="application/json" id="gastos-initial-data">{{ gastos_json | safe }}</script>
+<script type="application/json" id="rubros-data">{{ rubros | tojson | safe }}</script>
+<script>
+(function(){
+  var RUBROS = [];
+  try { RUBROS = JSON.parse(document.getElementById('rubros-data').textContent || '[]'); } catch(e) {}
+  var body = document.getElementById('gastos-body');
+  var hid = document.getElementById('gastos_json');
+  var raw = document.getElementById('gastos-initial-data');
+  var initial = [];
+  try { initial = JSON.parse(raw ? raw.textContent : '[]'); } catch(e) { initial = []; }
+  if(!initial.length) initial = [{ fecha_gasto: '', rubro: 'Combustible', descripcion: '', monto: '0', nro_documento: '' }];
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+
+  function rowTemplate(row){
+    var tr = document.createElement('tr');
+    var opts = RUBROS.map(function(r){ return '<option value="'+esc(r)+'"'+(row.rubro===r?' selected':'')+'>'+esc(r)+'</option>'; }).join('');
+    tr.innerHTML =
+      '<td><input type="datetime-local" class="form-control form-control-sm g-fecha" value="'+esc(row.fecha_gasto||'')+'"></td>'+
+      '<td><select class="form-select form-select-sm g-rubro">'+opts+'</select></td>'+
+      '<td><input type="text" class="form-control form-control-sm g-desc" value="'+esc(row.descripcion||'')+'" placeholder="Detalle"></td>'+
+      '<td><input type="text" class="form-control form-control-sm text-end g-monto" value="'+esc(row.monto||'0')+'"></td>'+
+      '<td><input type="text" class="form-control form-control-sm g-doc" value="'+esc(row.nro_documento||'')+'"></td>'+
+      '<td><button type="button" class="btn btn-sm btn-outline-danger py-0 g-del">×</button></td>';
+    tr.querySelector('.g-del').addEventListener('click', function(){ tr.remove(); sync(); });
+    ['g-fecha','g-rubro','g-desc','g-monto','g-doc'].forEach(function(c){ tr.querySelector('.'+c).addEventListener('input', sync); tr.querySelector('.'+c).addEventListener('change', sync); });
+    return tr;
+  }
+
+  function sync(){
+    var rows = [];
+    body.querySelectorAll('tr').forEach(function(tr){
+      var fecha = tr.querySelector('.g-fecha').value;
+      rows.push({
+        fecha_gasto: fecha,
+        rubro: tr.querySelector('.g-rubro').value,
+        descripcion: tr.querySelector('.g-desc').value,
+        monto: tr.querySelector('.g-monto').value,
+        nro_documento: tr.querySelector('.g-doc').value
+      });
+    });
+    hid.value = JSON.stringify(rows);
+  }
+
+  initial.forEach(function(r){ body.appendChild(rowTemplate(r)); });
+  sync();
+
+  document.getElementById('btn-add-gasto').addEventListener('click', function(){
+    var def = new Date();
+    var pad = function(n){ return n<10?'0'+n:''+n; };
+    var iso = def.getFullYear()+'-'+pad(def.getMonth()+1)+'-'+pad(def.getDate())+'T'+pad(def.getHours())+':'+pad(def.getMinutes());
+    body.appendChild(rowTemplate({ fecha_gasto: iso, rubro: RUBROS[0]||'Otros', descripcion: '', monto: '0', nro_documento: '' }));
+    sync();
+  });
+
+  document.getElementById('form-gastos').addEventListener('submit', function(){ sync(); });
+})();
+</script>
+
+{% elif fondo.estado == 'PENDIENTE_APROBACION' %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>Fecha</th><th>Rubro</th><th>Descripción</th><th class="text-end">Monto</th><th>Doc.</th></tr></thead>
+      <tbody>
+        {% for g in fondo.lineas_gasto|sort(attribute='linea') %}
+        <tr>
+          <td>{{ g.fecha_gasto.strftime('%d-%m-%Y %H:%M') }}</td>
+          <td>{{ g.rubro }}</td>
+          <td>{{ g.descripcion or '—' }}</td>
+          <td class="text-end">${{ '{:,.0f}'.format(g.monto|float).replace(',', '.') }}</td>
+          <td>{{ g.nro_documento or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="d-flex flex-wrap gap-2 align-items-start">
+  <form method="post" action="{{ request.url_for('fondos_rendir_fondo_aprobar', fondo_id=fondo.id) }}" onsubmit="return confirm('¿Aprobar esta rendición?');">
+    <button type="submit" class="btn btn-success">Aprobar rendición</button>
+  </form>
+  <form method="post" action="{{ request.url_for('fondos_rendir_fondo_rechazar', fondo_id=fondo.id) }}" class="d-flex flex-wrap gap-2 align-items-end">
+    <div>
+      <label class="form-label small mb-0">Motivo rechazo</label>
+      <input type="text" name="motivo_rechazo" class="form-control form-control-sm" required placeholder="Indique el motivo" style="min-width:16rem">
+    </div>
+    <button type="submit" class="btn btn-outline-danger">Rechazar</button>
+  </form>
+</div>
+
+{% elif fondo.estado == 'RECHAZADO' %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>Fecha</th><th>Rubro</th><th>Descripción</th><th class="text-end">Monto</th></tr></thead>
+      <tbody>
+        {% for g in fondo.lineas_gasto|sort(attribute='linea') %}
+        <tr>
+          <td>{{ g.fecha_gasto.strftime('%d-%m-%Y %H:%M') }}</td>
+          <td>{{ g.rubro }}</td>
+          <td>{{ g.descripcion or '—' }}</td>
+          <td class="text-end">${{ '{:,.0f}'.format(g.monto|float).replace(',', '.') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<form method="post" action="{{ request.url_for('fondos_rendir_fondo_reabrir', fondo_id=fondo.id) }}" onsubmit="return confirm('¿Reabrir para corregir gastos?');">
+  <button type="submit" class="btn btn-primary">Reabrir para corregir</button>
+</form>
+
+{% else %}
+<p class="text-muted small">Rendición aprobada. Los gastos quedan registrados para trazabilidad.</p>
+<div class="table-responsive">
+  <table class="table table-sm">
+    <thead class="table-light"><tr><th>Fecha</th><th>Rubro</th><th>Descripción</th><th class="text-end">Monto</th></tr></thead>
+    <tbody>
+      {% for g in fondo.lineas_gasto|sort(attribute='linea') %}
+      <tr>
+        <td>{{ g.fecha_gasto.strftime('%d-%m-%Y %H:%M') }}</td>
+        <td>{{ g.rubro }}</td>
+        <td>{{ g.descripcion or '—' }}</td>
+        <td class="text-end">${{ '{:,.0f}'.format(g.monto|float).replace(',', '.') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

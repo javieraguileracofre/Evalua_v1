@@ -1,0 +1,60 @@
+{# Fragmentos de navegación ERP — una sola fuente para sidebar desktop y offcanvas móvil. #}
+
+{% macro _nav_item(request, route_name, active_menus, label, icon_bi, current_menu, with_title=false, href_override=none) %}
+  {% if active_menus is string %}
+    {% set is_active = (current_menu == active_menus) %}
+  {% else %}
+    {% set is_active = (current_menu in active_menus) %}
+  {% endif %}
+  <a href="{% if href_override %}{{ href_override }}{% else %}{{ request.url_for(route_name) }}{% endif %}"
+     class="nav-item-evalua {% if is_active %}active{% endif %}"
+     {% if with_title %}title="{{ label }}"{% endif %}>
+    <span class="nav-item-icon-wrap"><i class="bi {{ icon_bi }}"></i></span>
+    <span class="nav-item-label">{{ label }}</span>
+  </a>
+{% endmacro %}
+
+
+{% macro operaciones(request, current_menu, with_title=false) %}
+  <div class="sidebar-section-title"><span class="sidebar-section-text">Operaciones</span></div>
+
+  {{ _nav_item(request, 'menu_principal', ['home', 'menu_principal', 'inicio'], 'Inicio', 'bi-house-door', current_menu, with_title) }}
+  {{ _nav_item(request, 'nota_venta_form', 'ventas', 'Punto de venta', 'bi-shop', current_menu, with_title) }}
+  {{ _nav_item(request, 'taller_hub', 'taller', 'Taller / O. servicio', 'bi-wrench-adjustable', current_menu, with_title) }}
+  {{ _nav_item(request, 'fondos_rendir_hub', 'fondos_rendir', 'Fondos por rendir', 'bi-cash-coin', current_menu, with_title) }}
+  {{ _nav_item(request, 'transporte_hub', 'transporte', 'Transporte / Rutas', 'bi-signpost-split-fill', current_menu, with_title) }}
+  {{ _nav_item(request, 'productos_list', 'inventario', 'Inventario', 'bi-box-seam', current_menu, with_title) }}
+{% endmacro %}
+
+
+{% macro maestros(request, current_menu, with_title=false) %}
+  <div class="sidebar-section-title"><span class="sidebar-section-text">Maestros</span></div>
+
+  {{ _nav_item(request, 'clientes_list', 'clientes', 'Clientes', 'bi-people', current_menu, with_title) }}
+  {{ _nav_item(request, 'proveedor_lista', 'proveedores', 'Proveedores', 'bi-truck', current_menu, with_title) }}
+  {{ _nav_item(request, 'postventa_hub', 'postventa', 'Postventa', 'bi-headset', current_menu, with_title) }}
+{% endmacro %}
+
+
+{% macro finanzas(request, current_menu, with_title=false) %}
+  <div class="sidebar-section-title"><span class="sidebar-section-text">Finanzas y control</span></div>
+
+  {{ _nav_item(request, 'finanzas_hub', 'finanzas_hub', 'Hub Finanzas', 'bi-grid-1x2', current_menu, with_title, href_override='/finanzas/hub') }}
+  {{ _nav_item(request, 'cobranza_resumen', 'cobranza', 'Cobranza', 'bi-cash-stack', current_menu, with_title) }}
+  {{ _nav_item(request, 'cobranza_dashboard', 'cobranza_dashboard', 'Dashboard cobranza', 'bi-graph-up-arrow', current_menu, with_title) }}
+  {{ _nav_item(request, 'cxp_lista', 'cxp', 'Cuentas por pagar', 'bi-wallet2', current_menu, with_title) }}
+  {{ _nav_item(request, 'fin_dashboard', 'fin_dashboard', 'Dashboard finanzas', 'bi-bank', current_menu, with_title) }}
+  {{ _nav_item(request, 'fin_periodos', 'fin_periodos', 'Cierre mensual', 'bi-calendar-month', current_menu, with_title) }}
+  {{ _nav_item(request, 'contabilidad_plan_cuentas', 'contabilidad_plan_cuentas', 'Plan de cuentas', 'bi-diagram-3', current_menu, with_title) }}
+  {{ _nav_item(request, 'contabilidad_asientos', 'contabilidad_asientos', 'Asientos contables', 'bi-journal-richtext', current_menu, with_title) }}
+  {{ _nav_item(request, 'contabilidad_estado_resultados', 'contabilidad_estado_resultados', 'Estado de resultados', 'bi-bar-chart-line', current_menu, with_title) }}
+  {{ _nav_item(request, 'contabilidad_balance_general', 'contabilidad_balance_general', 'Balance general', 'bi-pie-chart', current_menu, with_title) }}
+{% endmacro %}
+
+
+{% macro administracion(request, current_menu, with_title=false) %}
+  {% if request.state.auth_user and 'ADMIN' in (request.state.auth_user.roles or []) %}
+  <div class="sidebar-section-title"><span class="sidebar-section-text">Administración</span></div>
+  {{ _nav_item(request, 'seguridad_usuarios', 'seguridad', 'Usuarios y roles', 'bi-shield-lock', current_menu, with_title) }}
+  {% endif %}
+{% endmacro %}

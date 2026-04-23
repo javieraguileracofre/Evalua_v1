@@ -1,0 +1,709 @@
+erDiagram
+    fin_adjunto {
+        BigInteger id
+        String(40) entidad
+        BigInteger entidad_id
+        String(220) nombre
+        String(120) mime
+        String(500) storage_path
+        String(80) hash_sha256
+        DateTime created_at
+    }
+    fin_ap_documento {
+        BigInteger id
+        UUID(as_uuid=True) uuid
+        BigInteger proveedor_id
+        String  # USER-DEFINED::ap_doc_tipo tipo
+        String  # USER-DEFINED::ap_doc_estado estado
+        String(40) folio
+        Date fecha_emision
+        Date fecha_recepcion
+        Date fecha_vencimiento
+        String  # USER-DEFINED::moneda_iso moneda
+        Numeric(18, 6) tipo_cambio
+        Numeric(18, 2) neto
+        Numeric(18, 2) exento
+        Numeric(18, 2) iva
+        Numeric(18, 2) otros_impuestos
+        Numeric(18, 2) total
+        Numeric(18, 2) saldo_pendiente
+        String(180) referencia
+        Text observaciones
+        DateTime created_at
+        DateTime updated_at
+    }
+    fin_ap_documento_detalle {
+        BigInteger id
+        BigInteger documento_id
+        Integer linea
+        String(260) descripcion
+        Numeric(18, 6) cantidad
+        Numeric(18, 6) precio_unitario
+        Numeric(18, 2) descuento
+        Numeric(18, 2) neto_linea
+        Numeric(18, 2) iva_linea
+        Numeric(18, 2) otros_impuestos
+        Numeric(18, 2) total_linea
+        BigInteger categoria_gasto_id
+        BigInteger centro_costo_id
+        DateTime created_at
+        DateTime updated_at
+    }
+    fin_ap_documento_impuesto {
+        BigInteger id
+        BigInteger documento_id
+        String  # USER-DEFINED::impuesto_tipo tipo
+        String(40) codigo
+        String(120) nombre
+        Numeric(18, 2) monto
+        DateTime created_at
+    }
+    fin_ap_pago {
+        BigInteger id
+        UUID(as_uuid=True) uuid
+        BigInteger proveedor_id
+        String  # USER-DEFINED::ap_pago_estado estado
+        Date fecha_pago
+        String  # USER-DEFINED::medio_pago medio_pago
+        String(180) referencia
+        BigInteger banco_proveedor_id
+        String  # USER-DEFINED::moneda_iso moneda
+        Numeric(18, 6) tipo_cambio
+        Numeric(18, 2) monto_total
+        Text observaciones
+        DateTime created_at
+        DateTime updated_at
+    }
+    fin_ap_pago_aplicacion {
+        BigInteger id
+        BigInteger pago_id
+        BigInteger documento_id
+        Numeric(18, 2) monto_aplicado
+        DateTime created_at
+    }
+    fin_categoria_gasto {
+        BigInteger id
+        String(30) codigo
+        String(160) nombre
+        String  # USER-DEFINED::tipo_gasto tipo
+        String  # USER-DEFINED::estado_activo estado
+        DateTime created_at
+        DateTime updated_at
+    }
+    fin_centro_costo {
+        BigInteger id
+        String(30) codigo
+        String(120) nombre
+        String  # USER-DEFINED::estado_activo estado
+        DateTime created_at
+        DateTime updated_at
+    }
+    fin_config_contable {
+        BigInteger id
+        String(50) codigo_evento
+        String(150) nombre_evento
+        String(10) lado
+        String(30) codigo_cuenta
+        Integer orden
+        Boolean requiere_centro_costo
+        Boolean requiere_documento
+        String(20) estado
+        Text descripcion
+        DateTime created_at
+        DateTime updated_at
+    }
+    fin_config_contable_detalle_modulo {
+        BigInteger id
+        String(50) modulo
+        String(50) submodulo
+        String(50) tipo_documento
+        String(50) codigo_evento
+        String(150) nombre_evento
+        String(10) lado
+        String(30) codigo_cuenta
+        Integer orden
+        Boolean requiere_centro_costo
+        Boolean requiere_documento
+        Boolean requiere_cliente
+        Boolean requiere_proveedor
+        String(20) estado
+        Text descripcion
+        DateTime created_at
+        DateTime updated_at
+    }
+    fin_evento {
+        BigInteger id
+        String(40) entidad
+        BigInteger entidad_id
+        String(80) evento
+        Text detalle
+        String  # USER-DEFINED::citext user_email
+        String(80) ip_origen
+        DateTime created_at
+    }
+    fin_periodo {
+        BigInteger id
+        Integer anio
+        Integer mes
+        String  # USER-DEFINED::periodo_estado estado
+        DateTime cerrado_at
+        String  # USER-DEFINED::citext cerrado_por
+        Text notas
+        DateTime created_at
+        DateTime updated_at
+    }
+    fin_plan_cuenta {
+        BigInteger id
+        String(30) codigo
+        String(180) nombre
+        Integer nivel
+        BigInteger cuenta_padre_id
+        String(30) tipo
+        String(50) clasificacion
+        String(20) naturaleza
+        Boolean acepta_movimiento
+        Boolean requiere_centro_costo
+        String(20) estado
+        Text descripcion
+        DateTime created_at
+        DateTime updated_at
+    }
+    fin_proveedor_fin {
+        BigInteger id
+        BigInteger proveedor_id
+        Integer condicion_pago_dias
+        Numeric(18, 2) limite_credito
+        String  # USER-DEFINED::estado_simple estado
+        Text notas
+        DateTime created_at
+        DateTime updated_at
+    }
+    fin_vw_config_contable {
+        BigInteger id
+        String(50) codigo_evento
+        String(150) nombre_evento
+        String(10) lado
+        String(30) codigo_cuenta
+        String(180) nombre_cuenta
+        String(30) tipo
+        String(50) clasificacion
+        Integer orden
+        Boolean requiere_centro_costo
+        Boolean requiere_documento
+        String(20) estado
+        Text descripcion
+    }
+    fin_vw_config_contable_modulo {
+        BigInteger id
+        String(50) modulo
+        String(50) submodulo
+        String(50) tipo_documento
+        String(50) codigo_evento
+        String(150) nombre_evento
+        String(10) lado
+        String(30) codigo_cuenta
+        String(180) nombre_cuenta
+        String(30) tipo
+        String(50) clasificacion
+        Integer orden
+        Boolean requiere_centro_costo
+        Boolean requiere_documento
+        Boolean requiere_cliente
+        Boolean requiere_proveedor
+        String(20) estado
+        Text descripcion
+    }
+    fin_vw_kpi_dashboard_fin {
+        BigInteger docs_total
+        Numeric(18, 2) monto_total
+        Numeric(18, 2) saldo_pendiente
+        Numeric(18, 2) saldo_vencido
+        Numeric(18, 2) pagado_mes
+        Numeric(18, 2) gasto_mes
+    }
+    public_ap_documento_compra {
+        BigInteger id
+        BigInteger proveedor_id
+        String  # USER-DEFINED::ap_documento_tipo tipo
+        String  # USER-DEFINED::ap_estado_documento estado
+        String(40) folio
+        Date fecha_emision
+        Date fecha_recepcion
+        Date fecha_vencimiento
+        String(10) moneda
+        Numeric(18, 6) tipo_cambio
+        Numeric(18, 2) neto
+        Numeric(18, 2) exento
+        Numeric(18, 2) iva
+        Numeric(18, 2) otros_impuestos
+        Numeric(18, 2) total
+        Numeric(18, 2) saldo_pendiente
+        String(180) referencia
+        Text observaciones
+        DateTime created_at
+        DateTime updated_at
+    }
+    public_ap_documento_compra_detalle {
+        BigInteger id
+        BigInteger documento_id
+        Integer linea
+        String(260) descripcion
+        Numeric(18, 6) cantidad
+        Numeric(18, 6) precio_unitario
+        Numeric(18, 2) descuento
+        Numeric(18, 2) neto_linea
+        Numeric(18, 2) iva_linea
+        Numeric(18, 2) otros_impuestos
+        Numeric(18, 2) total_linea
+        BigInteger categoria_gasto_id
+        BigInteger centro_costo_id
+        DateTime created_at
+        DateTime updated_at
+    }
+    public_ap_pago {
+        BigInteger id
+        BigInteger proveedor_id
+        String  # USER-DEFINED::ap_estado_pago estado
+        Date fecha_pago
+        String  # USER-DEFINED::fin_medio_pago medio_pago
+        String(180) referencia
+        String(10) moneda
+        Numeric(18, 6) tipo_cambio
+        Numeric(18, 2) monto_total
+        Text observaciones
+        DateTime created_at
+        DateTime updated_at
+    }
+    public_ap_pago_aplicacion {
+        BigInteger id
+        BigInteger pago_id
+        BigInteger documento_id
+        Numeric(18, 2) monto_aplicado
+        DateTime created_at
+    }
+    public_asientos_contables {
+        BigInteger id
+        Date fecha
+        Text descripcion
+        String(30) origen_tipo
+        BigInteger origen_id
+        DateTime fecha_creacion
+        String(255) glosa
+    }
+    public_asientos_detalle {
+        BigInteger id
+        BigInteger asiento_id
+        String(50) cuenta_contable
+        String(255) descripcion
+        Numeric(14, 2) debe
+        Numeric(14, 2) haber
+        String(20) codigo_cuenta
+        String(255) nombre_cuenta
+    }
+    public_cajas {
+        BigInteger id
+        String(100) nombre
+        String(255) descripcion
+        Numeric(14, 2) saldo_inicial
+        Numeric(14, 2) saldo_actual
+        DateTime fecha_apertura
+        DateTime fecha_cierre
+        String(20) estado
+        Boolean activa
+    }
+    public_categorias_producto {
+        BigInteger id
+        String(150) nombre
+        Text descripcion
+        Boolean activo
+        DateTime fecha_creacion
+    }
+    public_clientes {
+        BigInteger id
+        String(20) rut
+        String(200) razon_social
+        String(200) nombre_fantasia
+        String(200) giro
+        String(250) direccion
+        String(100) comuna
+        String(100) ciudad
+        String(50) telefono
+        String(150) email
+        Boolean activo
+        DateTime fecha_creacion
+        DateTime fecha_actualizacion
+    }
+    public_cuentas_por_cobrar {
+        BigInteger id
+        BigInteger cliente_id
+        BigInteger nota_venta_id
+        Date fecha_emision
+        Date fecha_vencimiento
+        Numeric(14, 2) monto_original
+        Numeric(14, 2) saldo_pendiente
+        String(20) estado
+        Text observacion
+        DateTime fecha_creacion
+        DateTime fecha_actualizacion
+        String(255) razon_social
+    }
+    public_cuentas_por_pagar {
+        BigInteger id
+        BigInteger proveedor_id
+        BigInteger factura_compra_id
+        Date fecha_emision
+        Date fecha_vencimiento
+        Numeric(14, 2) monto_original
+        Numeric(14, 2) saldo_pendiente
+        String(20) estado
+        Text observacion
+        DateTime fecha_creacion
+        DateTime fecha_actualizacion
+    }
+    public_email_log {
+        Integer id
+        DateTime created_at
+        String(50) modulo
+        String(50) evento
+        Integer cliente_id
+        Integer cxc_id
+        String(255) to_email
+        String(255) subject
+        Boolean include_detalle
+        String(20) status
+        DateTime sent_at
+        Text error_message
+        Text meta_json
+    }
+    public_facturas_compra {
+        BigInteger id
+        BigInteger proveedor_id
+        String(50) numero_documento
+        Date fecha_emision
+        Date fecha_vencimiento
+        Numeric(14, 2) neto
+        Numeric(14, 2) iva
+        Numeric(14, 2) total
+        String(20) estado
+        Text observacion
+        DateTime fecha_creacion
+        DateTime fecha_actualizacion
+    }
+    public_facturas_compra_detalle {
+        BigInteger id
+        BigInteger factura_compra_id
+        BigInteger producto_id
+        String(250) descripcion
+        Numeric(14, 2) cantidad
+        Numeric(14, 4) costo_unitario
+        Numeric(14, 2) subtotal
+    }
+    public_fin_adjunto {
+        BigInteger id
+        String(40) entidad
+        BigInteger entidad_id
+        String(220) nombre
+        String(120) mime
+        String(500) storage_path
+        String(80) hash_sha256
+        DateTime created_at
+    }
+    public_fin_categoria_gasto {
+        BigInteger id
+        String(30) codigo
+        String(160) nombre
+        String  # USER-DEFINED::fin_tipo_gasto tipo
+        Boolean activo
+        DateTime created_at
+        DateTime updated_at
+    }
+    public_fin_centro_costo {
+        BigInteger id
+        String(30) codigo
+        String(120) nombre
+        Boolean activo
+        DateTime created_at
+        DateTime updated_at
+    }
+    public_fin_evento {
+        BigInteger id
+        String(40) entidad
+        BigInteger entidad_id
+        String(80) evento
+        Text detalle
+        String(180) user_email
+        String(80) ip_origen
+        DateTime created_at
+    }
+    public_fin_gasto {
+        BigInteger id
+        String  # USER-DEFINED::fin_estado_gasto estado
+        Date fecha
+        BigInteger proveedor_id
+        String(80) documento_ref
+        BigInteger categoria_gasto_id
+        BigInteger centro_costo_id
+        String  # USER-DEFINED::fin_medio_pago medio_pago
+        String(10) moneda
+        Numeric(18, 6) tipo_cambio
+        Numeric(18, 2) neto
+        Numeric(18, 2) exento
+        Numeric(18, 2) iva
+        Numeric(18, 2) otros_impuestos
+        Numeric(18, 2) total
+        String(260) descripcion
+        Text observaciones
+        DateTime created_at
+        DateTime updated_at
+    }
+    public_inventario_movimientos {
+        BigInteger id
+        BigInteger producto_id
+        DateTime fecha
+        String(20) tipo_movimiento
+        Numeric(14, 2) cantidad
+        Numeric(14, 4) costo_unitario
+        String(30) referencia_tipo
+        BigInteger referencia_id
+        Text observacion
+    }
+    public_movimientos_caja {
+        BigInteger id
+        BigInteger caja_id
+        DateTime fecha
+        String(20) tipo_movimiento
+        String(20) medio_pago
+        Numeric(14, 2) monto
+        String(30) referencia_tipo
+        BigInteger referencia_id
+        Text observacion
+    }
+    public_notas_venta {
+        BigInteger id
+        String(50) numero
+        DateTime fecha
+        BigInteger cliente_id
+        BigInteger caja_id
+        String(20) tipo_pago
+        String(20) estado
+        Numeric(14, 2) subtotal_neto
+        Numeric(14, 2) descuento_total
+        Numeric(14, 2) total_neto
+        Numeric(14, 2) total_iva
+        Numeric(14, 2) total_total
+        Text observacion
+        String(100) usuario_emisor
+        DateTime fecha_creacion
+        DateTime fecha_actualizacion
+        Date fecha_vencimiento
+    }
+    public_notas_venta_detalle {
+        BigInteger id
+        BigInteger nota_venta_id
+        BigInteger producto_id
+        String(250) descripcion
+        Numeric(14, 2) cantidad
+        Numeric(14, 2) precio_unitario
+        Numeric(5, 2) descuento_porcentaje
+        Numeric(14, 2) descuento_monto
+        Numeric(14, 2) subtotal
+    }
+    public_pagos_clientes {
+        BigInteger id
+        BigInteger cuenta_cobrar_id
+        DateTime fecha_pago
+        Numeric(14, 2) monto_pago
+        BigInteger caja_id
+        String(100) referencia
+        Text observacion
+        Text forma_pago
+    }
+    public_pagos_proveedores {
+        BigInteger id
+        BigInteger cuenta_pagar_id
+        DateTime fecha_pago
+        Numeric(14, 2) monto_pago
+        String(20) medio_pago
+        String(100) referencia
+        Text observacion
+    }
+    public_productos {
+        BigInteger id
+        String(50) codigo
+        String(200) nombre
+        Text descripcion
+        BigInteger categoria_id
+        BigInteger unidad_medida_id
+        Numeric(14, 2) precio_compra
+        Numeric(14, 2) precio_venta
+        Numeric(14, 2) stock_minimo
+        Numeric(14, 2) stock_actual
+        Boolean activo
+        DateTime fecha_creacion
+        DateTime fecha_actualizacion
+        String(80) codigo_barra
+        Boolean controla_stock
+        Boolean permite_venta_fraccionada
+        Boolean es_servicio
+    }
+    public_proveedor {
+        BigInteger id
+        String(20) rut
+        String(20) rut_normalizado
+        String(180) razon_social
+        String(180) nombre_fantasia
+        String(180) giro
+        String(180) email
+        String(50) telefono
+        String(180) sitio_web
+        Integer condicion_pago_dias
+        Numeric(18, 2) limite_credito
+        Boolean activo
+        Text notas
+        DateTime created_at
+        DateTime updated_at
+    }
+    public_proveedor_banco {
+        BigInteger id
+        BigInteger proveedor_id
+        String(120) banco
+        String(60) tipo_cuenta
+        String(60) numero_cuenta
+        String(180) titular
+        String(20) rut_titular
+        String(180) email_pago
+        Boolean es_principal
+        Boolean activo
+        DateTime created_at
+        DateTime updated_at
+    }
+    public_proveedor_contacto {
+        BigInteger id
+        BigInteger proveedor_id
+        String(120) nombre
+        String(120) cargo
+        String(180) email
+        String(50) telefono
+        Boolean es_principal
+        Boolean activo
+        DateTime created_at
+        DateTime updated_at
+    }
+    public_proveedor_direccion {
+        BigInteger id
+        BigInteger proveedor_id
+        String(180) linea1
+        String(180) linea2
+        String(120) comuna
+        String(120) ciudad
+        String(120) region
+        String(120) pais
+        String(20) codigo_postal
+        Boolean es_principal
+        Boolean activo
+        DateTime created_at
+        DateTime updated_at
+    }
+    public_proveedores {
+        BigInteger id
+        String(20) rut
+        String(200) razon_social
+        String(200) nombre_fantasia
+        String(200) giro
+        String(250) direccion
+        String(100) comuna
+        String(100) ciudad
+        String(50) telefono
+        String(150) email
+        Boolean activo
+        DateTime fecha_creacion
+        DateTime fecha_actualizacion
+    }
+    public_tenant_domains {
+        BigInteger id
+        BigInteger tenant_id
+        String(255) domain
+        Boolean is_primary
+        DateTime created_at
+    }
+    public_tenants {
+        BigInteger id
+        String(60) tenant_code
+        String(160) tenant_name
+        String(80) db_driver
+        String(120) db_host
+        Integer db_port
+        String(120) db_name
+        String(120) db_user
+        Text db_password
+        String(20) db_sslmode
+        Boolean is_active
+        DateTime created_at
+        DateTime updated_at
+    }
+    public_unidades_medida {
+        BigInteger id
+        String(20) codigo
+        String(100) nombre
+        String(20) simbolo
+        Boolean activo
+        DateTime fecha_creacion
+    }
+    public_vw_ap_aging {
+        BigInteger proveedor_id
+        String(180) razon_social
+        BigInteger documento_id
+        String  # USER-DEFINED::ap_documento_tipo tipo
+        String(40) folio
+        Date fecha_emision
+        Date fecha_vencimiento
+        Numeric(18, 2) total
+        Numeric(18, 2) saldo_pendiente
+        Integer dias_vencido
+        Text tramo
+    }
+    public_vw_ap_ranking_proveedores {
+        BigInteger proveedor_id
+        String(180) razon_social
+        Numeric compras_total
+        Numeric saldo_pendiente
+    }
+    public_vw_ap_resumen_proveedor {
+        BigInteger proveedor_id
+        String(180) razon_social
+        BigInteger docs_con_saldo
+        Numeric saldo_total
+        Numeric saldo_vencido
+        Numeric saldo_por_vencer
+    }
+    public_vw_gastos_mensual_categoria {
+        Date mes
+        BigInteger categoria_id
+        String(30) categoria_codigo
+        String(160) categoria_nombre
+        String  # USER-DEFINED::fin_tipo_gasto categoria_tipo
+        Numeric total_gasto
+    }
+
+    fin_config_contable }o--|| fin_plan_cuenta : codigo_cuenta
+    fin_config_contable_detalle_modulo }o--|| fin_plan_cuenta : codigo_cuenta
+    fin_plan_cuenta }o--|| fin_plan_cuenta : cuenta_padre_id
+    public_asientos_detalle }o--|| public_asientos_contables : asiento_id
+    public_cuentas_por_cobrar }o--|| public_clientes : cliente_id
+    public_cuentas_por_cobrar }o--|| public_notas_venta : nota_venta_id
+    public_cuentas_por_pagar }o--|| public_proveedores : proveedor_id
+    public_cuentas_por_pagar }o--|| public_facturas_compra : factura_compra_id
+    public_facturas_compra }o--|| public_proveedores : proveedor_id
+    public_facturas_compra_detalle }o--|| public_facturas_compra : factura_compra_id
+    public_facturas_compra_detalle }o--|| public_productos : producto_id
+    public_inventario_movimientos }o--|| public_productos : producto_id
+    public_movimientos_caja }o--|| public_cajas : caja_id
+    public_notas_venta }o--|| public_clientes : cliente_id
+    public_notas_venta }o--|| public_cajas : caja_id
+    public_notas_venta_detalle }o--|| public_notas_venta : nota_venta_id
+    public_notas_venta_detalle }o--|| public_productos : producto_id
+    public_pagos_clientes }o--|| public_cuentas_por_cobrar : cuenta_cobrar_id
+    public_pagos_clientes }o--|| public_cajas : caja_id
+    public_pagos_proveedores }o--|| public_cuentas_por_pagar : cuenta_pagar_id
+    public_productos }o--|| public_categorias_producto : categoria_id
+    public_productos }o--|| public_unidades_medida : unidad_medida_id

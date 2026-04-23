@@ -1,0 +1,312 @@
+{# templates/clientes/clientes.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Clientes · Evalua_V1{% endblock title %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item active" aria-current="page">Clientes</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Clientes{% endblock page_title %}
+
+{% block content %}
+
+{% set total_clientes = clientes|length %}
+{% set clientes_activos = clientes|selectattr("activo")|list|length %}
+{% set clientes_inactivos = total_clientes - clientes_activos %}
+{% set con_email = clientes|selectattr("email")|list|length %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="h4 fw-semibold mb-1">Maestro de clientes</h2>
+    <div class="text-muted small">
+      Administra la cartera comercial, mantiene trazabilidad de clientes y controla su estado operativo dentro del sistema.
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('menu_principal') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left"></i> Volver
+    </a>
+
+    <a href="{{ request.url_for('clientes_carga_masiva_form') }}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-upload"></i> Carga masiva
+    </a>
+
+    <a href="{{ request.url_for('clientes_form_nuevo') }}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-lg"></i> Nuevo cliente
+    </a>
+  </div>
+</div>
+
+{% if msg %}
+<div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
+  <div class="d-flex align-items-start gap-2">
+    {% if (sev or 'info') in ['success'] %}
+      <i class="bi bi-check-circle-fill mt-1"></i>
+    {% elif (sev or 'info') in ['warning'] %}
+      <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+    {% elif (sev or 'info') in ['danger'] %}
+      <i class="bi bi-x-circle-fill mt-1"></i>
+    {% else %}
+      <i class="bi bi-info-circle-fill mt-1"></i>
+    {% endif %}
+    <div class="flex-grow-1">
+      <div class="fw-semibold mb-1">Información del sistema</div>
+      <div>{{ msg }}</div>
+      {% if (sev or 'info') == 'warning' %}
+        <div class="small text-muted mt-1">
+          Si el cliente tiene documentos asociados, el sistema no permite eliminarlo por trazabilidad y lo desactiva automáticamente.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Total clientes</div>
+        <div class="fs-3 fw-bold">{{ total_clientes }}</div>
+        <div class="small text-muted mt-2">
+          Registros visibles en esta página (hasta {{ limit|default(200) }} por consulta).
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Activos</div>
+        <div class="fs-3 fw-bold text-success">{{ clientes_activos }}</div>
+        <div class="small text-muted mt-2">
+          Clientes habilitados para operar comercialmente.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Inactivos</div>
+        <div class="fs-3 fw-bold text-secondary">{{ clientes_inactivos }}</div>
+        <div class="small text-muted mt-2">
+          Registros deshabilitados, conservados por control y trazabilidad.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Con correo</div>
+        <div class="fs-3 fw-bold text-primary">{{ con_email }}</div>
+        <div class="small text-muted mt-2">
+          Clientes con canal disponible para notificaciones y contacto.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Filtros de consulta</h3>
+        <div class="text-muted small">
+          Busca clientes por razón social, nombre fantasía, RUT u otros campos indexados por el buscador general.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">Búsqueda y segmentación</span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <form id="filtrosClientes" method="get" class="row g-3 align-items-end">
+      <div class="col-md-8">
+        <label class="form-label small fw-semibold">Búsqueda general</label>
+        <input
+          type="text"
+          name="q"
+          class="form-control"
+          placeholder="Buscar por razón social, RUT, comuna, ciudad..."
+          value="{{ q or '' }}"
+        >
+      </div>
+
+      <div class="col-md-2">
+        <div class="form-check mt-4 pt-2">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            name="activos_solo"
+            value="true"
+            id="activos_solo"
+            {% if activos_solo %}checked{% endif %}
+          >
+          <label class="form-check-label small fw-semibold" for="activos_solo">
+            Solo activos
+          </label>
+        </div>
+      </div>
+
+      <div class="col-md-2 d-flex gap-2">
+        <input type="hidden" name="skip" value="0">
+        <input type="hidden" name="limit" value="{{ limit|default(200) }}">
+        <button class="btn btn-primary w-100" type="submit">
+          <i class="bi bi-search"></i> Filtrar
+        </button>
+        <a href="{{ request.url_for('clientes_list') }}" class="btn btn-light">
+          <i class="bi bi-x-circle"></i>
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if skip is defined %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+    <span class="small text-muted mb-0">
+      Página {{ (skip // limit) + 1 }} · {{ limit }} filas · máximo {{ list_page_max|default(500) }} por página
+    </span>
+    <div class="ms-auto d-flex flex-wrap gap-2">
+      {% if skip > 0 %}
+      <a
+        class="btn btn-sm btn-outline-secondary"
+        href="{{ request.url_for('clientes_list') }}?q={{ (q or '')|urlencode }}{% if activos_solo %}&amp;activos_solo=true{% endif %}&amp;limit={{ limit }}&amp;skip={{ skip - limit if skip > limit else 0 }}"
+      >Anterior</a>
+      {% endif %}
+      {% if hay_mas %}
+      <a
+        class="btn btn-sm btn-outline-primary"
+        href="{{ request.url_for('clientes_list') }}?q={{ (q or '')|urlencode }}{% if activos_solo %}&amp;activos_solo=true{% endif %}&amp;limit={{ limit }}&amp;skip={{ skip + limit }}"
+      >Siguiente</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Listado de clientes</h3>
+        <div class="text-muted small">
+          Base maestra de clientes disponibles para ventas, cobranza y operación comercial.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">
+        {{ total_clientes }} registro{{ '' if total_clientes == 1 else 's' }}
+      </span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3 p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:70px;">#</th>
+            <th style="min-width:240px;">Cliente</th>
+            <th style="min-width:130px;">RUT</th>
+            <th style="min-width:130px;">Comuna</th>
+            <th style="min-width:140px;">Teléfono</th>
+            <th style="min-width:220px;">Correo</th>
+            <th class="text-center" style="width:130px;">Estado</th>
+            <th class="text-center" style="width:150px;">Acciones</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for c in clientes %}
+          <tr class="{% if c.activo is defined and (not c.activo) %}table-secondary{% endif %}">
+            <td class="text-muted">{{ (skip|default(0)) + loop.index }}</td>
+
+            <td>
+              <div class="fw-semibold">{{ c.razon_social }}</div>
+              <div class="small text-muted">
+                {{ c.nombre_fantasia or 'Sin nombre fantasía' }}
+              </div>
+            </td>
+
+            <td>
+              <span class="badge rounded-pill bg-light text-dark border">{{ c.rut }}</span>
+            </td>
+
+            <td>{{ c.comuna or '—' }}</td>
+
+            <td>{{ c.telefono or '—' }}</td>
+
+            <td>
+              {% if c.email %}
+                <div class="text-truncate" style="max-width:220px;" title="{{ c.email }}">
+                  {{ c.email }}
+                </div>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              {% if c.activo is defined and c.activo %}
+                <span class="badge bg-success">Activo</span>
+              {% else %}
+                <span class="badge bg-secondary">Inactivo</span>
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              <div class="btn-group btn-group-sm" role="group" aria-label="Acciones cliente">
+                <a
+                  href="{{ request.url_for('clientes_form_editar', cliente_id=c.id) }}"
+                  class="btn btn-outline-primary"
+                  title="Editar"
+                >
+                  <i class="bi bi-pencil"></i>
+                </a>
+
+                <form
+                  method="post"
+                  action="{{ request.url_for('clientes_delete', cliente_id=c.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('¿Eliminar cliente?\n\nSi el cliente tiene documentos asociados, el sistema no lo eliminará por trazabilidad y lo desactivará automáticamente.');"
+                >
+                  <button
+                    type="submit"
+                    class="btn btn-outline-danger"
+                    title="Eliminar / Desactivar"
+                  >
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center text-muted py-5">
+              <div class="mb-2">
+                <i class="bi bi-people fs-3"></i>
+              </div>
+              <div class="fw-semibold">No hay clientes registrados aún.</div>
+              <div class="small">Crea tu primer cliente o realiza una carga masiva para comenzar.</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}

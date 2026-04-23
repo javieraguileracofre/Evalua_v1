@@ -1,0 +1,457 @@
+{# templates/cobranza/cobranza_gestion.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Gestión de Cobranza · Evalua_V1{% endblock title %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item">
+  <a href="{{ request.url_for('menu_principal') }}">Inicio</a>
+</li>
+<li class="breadcrumb-item">
+  <a href="{{ request.url_for('cobranza_resumen') }}">Cobranza</a>
+</li>
+<li class="breadcrumb-item active" aria-current="page">
+  Gestión de cliente
+</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Gestión de cobranza · {{ cliente.razon_social }}{% endblock page_title %}
+
+{% block content %}
+
+{% macro clp(valor) -%}
+  {% set v = (valor or 0) | float %}
+  $ {{ "{:,.0f}".format(v).replace(",", ".") }}
+{%- endmacro %}
+
+{% set total_docs = cuentas|length if cuentas else 0 %}
+{% set total_logs = logs_email|length if logs_email else 0 %}
+{% set total_monto = namespace(value=0) %}
+{% set total_saldo = namespace(value=0) %}
+{% set docs_pendientes = namespace(value=0) %}
+
+{% for c in cuentas or [] %}
+  {% set monto_tmp = (c.monto_original or 0) | float %}
+  {% set saldo_tmp = (c.saldo_pendiente or 0) | float %}
+  {% set total_monto.value = total_monto.value + monto_tmp %}
+  {% set total_saldo.value = total_saldo.value + saldo_tmp %}
+  {% if saldo_tmp > 0 %}
+    {% set docs_pendientes.value = docs_pendientes.value + 1 %}
+  {% endif %}
+{% endfor %}
+
+{% set ratio_pendiente = ((total_saldo.value / total_monto.value * 100) if total_monto.value else 0) %}
+
+{% if msg %}
+  <div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
+    <div class="d-flex align-items-start gap-2">
+      {% if (sev or 'info') == 'success' %}
+        <i class="bi bi-check-circle-fill mt-1"></i>
+      {% elif (sev or 'info') == 'warning' %}
+        <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+      {% elif (sev or 'info') == 'danger' %}
+        <i class="bi bi-x-circle-fill mt-1"></i>
+      {% else %}
+        <i class="bi bi-info-circle-fill mt-1"></i>
+      {% endif %}
+      <div class="flex-grow-1">
+        <div class="fw-semibold mb-1">Resultado de la operación</div>
+        <div>{{ msg }}</div>
+      </div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+  </div>
+{% endif %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="h4 fw-semibold mb-1">{{ cliente.razon_social }}</h2>
+    <div class="text-muted small">
+      Centro de gestión del cliente con seguimiento de cartera, acciones de cobranza e historial de comunicaciones.
+    </div>
+    <div class="small text-muted mt-1">
+      {% if cliente.rut %}<span class="me-3">RUT: <strong>{{ cliente.rut }}</strong></span>{% endif %}
+      {% if cliente.email %}<span class="me-3">Correo: <strong>{{ cliente.email }}</strong></span>{% endif %}
+      {% if cliente.telefono %}<span>Teléfono: <strong>{{ cliente.telefono }}</strong></span>{% endif %}
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm"
+       href="{{ request.url_for('cobranza_export_cuentas_excel') }}?cliente_id={{ cliente.id }}">
+      <i class="bi bi-file-earmark-excel"></i> Exportar CxC
+    </a>
+
+    <a class="btn btn-outline-secondary btn-sm"
+       href="{{ request.url_for('cobranza_export_pagos_excel') }}?cliente_id={{ cliente.id }}">
+      <i class="bi bi-file-earmark-excel"></i> Exportar pagos
+    </a>
+
+    <a class="btn btn-primary btn-sm"
+       href="{{ request.url_for('cobranza_detalle_cliente', cliente_id=cliente.id) }}">
+      <i class="bi bi-list-ul"></i> Ver detalle completo
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Monto total</div>
+        <div class="fs-4 fw-bold">{{ clp(total_monto.value) }}</div>
+        <div class="small text-muted mt-2">Valor bruto acumulado de documentos emitidos.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Saldo pendiente</div>
+        <div class="fs-4 fw-bold text-danger">{{ clp(total_saldo.value) }}</div>
+        <div class="small text-muted mt-2">
+          {{ "{:,.1f}".format(ratio_pendiente).replace(".", ",") }}% del monto total sigue pendiente.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Docs con saldo</div>
+        <div class="fs-3 fw-bold text-warning">{{ docs_pendientes.value }}</div>
+        <div class="small text-muted mt-2">Documentos que requieren gestión o pago.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Correos registrados</div>
+        <div class="fs-3 fw-bold text-primary">{{ total_logs }}</div>
+        <div class="small text-muted mt-2">Interacciones registradas en EmailLog para este cliente.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pb-0 pt-3">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <h3 class="h6 fw-semibold mb-1">Ficha del cliente</h3>
+            <div class="text-muted small">Datos de identificación y contacto.</div>
+          </div>
+          <span class="badge rounded-pill bg-light text-dark border">
+            <i class="bi bi-person-vcard"></i>
+          </span>
+        </div>
+      </div>
+
+      <div class="card-body pt-3">
+        <div class="mb-2">
+          <div class="small text-muted">Razón social</div>
+          <div class="fw-semibold">{{ cliente.razon_social }}</div>
+        </div>
+
+        <div class="mb-2">
+          <div class="small text-muted">RUT</div>
+          <div class="fw-semibold">{{ cliente.rut or '—' }}</div>
+        </div>
+
+        <div class="mb-2">
+          <div class="small text-muted">Correo</div>
+          <div class="fw-semibold">{{ cliente.email or '—' }}</div>
+        </div>
+
+        <div class="mb-0">
+          <div class="small text-muted">Teléfono</div>
+          <div class="fw-semibold">{{ cliente.telefono or '—' }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pb-0 pt-3">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <h3 class="h6 fw-semibold mb-1">Resumen de cartera</h3>
+            <div class="text-muted small">Síntesis financiera del cliente.</div>
+          </div>
+          <span class="badge rounded-pill bg-light text-dark border">
+            <i class="bi bi-clipboard-data"></i>
+          </span>
+        </div>
+      </div>
+
+      <div class="card-body pt-3">
+        <div class="row g-3">
+          <div class="col-6">
+            <div class="small text-muted">Monto total</div>
+            <div class="h5 mb-0">{{ clp(total_monto.value) }}</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">Saldo pendiente</div>
+            <div class="h5 mb-0 text-danger">{{ clp(total_saldo.value) }}</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">Docs con saldo</div>
+            <div class="h5 mb-0">{{ docs_pendientes.value }}</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">Total documentos</div>
+            <div class="h5 mb-0">{{ total_docs }}</div>
+          </div>
+        </div>
+
+        <div class="mt-3 pt-3 border-top">
+          <a class="btn btn-outline-primary btn-sm"
+             href="{{ request.url_for('cobranza_detalle_cliente', cliente_id=cliente.id) }}">
+            <i class="bi bi-list-ul"></i> Ver detalle completo
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pb-0 pt-3">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <h3 class="h6 fw-semibold mb-1">Acción de cobranza</h3>
+            <div class="text-muted small">Envía recordatorios y activa contacto.</div>
+          </div>
+          <span class="badge rounded-pill bg-light text-dark border">
+            <i class="bi bi-envelope"></i>
+          </span>
+        </div>
+      </div>
+
+      <div class="card-body pt-3">
+        <div class="small text-muted mb-3">
+          Se enviará un correo de cobranza al cliente desde
+          <strong>cobranzas_athletic@evaluasoluciones.cl</strong>.
+        </div>
+
+        {% if not cliente.email %}
+          <div class="alert alert-danger border-0 shadow-sm py-2 mb-3">
+            <div class="small">
+              <i class="bi bi-exclamation-triangle"></i>
+              Este cliente no tiene correo registrado. Actualiza el correo para poder enviar recordatorios.
+            </div>
+          </div>
+        {% endif %}
+
+        <form method="post"
+              action="{{ request.url_for('cobranza_enviar_recordatorio', cliente_id=cliente.id) }}"
+              class="d-flex flex-column gap-3">
+          <div class="form-check">
+            <input class="form-check-input"
+                   type="checkbox"
+                   value="1"
+                   id="incluir_detalle"
+                   name="incluir_detalle"
+                   checked>
+            <label class="form-check-label small" for="incluir_detalle">
+              Incluir detalle de documentos en el correo
+            </label>
+          </div>
+
+          <button type="submit"
+                  class="btn btn-primary btn-sm"
+                  {% if not cliente.email %}disabled{% endif %}>
+            <i class="bi bi-send"></i> Enviar recordatorio
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Historial de correos</h3>
+        <div class="text-muted small">Últimos envíos registrados por el sistema para este cliente.</div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">EmailLog</span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:70px;">ID</th>
+            <th style="width:170px;">Fecha</th>
+            <th>Asunto</th>
+            <th style="width:230px;">Destino</th>
+            <th style="width:120px;">Estado</th>
+            <th>Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if logs_email %}
+            {% for x in logs_email %}
+              <tr>
+                <td class="text-muted small">{{ x.id }}</td>
+                <td class="small">
+                  {% if x.created_at %}
+                    {{ x.created_at.strftime('%d-%m-%Y %H:%M') }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td class="small">{{ x.subject }}</td>
+                <td class="small">{{ x.to_email }}</td>
+                <td>
+                  {% if x.status == 'ENVIADO' %}
+                    <span class="badge bg-success">Enviado</span>
+                  {% elif x.status == 'ERROR' %}
+                    <span class="badge bg-danger">Error</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Pendiente</span>
+                  {% endif %}
+                </td>
+                <td class="small text-muted">
+                  {% if x.error_message %}
+                    {{ (x.error_message[:100] ~ '…') if x.error_message|length > 100 else x.error_message }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="6" class="text-center text-muted py-5">
+                <div class="mb-2">
+                  <i class="bi bi-envelope fs-3"></i>
+                </div>
+                <div class="fw-semibold">Sin registros de correo aún.</div>
+                <div class="small">Cuando existan envíos, aparecerán aquí para su trazabilidad.</div>
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Cuentas por cobrar</h3>
+        <div class="text-muted small">Documentos emitidos, saldo pendiente y acciones de pago.</div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">
+        {{ total_docs }} documento{{ '' if total_docs == 1 else 's' }}
+      </span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3 p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:70px;">ID</th>
+            <th style="width:130px;">Documento</th>
+            <th style="width:120px;">F. emisión</th>
+            <th style="width:120px;">F. vencimiento</th>
+            <th class="text-end" style="width:130px;">Monto</th>
+            <th class="text-end" style="width:130px;">Pagado</th>
+            <th class="text-end" style="width:130px;">Saldo</th>
+            <th style="width:120px;">Estado</th>
+            <th class="text-center" style="width:130px;">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if cuentas %}
+            {% for cxc in cuentas %}
+              {% set monto = cxc.monto_original or 0 %}
+              {% set saldo = cxc.saldo_pendiente or 0 %}
+              {% set pagado = (monto - saldo) if monto else 0 %}
+              <tr class="{% if saldo > 0 and cxc.estado == 'PENDIENTE' %}table-warning{% endif %}">
+                <td class="text-muted small">{{ cxc.id }}</td>
+
+                <td>
+                  {% if cxc.numero_documento is defined and cxc.numero_documento %}
+                    {{ cxc.numero_documento }}
+                  {% elif cxc.nota_venta %}
+                    {{ cxc.nota_venta.numero }}
+                  {% else %}
+                    CxC {{ cxc.id }}
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% if cxc.fecha_emision %}
+                    {{ cxc.fecha_emision.strftime('%d-%m-%Y') }}
+                  {% else %}—{% endif %}
+                </td>
+
+                <td>
+                  {% if cxc.fecha_vencimiento %}
+                    {{ cxc.fecha_vencimiento.strftime('%d-%m-%Y') }}
+                  {% else %}—{% endif %}
+                </td>
+
+                <td class="text-end">{{ clp(monto) }}</td>
+                <td class="text-end text-success">{{ clp(pagado) }}</td>
+                <td class="text-end {% if saldo > 0 %}text-danger fw-semibold{% endif %}">
+                  {{ clp(saldo) }}
+                </td>
+
+                <td>
+                  {% if cxc.estado == 'PAGADA' %}
+                    <span class="badge bg-success">Pagada</span>
+                  {% elif saldo > 0 %}
+                    <span class="badge bg-warning text-dark">Pendiente</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Cerrada</span>
+                  {% endif %}
+                </td>
+
+                <td class="text-center">
+                  {% if saldo > 0 %}
+                    <a href="{{ request.url_for('cobranza_pago_form', cxc_id=cxc.id) }}"
+                       class="btn btn-sm btn-outline-success">
+                      <i class="bi bi-cash-coin"></i> Pagar
+                    </a>
+                  {% else %}
+                    <span class="badge rounded-pill bg-success-subtle text-success border">Sin saldo</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="9" class="text-center text-muted py-5">
+                <div class="mb-2">
+                  <i class="bi bi-cash-stack fs-3"></i>
+                </div>
+                <div class="fw-semibold">No hay cuentas por cobrar registradas para este cliente.</div>
+                <div class="small">Cuando existan documentos, aparecerán aquí para gestión operativa.</div>
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}

@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <title>Iniciar sesión · Evalua ERP</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --pv-navy: #060b14;
+      --pv-navy-mid: #0c1629;
+      --pv-gold: #c4a35a;
+      --pv-gold-soft: rgba(196, 163, 90, 0.14);
+      --pv-text: #e8eef8;
+      --pv-muted: #8b95ab;
+      --pv-border: rgba(255, 255, 255, 0.08);
+      --pv-border-soft: rgba(148, 163, 184, 0.14);
+      --pv-panel: rgba(15, 23, 42, 0.72);
+      --pv-input: rgba(15, 23, 42, 0.92);
+    }
+
+    html, body {
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      background: var(--pv-navy);
+      color: var(--pv-text);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    .login-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+
+    @media (min-width: 992px) {
+      .login-shell {
+        grid-template-columns: 1.08fr 0.92fr;
+      }
+    }
+
+    .login-brand {
+      position: relative;
+      padding: 2.5rem 2.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse 120% 80% at 80% -10%, rgba(196, 163, 90, 0.22), transparent 52%),
+        radial-gradient(ellipse 70% 50% at 0% 100%, rgba(56, 189, 248, 0.08), transparent 45%),
+        linear-gradient(165deg, #0a1220 0%, var(--pv-navy-mid) 48%, #070d18 100%);
+      border-right: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .login-brand::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M40 40h40v40H40zM0 40h40v40H0zM40 0h40v40H40zM0 0h40v40H0z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      opacity: 0.9;
+      pointer-events: none;
+    }
+
+    .login-brand-inner {
+      position: relative;
+      z-index: 1;
+    }
+
+    .brand-mark {
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.45rem;
+      color: var(--pv-navy);
+      background: linear-gradient(135deg, #ead8ab, var(--pv-gold));
+      box-shadow: 0 12px 40px rgba(196, 163, 90, 0.25);
+      margin-bottom: 1.75rem;
+      user-select: none;
+    }
+
+    .login-brand h1 {
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      font-size: clamp(1.75rem, 3vw, 2.25rem);
+      line-height: 1.18;
+      margin-bottom: 0.8rem;
+      color: #f8fafc;
+    }
+
+    .login-brand p.lead-brand {
+      color: var(--pv-muted);
+      font-size: 1.03rem;
+      line-height: 1.7;
+      max-width: 31rem;
+      margin: 0;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+      margin-top: 2rem;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.45rem 0.8rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      color: #d4dceb;
+      backdrop-filter: blur(6px);
+    }
+
+    .pill i {
+      color: var(--pv-gold);
+    }
+
+    .login-footer-brand {
+      position: relative;
+      z-index: 1;
+      font-size: 0.8rem;
+      color: #6b7a90;
+      margin-top: 2rem;
+    }
+
+    .login-panel {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1.5rem 2.5rem;
+      background: linear-gradient(180deg, #0b1220 0%, #060b14 100%);
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 430px;
+      border-radius: 24px;
+      padding: 2rem 2rem 1.75rem;
+      background: var(--pv-panel);
+      border: 1px solid var(--pv-border-soft);
+      box-shadow:
+        0 24px 60px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(12px);
+    }
+
+    .mobile-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      margin-bottom: 0.9rem;
+    }
+
+    .mobile-brand .brand-mark {
+      width: 42px;
+      height: 42px;
+      font-size: 1.08rem;
+      margin: 0;
+      border-radius: 14px;
+    }
+
+    .mobile-brand span {
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -0.02em;
+    }
+
+    .login-card h2 {
+      font-weight: 800;
+      font-size: 1.4rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.3rem;
+      color: #f8fafc;
+    }
+
+    .login-card .sub {
+      font-size: 0.9rem;
+      color: var(--pv-muted);
+      margin-bottom: 1.5rem;
+      line-height: 1.6;
+    }
+
+    .form-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 800;
+      color: #94a3b8;
+      margin-bottom: 0.4rem;
+    }
+
+    .form-control {
+      background: var(--pv-input);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      color: #f1f5f9;
+      border-radius: 13px;
+      padding: 0.78rem 0.95rem;
+      font-size: 0.95rem;
+      transition: all 0.18s ease;
+    }
+
+    .form-control:focus {
+      border-color: rgba(196, 163, 90, 0.48);
+      box-shadow: 0 0 0 3px var(--pv-gold-soft);
+      background: rgba(15, 23, 42, 0.98);
+      color: #fff;
+    }
+
+    .form-control::placeholder {
+      color: #64748b;
+    }
+
+    .btn-login {
+      border-radius: 13px;
+      font-weight: 800;
+      padding: 0.78rem 1rem;
+      background: linear-gradient(135deg, #1f4168 0%, #162f4d 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #f8fafc;
+      box-shadow: 0 8px 24px rgba(30, 58, 95, 0.35);
+      transition: all 0.18s ease;
+    }
+
+    .btn-login:hover {
+      background: linear-gradient(135deg, #285381 0%, #1a375a 100%);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .btn-login:active {
+      transform: translateY(0);
+    }
+
+    .security-note {
+      margin-top: 1.2rem;
+      font-size: 0.77rem;
+      color: #6d7a8f;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.55rem;
+      line-height: 1.55;
+    }
+
+    .security-note i {
+      color: var(--pv-gold);
+      margin-top: 0.1rem;
+      flex: 0 0 auto;
+    }
+
+    .alert {
+      border-radius: 12px;
+      font-size: 0.86rem;
+    }
+
+    .alert-danger {
+      background: rgba(220, 53, 69, 0.16);
+      color: #ffd6db;
+    }
+
+    .alert-info {
+      background: rgba(13, 202, 240, 0.13);
+      color: #d4f7ff;
+    }
+
+    .alert-success {
+      background: rgba(25, 135, 84, 0.16);
+      color: #d5ffea;
+    }
+
+    .alert-warning {
+      background: rgba(255, 193, 7, 0.14);
+      color: #fff0bf;
+    }
+
+    @media (max-width: 991.98px) {
+      .login-panel {
+        padding: 1.25rem 1rem 1.5rem;
+      }
+
+      .login-card {
+        padding: 1.5rem 1.25rem 1.35rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-shell">
+    <section class="login-brand d-none d-lg-flex" aria-hidden="false">
+      <div class="login-brand-inner">
+        <div class="brand-mark">E</div>
+
+        <h1>Evalua ERP</h1>
+
+        <p class="lead-brand">
+          Suite empresarial unificada para operaciones, finanzas, inventario, cobranza y control.
+          Diseñada para organizaciones que necesitan trazabilidad, orden y ejecución con estándar corporativo.
+        </p>
+
+        <div class="pill-row">
+          <span class="pill"><i class="bi bi-shield-lock"></i> Sesión segura</span>
+          <span class="pill"><i class="bi bi-diagram-3"></i> Arquitectura modular</span>
+          <span class="pill"><i class="bi bi-building"></i> Gestión empresarial</span>
+        </div>
+
+        <div class="login-footer-brand">
+          © Evalua ERP · Acceso restringido a personal autorizado
+        </div>
+      </div>
+    </section>
+
+    <section class="login-panel">
+      <div class="login-card">
+        <div class="mobile-brand d-lg-none">
+          <div class="brand-mark">E</div>
+          <span>Evalua ERP</span>
+        </div>
+
+        <h2>Acceso corporativo</h2>
+        <p class="sub">Ingrese sus credenciales para continuar al entorno de gestión.</p>
+
+        {% if error_message %}
+        <div class="alert alert-danger border-0 py-2 px-3 mb-3" role="alert">
+          <i class="bi bi-exclamation-octagon me-1"></i>
+          {{ error_message }}
+        </div>
+        {% endif %}
+
+        {% if query_msg %}
+        <div class="alert alert-{{ query_sev or 'info' }} border-0 py-2 px-3 mb-3" role="status">
+          {{ query_msg }}
+        </div>
+        {% endif %}
+
+        <form method="post" action="{{ request.url_for('auth_login_submit') }}" autocomplete="off" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}"/>
+          <input type="hidden" name="next" value="{{ next_url or '' }}"/>
+
+          <div class="mb-3">
+            <label class="form-label" for="email">Correo corporativo</label>
+            <input
+              class="form-control"
+              id="email"
+              name="email"
+              type="email"
+              required
+              placeholder="nombre@empresa.cl"
+              autofocus
+            >
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="password">Contraseña</label>
+            <input
+              class="form-control"
+              id="password"
+              name="password"
+              type="password"
+              required
+              placeholder="••••••••••••"
+            >
+          </div>
+
+          <button type="submit" class="btn btn-login w-100">
+            <i class="bi bi-box-arrow-in-right me-1"></i>
+            Entrar al sistema
+          </button>
+        </form>
+
+        <div class="security-note">
+          <i class="bi bi-info-circle"></i>
+          <span>
+            Si olvidó su clave, contacte al administrador de su organización.
+            Los accesos al sistema pueden quedar registrados para control y auditoría.
+          </span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

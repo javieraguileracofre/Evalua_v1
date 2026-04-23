@@ -1,0 +1,46 @@
+{% extends "layout/base.html" %}
+{% block title %}Trabajadores · Fondos por rendir{% endblock %}
+{% block page_title %}Trabajadores{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('fondos_rendir_hub') }}">Fondos por rendir</a></li>
+<li class="breadcrumb-item active">Trabajadores</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+  <a href="{{ request.url_for('fondos_rendir_hub') }}" class="btn btn-outline-secondary btn-sm">Panel</a>
+  <div class="d-flex gap-2">
+    {% if solo_activos %}
+    <a href="{{ request.url_for('fondos_rendir_empleados') }}?todos=1" class="btn btn-outline-secondary btn-sm">Ver todos</a>
+    {% else %}
+    <a href="{{ request.url_for('fondos_rendir_empleados') }}" class="btn btn-outline-secondary btn-sm">Solo activos</a>
+    {% endif %}
+    <a href="{{ request.url_for('fondos_rendir_empleado_nuevo') }}" class="btn btn-primary btn-sm">Nuevo trabajador</a>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light"><tr><th>RUT</th><th>Nombre</th><th>Cargo</th><th>Contacto</th><th></th></tr></thead>
+      <tbody>
+        {% for e in empleados %}
+        <tr>
+          <td class="font-monospace">{{ e.rut }}</td>
+          <td class="fw-medium">{{ e.nombre_completo }}</td>
+          <td>{{ e.cargo or '—' }}</td>
+          <td class="small">{{ e.telefono or '' }} {% if e.email %}<br>{{ e.email }}{% endif %}</td>
+          <td>
+            {% if e.activo %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-secondary">Inactivo</span>{% endif %}
+            <a href="{{ request.url_for('fondos_rendir_empleado_editar', empleado_id=e.id) }}" class="btn btn-sm btn-outline-secondary py-0 ms-1">Editar</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">Sin trabajadores. Cree el primero para asignar anticipos.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,283 @@
+{# templates/comercial/nota_venta_lista.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Notas de venta · Evalua_V1{% endblock title %}
+{% block nav_comercial_active %}active{% endblock nav_comercial_active %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item">
+  <a href="{{ request.url_for('menu_principal') }}">Inicio</a>
+</li>
+<li class="breadcrumb-item active" aria-current="page">Notas de venta</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Notas de venta{% endblock page_title %}
+
+{% block content %}
+
+{% macro clp(valor) -%}
+  {% set v = (valor or 0) | float %}
+  $ {{ "{:,.0f}".format(v).replace(",", ".") }}
+{%- endmacro %}
+
+{% set total_notas = notas|length if notas else 0 %}
+{% set total_emitidas = namespace(value=0) %}
+{% set total_anuladas = namespace(value=0) %}
+{% set total_pagadas = namespace(value=0) %}
+{% set total_monto = namespace(value=0) %}
+{% set total_afectas = namespace(value=0) %}
+
+{% for nv in notas %}
+  {% set total_monto.value = total_monto.value + ((nv.total_total or 0) | float) %}
+
+  {% if (nv.total_iva or 0) > 0 %}
+    {% set total_afectas.value = total_afectas.value + 1 %}
+  {% endif %}
+
+  {% if nv.estado == 'PAGADA' %}
+    {% set total_pagadas.value = total_pagadas.value + 1 %}
+  {% elif nv.estado == 'ANULADA' %}
+    {% set total_anuladas.value = total_anuladas.value + 1 %}
+  {% else %}
+    {% set total_emitidas.value = total_emitidas.value + 1 %}
+  {% endif %}
+{% endfor %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="h4 fw-semibold mb-1">Panel de notas de venta</h2>
+    <div class="text-muted small">
+      Consulta, controla y administra los documentos comerciales emitidos desde el módulo de ventas.
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('nota_venta_form') }}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-lg"></i> Nueva venta
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Notas visibles</div>
+        <div class="fs-3 fw-bold">{{ total_notas }}</div>
+        <div class="small text-muted mt-2">Documentos incluidos en la consulta actual.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Monto total</div>
+        <div class="fs-4 fw-bold">{{ clp(total_monto.value) }}</div>
+        <div class="small text-muted mt-2">Valor acumulado de las notas listadas.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Emitidas / pagadas</div>
+        <div class="fs-4 fw-bold">{{ total_emitidas.value }} / {{ total_pagadas.value }}</div>
+        <div class="small text-muted mt-2">Seguimiento operativo del estado comercial.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Afectas IVA</div>
+        <div class="fs-3 fw-bold">{{ total_afectas.value }}</div>
+        <div class="small text-muted mt-2">Cantidad de documentos con componente tributario.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Filtros de consulta</h3>
+        <div class="text-muted small">
+          Segmenta la cartera de ventas por rango de fechas y cliente para revisar documentos específicos.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">Búsqueda comercial</span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <form class="row g-3 align-items-end" method="get">
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold">Desde</label>
+        <input type="date"
+               name="desde"
+               class="form-control"
+               value="{{ desde or '' }}">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold">Hasta</label>
+        <input type="date"
+               name="hasta"
+               class="form-control"
+               value="{{ hasta or '' }}">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold">Cliente</label>
+        <input type="text"
+               name="cliente"
+               class="form-control"
+               placeholder="Nombre o RUT"
+               value="{{ cliente or '' }}">
+      </div>
+
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary w-100" type="submit">
+          <i class="bi bi-search"></i> Filtrar
+        </button>
+        <a href="{{ request.url_for('nota_venta_lista') }}"
+           class="btn btn-light">
+          <i class="bi bi-x-circle"></i>
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Listado de notas de venta</h3>
+        <div class="text-muted small">
+          Visualiza el detalle consolidado de documentos emitidos, su condición tributaria y su estado actual.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">
+        {{ total_notas }} registro{{ '' if total_notas == 1 else 's' }}
+      </span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3 p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:60px;">#</th>
+            <th style="min-width:130px;">Número</th>
+            <th style="min-width:120px;">Emisión</th>
+            <th style="min-width:120px;">Vencimiento</th>
+            <th style="min-width:240px;">Cliente</th>
+            <th style="min-width:100px;">IVA</th>
+            <th class="text-end" style="min-width:130px;">Total</th>
+            <th style="min-width:120px;">Estado</th>
+            <th class="text-center" style="width:150px;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for nv in notas %}
+          {% set tiene_iva = (nv.total_iva or 0) > 0 %}
+          <tr>
+            <td class="text-muted">{{ loop.index }}</td>
+
+            <td>
+              <span class="badge rounded-pill bg-light text-dark border">
+                {{ nv.numero }}
+              </span>
+            </td>
+
+            <td>
+              {% if nv.fecha %}
+                {{ nv.fecha.strftime('%d-%m-%Y') }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
+            <td>
+              {% if nv.fecha_vencimiento %}
+                {{ nv.fecha_vencimiento.strftime('%d-%m-%Y') }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
+            <td>
+              <div class="fw-semibold">
+                {{ nv.cliente.razon_social if nv.cliente else 'Cliente de paso' }}
+              </div>
+            </td>
+
+            <td>
+              {% if tiene_iva %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle">Afecta</span>
+              {% else %}
+                <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Exenta</span>
+              {% endif %}
+            </td>
+
+            <td class="text-end fw-semibold">
+              {{ clp(nv.total_total) }}
+            </td>
+
+            <td>
+              {% if nv.estado == 'PAGADA' %}
+                <span class="badge bg-success">Pagada</span>
+              {% elif nv.estado == 'ANULADA' %}
+                <span class="badge bg-danger">Anulada</span>
+              {% else %}
+                <span class="badge bg-warning text-dark">Emitida</span>
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              <div class="btn-group btn-group-sm">
+                <a href="{{ request.url_for('nota_venta_detalle', nota_id=nv.id) }}"
+                   class="btn btn-outline-secondary"
+                   title="Ver detalle">
+                  <i class="bi bi-eye"></i>
+                </a>
+
+                {% if nv.estado != 'ANULADA' %}
+                <form method="post"
+                      action="{{ request.url_for('nota_venta_anular', nota_id=nv.id) }}"
+                      style="display:inline"
+                      onsubmit="return confirm('¿Anular esta nota de venta? Esta acción devolverá el stock asociado.');">
+                  <button type="submit"
+                          class="btn btn-outline-danger"
+                          title="Anular nota de venta">
+                    <i class="bi bi-slash-circle"></i>
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="9" class="text-center text-muted py-5">
+              <div class="mb-2">
+                <i class="bi bi-receipt fs-3"></i>
+              </div>
+              <div class="fw-semibold">No hay notas de venta en el rango indicado.</div>
+              <div class="small">Ajusta los filtros o genera una nueva venta para comenzar.</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}

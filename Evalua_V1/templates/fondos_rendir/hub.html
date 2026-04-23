@@ -1,0 +1,524 @@
+{% extends "layout/base.html" %}
+{% block title %}Fondos por rendir · Evalua ERP{% endblock %}
+{% block page_title %}Fondos por rendir{% endblock %}
+{% block page_subtitle %}{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item active">Fondos por rendir</li>
+{% endblock %}
+
+{% block head %}
+<style>
+  /* Portada: intro sobre el fondo claro del layout (mejor contraste que solo text-muted) */
+  .fr-hub-intro .fr-hub-title{
+    color: var(--text, #0a0f1a);
+    font-weight: 800;
+    letter-spacing: -.02em;
+  }
+  .fr-hub-intro .fr-hub-sub{
+    color: var(--secondary-soft, #3d465a);
+    font-weight: 500;
+    line-height: 1.5;
+    max-width: 40rem;
+  }
+
+  .fr-dark-board {
+    background:
+      radial-gradient(circle at 92% 8%, rgba(251, 191, 36, .18), transparent 26%),
+      radial-gradient(circle at 8% 88%, rgba(52, 211, 153, .14), transparent 30%),
+      linear-gradient(145deg, #0c1424 0%, #0f1f3a 42%, #0a1628 100%);
+    border: 1px solid rgba(148, 163, 184, .14);
+    border-radius: 22px;
+    box-shadow: 0 18px 45px rgba(2, 6, 23, .32);
+    color: #f1f5f9;
+  }
+
+  .fr-dark-card {
+    background: linear-gradient(180deg, rgba(15, 23, 42, .94), rgba(9, 18, 38, .96));
+    border: 1px solid rgba(148, 163, 184, .14);
+    border-radius: 20px;
+    box-shadow: 0 16px 36px rgba(2, 6, 23, .26);
+    color: #f1f5f9;
+  }
+
+  .fr-dark-board p,
+  .fr-dark-card p,
+  .fr-dark-board tbody td,
+  .fr-dark-card tbody td{
+    color: #f1f5f9;
+  }
+  /* No pintar <th> del thead a color claro: el layout global deja thead con fondo claro. */
+
+  .fr-dark-card .text-muted,
+  .fr-dark-board .text-muted{
+    color: #b8c9dc !important;
+  }
+
+  .fr-dark-board a:not(.btn),
+  .fr-dark-card a:not(.btn){
+    color: #7dd3fc;
+    font-weight: 600;
+  }
+  .fr-dark-board a:not(.btn):hover,
+  .fr-dark-card a:not(.btn):hover{
+    color: #e0f2fe;
+  }
+
+  .fr-kpi-xl{
+    font-size: 2.15rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -.03em;
+  }
+
+  .fr-kpi-lg{
+    font-size: 1.55rem;
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -.02em;
+  }
+
+  /* KPIs: tonos más claros sobre fondo slate (WCAG) */
+  .fr-kpi-cyan{ color: #5eead4 !important; text-shadow: 0 0 24px rgba(45, 212, 191, .25); }
+  .fr-kpi-amber{ color: #fde047 !important; text-shadow: 0 0 24px rgba(250, 204, 21, .2); }
+  .fr-kpi-violet{ color: #ddd6fe !important; text-shadow: 0 0 24px rgba(167, 139, 250, .2); }
+  .fr-kpi-green{ color: #bbf7d0 !important; text-shadow: 0 0 24px rgba(74, 222, 128, .18); }
+
+  .fr-board-badge{
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .48rem .75rem;
+    border-radius: 999px;
+    font-size: .76rem;
+    font-weight: 700;
+    border: 1px solid rgba(255, 255, 255, .12);
+    background: rgba(255, 255, 255, .08);
+    color: #fef08a;
+  }
+
+  .fr-section-title{
+    color: #ffffff;
+    font-weight: 700;
+    margin-bottom: .2rem;
+  }
+
+  .fr-section-sub{
+    color: #c5d3e3;
+    font-size: .88rem;
+    font-weight: 500;
+  }
+
+  .fr-mini{
+    background: rgba(255, 255, 255, .06);
+    border: 1px solid rgba(148, 163, 184, .16);
+    border-radius: 16px;
+    padding: 12px 14px;
+    height: 100%;
+  }
+
+  .fr-mini .label{
+    font-size: .74rem;
+    color: #c5d3e3;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    font-weight: 700;
+    margin-bottom: .3rem;
+  }
+
+  .fr-mini .value{
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #ffffff;
+  }
+
+  .fr-table-dark{
+    --bs-table-bg: transparent;
+    --bs-table-color: #f1f5f9;
+    --bs-table-border-color: rgba(148, 163, 184, .14);
+    margin-bottom: 0;
+  }
+
+  .fr-dark-card .fr-table-dark thead,
+  .fr-dark-board .fr-table-dark thead,
+  .fr-dark-card .table.fr-table-dark thead,
+  .fr-dark-board .table.fr-table-dark thead{
+    background: linear-gradient(180deg, rgba(30, 41, 59, .98), rgba(15, 23, 42, .99)) !important;
+  }
+
+  .fr-dark-card .fr-table-dark thead th,
+  .fr-dark-board .fr-table-dark thead th,
+  .fr-dark-card .table.fr-table-dark thead th,
+  .fr-dark-board .table.fr-table-dark thead th{
+    background: transparent !important;
+    color: #f8fafc !important;
+    border-bottom: 1px solid rgba(148, 163, 184, .28) !important;
+    white-space: nowrap;
+    font-weight: 700;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+
+  .fr-table-dark tbody td{
+    color: #f1f5f9 !important;
+    vertical-align: middle;
+  }
+
+  .fr-table-dark tbody tr:hover{
+    background: rgba(255, 255, 255, .05);
+  }
+
+  .fr-table-dark .badge{
+    font-weight: 700;
+    border: 1px solid rgba(0, 0, 0, .12);
+  }
+
+  .btn-fr-ghost{
+    background: rgba(255, 255, 255, .08);
+    border: 1px solid rgba(203, 213, 225, .28);
+    color: #f8fafc;
+    font-weight: 600;
+  }
+
+  .btn-fr-ghost:hover{
+    background: rgba(255, 255, 255, .14);
+    color: #ffffff;
+    border-color: rgba(226, 232, 240, .4);
+  }
+
+  /* Barra superior (fondo claro del layout): texto oscuro, no el ghost pensado para paneles oscuros */
+  .fr-hub-intro .btn-fr-toolbar{
+    background: #ffffff;
+    border: 1px solid var(--border, #dfe4ed);
+    color: var(--text, #0a0f1a);
+    font-weight: 650;
+    box-shadow: var(--shadow-sm, 0 1px 2px rgba(10, 15, 26, .06));
+  }
+  .fr-hub-intro .btn-fr-toolbar:hover{
+    background: var(--surface-soft, #f6f7fb);
+    border-color: var(--border-strong, #c8cfde);
+    color: var(--primary, #1e3a5f);
+  }
+
+  .fr-dark-card .text-success,
+  .fr-dark-board .text-success{
+    color: #4ade80 !important;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% macro clp(valor) -%}
+  {% set v = (valor or 0) | float %}
+  $ {{ "{:,.0f}".format(v).replace(",", ".") }}
+{%- endmacro %}
+
+<div class="fr-hub-intro d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="fr-hub-title h4 mb-1">Centro de control · anticipos y rendiciones</h2>
+    <div class="fr-hub-sub small">
+      Vista rápida de montos por estado, tendencia de los últimos 6 meses y alertas de anticipos abiertos sin rendir.
+    </div>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('fondos_rendir_fondo_nuevo') }}" class="btn btn-warning btn-sm fw-semibold">
+      <i class="bi bi-plus-lg"></i> Nuevo anticipo
+    </a>
+    <a href="{{ request.url_for('fondos_rendir_anticipos') }}" class="btn btn-fr-toolbar btn-sm">Listado</a>
+    <a href="{{ request.url_for('fondos_rendir_empleados') }}" class="btn btn-fr-toolbar btn-sm">Trabajadores</a>
+    <a href="{{ request.url_for('fondos_rendir_vehiculos') }}" class="btn btn-fr-toolbar btn-sm">Vehículos</a>
+    <a href="{{ request.url_for('transporte_hub') }}" class="btn btn-fr-toolbar btn-sm"><i class="bi bi-signpost-split-fill"></i> Transporte</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-xl-3">
+    <div class="fr-dark-card p-3 h-100">
+      <div class="text-uppercase small fw-semibold mb-2" style="color:#c5d3e3;">Anticipos abiertos</div>
+      <div class="fr-kpi-xl fr-kpi-cyan">{{ stats.n_abiertos }}</div>
+      <div class="small text-muted mt-2">{{ clp(stats.monto_abiertos) }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="fr-dark-card p-3 h-100">
+      <div class="text-uppercase small fw-semibold mb-2" style="color:#c5d3e3;">Pendiente aprobación</div>
+      <div class="fr-kpi-xl fr-kpi-amber">{{ stats.n_pendiente_aprobacion }}</div>
+      <div class="small text-muted mt-2">{{ clp(stats.monto_pendiente_aprobacion) }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="fr-dark-card p-3 h-100">
+      <div class="text-uppercase small fw-semibold mb-2" style="color:#c5d3e3;">Total registros</div>
+      <div class="fr-kpi-xl fr-kpi-violet">{{ stats.n_total }}</div>
+      <div class="small text-muted mt-2">Histórico de anticipos creados</div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="fr-dark-card p-3 h-100">
+      <div class="text-uppercase small fw-semibold mb-2" style="color:#c5d3e3;">Monto total colocado</div>
+      <div class="fr-kpi-lg fr-kpi-green">{{ clp(stats.monto_total) }}</div>
+      <div class="small text-muted mt-2">Suma de todos los anticipos</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-lg-5">
+    <div class="fr-dark-board p-4 h-100">
+      <div class="fr-board-badge mb-2">
+        <i class="bi bi-pie-chart-fill"></i> Cartera por estado
+      </div>
+      <div class="fr-section-title h5 mb-1">Distribución de montos</div>
+      <div class="fr-section-sub mb-3">
+        Proporción del monto de anticipo según etapa del ciclo (abierto, pendiente, aprobado, rechazado).
+      </div>
+      <div id="chartFrEstado" style="min-height: 300px;"></div>
+      <div class="row g-2 mt-1">
+        {% set ch = stats.chart %}
+        {% for label in ch.estado_labels %}
+        <div class="col-6">
+          <div class="fr-mini">
+            <div class="label">{{ label }}</div>
+            <div class="value" style="font-size:.95rem;">{{ clp(ch.estado_montos[loop.index0]) }}</div>
+            <div class="small text-muted">{{ ch.estado_counts[loop.index0] }} folio{% if ch.estado_counts[loop.index0] != 1 %}s{% endif %}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-7">
+    <div class="fr-dark-board p-4 h-100">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+        <div>
+          <div class="fr-board-badge mb-2">
+            <i class="bi bi-graph-up-arrow"></i> Actividad reciente
+          </div>
+          <div class="fr-section-title h5 mb-1">Anticipos por mes</div>
+          <div class="fr-section-sub">Montos registrados en los últimos 6 meses (fecha de creación del folio).</div>
+        </div>
+      </div>
+      <div id="chartFrMeses" style="min-height: 320px;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="fr-dark-card p-3 border-start border-4" style="border-color: rgba(251, 113, 133, .65) !important;">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <div>
+          <div class="text-uppercase small fw-semibold" style="color:#fecdd3;">Alerta · días sin rendir</div>
+          <div class="small text-muted">Anticipos en estado abierto; priorice el seguimiento.</div>
+        </div>
+      </div>
+      {% if stats.alertas_rendicion %}
+      <div class="table-responsive">
+        <table class="table table-sm fr-table-dark mb-0">
+          <thead>
+            <tr>
+              <th>Folio</th>
+              <th>Trabajador</th>
+              <th class="text-end">Anticipo</th>
+              <th class="text-end">Días</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in stats.alertas_rendicion[:8] %}
+            <tr>
+              <td class="fw-semibold"><a class="text-decoration-none" style="color:#7dd3fc;" href="{{ request.url_for('fondos_rendir_fondo_detalle', fondo_id=a.fondo_id) }}">{{ a.folio }}</a></td>
+              <td>{{ a.empleado }}</td>
+              <td class="text-end">{{ clp(a.monto) }}</td>
+              <td class="text-end">
+                <span class="badge {% if a.dias > 7 %}bg-danger{% elif a.dias > 3 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ a.dias }} d</span>
+              </td>
+              <td class="text-end"><a class="btn btn-sm btn-outline-light py-0" href="{{ request.url_for('fondos_rendir_fondo_detalle', fondo_id=a.fondo_id) }}">Abrir</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="mb-0 text-muted small"><i class="bi bi-check2-circle text-success"></i> Sin anticipos abiertos o todos al día.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="fr-dark-card overflow-hidden">
+  <div class="px-4 py-3 border-bottom border-secondary border-opacity-25 d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div>
+      <div class="fr-section-title h6 mb-0">Últimos anticipos</div>
+      <div class="fr-section-sub small mb-0">Acceso rápido a los folios más recientes.</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table fr-table-dark align-middle small mb-0">
+      <thead>
+        <tr>
+          <th>Folio</th>
+          <th>Entrega</th>
+          <th>Trabajador</th>
+          <th>Vehículo</th>
+          <th class="text-end">Anticipo</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in fondos %}
+        <tr>
+          <td class="fw-semibold">{{ f.folio }}</td>
+          <td>{{ f.fecha_entrega.strftime('%d-%m-%Y %H:%M') }}</td>
+          <td>{{ f.empleado.nombre_completo if f.empleado else '—' }}</td>
+          <td>{{ f.vehiculo.patente if f.vehiculo else '—' }}</td>
+          <td class="text-end">{{ clp(f.monto_anticipo) }}</td>
+          <td>
+            {% if f.estado == 'ABIERTO' %}<span class="badge bg-info text-dark">Abierto</span>
+            {% elif f.estado == 'PENDIENTE_APROBACION' %}<span class="badge bg-warning text-dark">Pendiente</span>
+            {% elif f.estado == 'APROBADO' %}<span class="badge bg-success">Aprobado</span>
+            {% else %}<span class="badge bg-danger">Rechazado</span>{% endif %}
+          </td>
+          <td><a class="btn btn-sm btn-fr-ghost py-0" href="{{ request.url_for('fondos_rendir_fondo_detalle', fondo_id=f.id) }}">Ver</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-5">No hay anticipos registrados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const chartData = {{ stats.chart | tojson }};
+  const fmtCLP = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("es-CL");
+
+  const coloresEstado = ["#2dd4bf", "#facc15", "#4ade80", "#fb7185"];
+
+  const donutOpts = {
+    chart: {
+      type: "donut",
+      height: 300,
+      background: "transparent",
+      fontFamily: "Plus Jakarta Sans, system-ui, sans-serif",
+    },
+    series: chartData.estado_montos,
+    labels: chartData.estado_labels,
+    colors: coloresEstado,
+    plotOptions: {
+      pie: {
+        donut: {
+          size: "72%",
+          labels: {
+            show: true,
+            name: { color: "#e2e8f0" },
+            value: {
+              color: "#ffffff",
+              formatter: (v) => fmtCLP(v),
+            },
+            total: {
+              show: true,
+              label: "Total",
+              color: "#cbd5e1",
+              formatter: function (w) {
+                const t = w.globals.seriesTotals.reduce((a, b) => a + b, 0);
+                return fmtCLP(t);
+              },
+            },
+          },
+        },
+      },
+    },
+    stroke: { show: true, colors: ["rgba(15,23,42,.9)"], width: 2 },
+    dataLabels: { enabled: false },
+    legend: {
+      position: "bottom",
+      labels: { colors: "#e8eef5" },
+    },
+    tooltip: {
+      theme: "dark",
+      y: { formatter: (val) => fmtCLP(val) },
+    },
+  };
+
+  const mesOpts = {
+    chart: {
+      type: "area",
+      height: 340,
+      toolbar: { show: false },
+      zoom: { enabled: false },
+      background: "transparent",
+      fontFamily: "Plus Jakarta Sans, system-ui, sans-serif",
+    },
+    series: [{ name: "Monto anticipos", data: chartData.mes_montos }],
+    xaxis: {
+      categories: chartData.mes_labels,
+      labels: { style: { colors: "#cbd5e1" } },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+    },
+    yaxis: {
+      labels: {
+        style: { colors: ["#cbd5e1"] },
+        formatter: (v) => fmtCLP(v),
+      },
+    },
+    colors: ["#f59e0b"],
+    stroke: { curve: "smooth", width: 3 },
+    fill: {
+      type: "gradient",
+      gradient: {
+        shadeIntensity: 1,
+        opacityFrom: 0.4,
+        opacityTo: 0.03,
+        stops: [0, 92, 100],
+      },
+    },
+    markers: { size: 5, strokeWidth: 0, hover: { size: 7 } },
+    grid: {
+      borderColor: "rgba(148,163,184,.12)",
+      strokeDashArray: 4,
+    },
+    tooltip: {
+      theme: "dark",
+      y: { formatter: (val) => fmtCLP(val) },
+    },
+    dataLabels: { enabled: false },
+  };
+
+  const elDonut = document.querySelector("#chartFrEstado");
+  const elMes = document.querySelector("#chartFrMeses");
+
+  if (elDonut && typeof ApexCharts !== "undefined") {
+    const sumE = chartData.estado_montos.reduce((a, b) => a + Number(b || 0), 0);
+    if (sumE <= 0) {
+      donutOpts.series = [1];
+      donutOpts.labels = ["Sin datos"];
+      donutOpts.colors = ["#475569"];
+      donutOpts.tooltip = { enabled: false };
+      donutOpts.legend = { show: false };
+      donutOpts.plotOptions = {
+        pie: {
+          donut: {
+            size: "72%",
+            labels: { show: false },
+          },
+        },
+      };
+    }
+    new ApexCharts(elDonut, donutOpts).render();
+  }
+
+  if (elMes && typeof ApexCharts !== "undefined") {
+    new ApexCharts(elMes, mesOpts).render();
+  }
+});
+</script>
+{% endblock %}

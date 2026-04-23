@@ -1,0 +1,109 @@
+{# templates/finanzas/asientos_lista.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Asientos contables · Evalua ERP{% endblock %}
+{% block page_title %}Asientos contables{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  Revisa el libro diario operativo del ERP con trazabilidad por origen, fecha, usuario y estado.
+</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item active" aria-current="page">Asientos contables</li>
+{% endblock %}
+
+{% block page_actions %}
+<div class="d-flex gap-2 flex-wrap">
+  <a href="{{ request.url_for('contabilidad_asiento_manual_nuevo') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg"></i> Nuevo asiento manual
+  </a>
+  <a href="{{ request.url_for('contabilidad_plan_cuentas') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-diagram-3"></i> Plan de cuentas
+  </a>
+  <a href="{{ request.url_for('contabilidad_estado_resultados') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-graph-up-arrow"></i> Estado de resultados
+  </a>
+  <a href="{{ request.url_for('contabilidad_balance_general') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-pie-chart"></i> Balance general
+  </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="get" class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">Fecha desde</label>
+        <input type="date" name="fecha_desde" class="form-control" value="{{ fecha_desde or '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Fecha hasta</label>
+        <input type="date" name="fecha_hasta" class="form-control" value="{{ fecha_hasta or '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Origen</label>
+        <input type="text" name="origen_tipo" class="form-control" value="{{ origen_tipo or '' }}" placeholder="VENTA, COBRANZA, AP, etc.">
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button class="btn btn-outline-primary w-100">
+          <i class="bi bi-funnel"></i> Filtrar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <h3 class="h6 fw-semibold mb-1">Libro diario</h3>
+    <div class="text-muted small">Cabecera de asientos contables registrados en el sistema.</div>
+  </div>
+
+  <div class="card-body pt-3">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>ID</th>
+            <th>Fecha</th>
+            <th>Glosa</th>
+            <th>Origen</th>
+            <th>Origen ID</th>
+            <th>Moneda</th>
+            <th>Estado</th>
+            <th>Usuario</th>
+            <th class="text-end">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in asientos %}
+          <tr>
+            <td class="fw-semibold">#{{ a.id }}</td>
+            <td>{{ a.fecha }}</td>
+            <td>{{ a.glosa or '—' }}</td>
+            <td>{{ a.origen_tipo or '—' }}</td>
+            <td>{{ a.origen_id or '—' }}</td>
+            <td>{{ a.moneda or 'CLP' }}</td>
+            <td><span class="badge bg-light text-dark border">{{ a.estado or 'PUBLICADO' }}</span></td>
+            <td>{{ a.usuario or '—' }}</td>
+            <td class="text-end">
+              <a href="{{ request.url_for('contabilidad_asiento_detalle', asiento_id=a.id) }}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-eye"></i> Ver
+              </a>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="9" class="text-center text-muted py-5">No hay asientos para los filtros indicados.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

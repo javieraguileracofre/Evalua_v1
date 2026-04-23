@@ -1,0 +1,426 @@
+{% extends "layout/base.html" %}
+{% block title %}Transporte · Hojas de ruta · Evalua ERP{% endblock %}
+{% block page_title %}Transporte{% endblock %}
+{% block page_subtitle %}{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item active">Transporte</li>
+{% endblock %}
+
+{% block head %}
+<style>
+  .tp-hub-intro .tp-hub-title{
+    color: var(--text, #0a0f1a);
+    font-weight: 800;
+    letter-spacing: -.02em;
+  }
+  .tp-hub-intro .tp-hub-sub{
+    color: var(--secondary-soft, #3d465a);
+    font-weight: 500;
+    line-height: 1.5;
+    max-width: 44rem;
+  }
+  .tp-dark-board{
+    background:
+      radial-gradient(circle at 92% 10%, rgba(56, 189, 248, .2), transparent 28%),
+      radial-gradient(circle at 10% 88%, rgba(196, 163, 90, .16), transparent 32%),
+      linear-gradient(145deg, #0a1220 0%, #0f1c34 44%, #081420 100%);
+    border: 1px solid rgba(148, 163, 184, .14);
+    border-radius: 22px;
+    box-shadow: 0 18px 45px rgba(2, 6, 23, .32);
+    color: #f1f5f9;
+  }
+  .tp-dark-card{
+    background: linear-gradient(180deg, rgba(15, 23, 42, .94), rgba(9, 18, 38, .96));
+    border: 1px solid rgba(148, 163, 184, .14);
+    border-radius: 20px;
+    box-shadow: 0 16px 36px rgba(2, 6, 23, .26);
+    color: #f1f5f9;
+  }
+  .tp-dark-board p, .tp-dark-card p, .tp-dark-board tbody td, .tp-dark-card tbody td{ color: #f1f5f9; }
+  .tp-dark-card .text-muted, .tp-dark-board .text-muted{ color: #b8c9dc !important; }
+  .tp-dark-board a:not(.btn), .tp-dark-card a:not(.btn){
+    color: #7dd3fc; font-weight: 600;
+  }
+  .tp-dark-board a:not(.btn):hover, .tp-dark-card a:not(.btn):hover{ color: #e0f2fe; }
+  .tp-kpi-xl{ font-size: 2.1rem; font-weight: 800; line-height: 1; letter-spacing: -.03em; }
+  .tp-kpi-lg{ font-size: 1.5rem; font-weight: 800; line-height: 1.05; letter-spacing: -.02em; }
+  .tp-kpi-cyan{ color: #5eead4 !important; text-shadow: 0 0 24px rgba(45, 212, 191, .22); }
+  .tp-kpi-amber{ color: #fde047 !important; text-shadow: 0 0 24px rgba(250, 204, 21, .18); }
+  .tp-kpi-violet{ color: #ddd6fe !important; text-shadow: 0 0 24px rgba(167, 139, 250, .18); }
+  .tp-kpi-rose{ color: #fda4af !important; text-shadow: 0 0 22px rgba(251, 113, 133, .2); }
+  .tp-board-badge{
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .48rem .75rem; border-radius: 999px; font-size: .76rem; font-weight: 700;
+    border: 1px solid rgba(255, 255, 255, .12);
+    background: rgba(255, 255, 255, .08);
+    color: #bae6fd;
+  }
+  .tp-section-title{ color: #fff; font-weight: 700; margin-bottom: .2rem; }
+  .tp-section-sub{ color: #c5d3e3; font-size: .88rem; font-weight: 500; }
+  .tp-table-dark{
+    --bs-table-bg: transparent; --bs-table-color: #f1f5f9;
+    --bs-table-border-color: rgba(148, 163, 184, .14); margin-bottom: 0;
+  }
+  .tp-dark-card .tp-table-dark thead, .tp-dark-board .tp-table-dark thead{
+    background: linear-gradient(180deg, rgba(30, 41, 59, .98), rgba(15, 23, 42, .99)) !important;
+  }
+  .tp-dark-card .tp-table-dark thead th, .tp-dark-board .tp-table-dark thead th{
+    color: #f8fafc !important; font-weight: 700; font-size: .78rem;
+    text-transform: uppercase; letter-spacing: .05em;
+    border-bottom: 1px solid rgba(148, 163, 184, .28) !important;
+  }
+  .tp-table-dark tbody td{ color: #f1f5f9 !important; vertical-align: middle; }
+  .tp-table-dark tbody tr:hover{ background: rgba(255, 255, 255, .05); }
+  .tp-hub-intro .btn-tp-toolbar{
+    background: #fff; border: 1px solid var(--border, #dfe4ed);
+    color: var(--text, #0a0f1a); font-weight: 650;
+    box-shadow: var(--shadow-sm, 0 1px 2px rgba(10, 15, 26, .06));
+  }
+  .tp-hub-intro .btn-tp-toolbar:hover{
+    background: var(--surface-soft, #f6f7fb);
+    border-color: var(--border-strong, #c8cfde);
+    color: var(--primary, #1e3a5f);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="tp-hub-intro d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="tp-hub-title h4 mb-1">Centro de control · hojas de ruta y eficiencia</h2>
+    <div class="tp-hub-sub small">
+      Compare choferes y flota por km, horas de viaje y consumo (L/100 km) frente al referencial del camión.
+      Ventana de análisis: últimos <strong>{{ stats.dias_ventana }}</strong> días en viajes cerrados.
+    </div>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('transporte_viaje_nuevo') }}" class="btn btn-primary btn-sm fw-semibold">
+      <i class="bi bi-signpost-2-fill"></i> Nueva hoja de ruta
+    </a>
+    <a href="{{ request.url_for('transporte_viajes_lista') }}" class="btn btn-tp-toolbar btn-sm">Listado</a>
+    <a href="{{ request.url_for('fondos_rendir_hub') }}" class="btn btn-tp-toolbar btn-sm">Fondos por rendir</a>
+  </div>
+</div>
+
+{% if msg %}
+<div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
+  <div class="d-flex align-items-start gap-2">
+    {% if (sev or 'info') == 'success' %}<i class="bi bi-check-circle-fill mt-1"></i>
+    {% elif (sev or 'info') == 'warning' %}<i class="bi bi-exclamation-triangle-fill mt-1"></i>
+    {% elif (sev or 'info') == 'danger' %}<i class="bi bi-x-circle-fill mt-1"></i>
+    {% else %}<i class="bi bi-info-circle-fill mt-1"></i>{% endif %}
+    <div class="flex-grow-1">{{ msg }}</div>
+  </div>
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-xl-3">
+    <div class="tp-dark-card p-3 h-100">
+      <div class="text-uppercase small fw-semibold mb-2" style="color:#c5d3e3;">Viajes cerrados (periodo)</div>
+      <div class="tp-kpi-xl tp-kpi-cyan">{{ stats.viajes_cerrados_periodo }}</div>
+      <div class="small text-muted mt-2">Con llegada registrada en la ventana</div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="tp-dark-card p-3 h-100">
+      <div class="text-uppercase small fw-semibold mb-2" style="color:#c5d3e3;">En curso / borrador</div>
+      <div class="tp-kpi-lg tp-kpi-amber">{{ stats.viajes_en_curso }} <span class="fs-6 fw-semibold opacity-75">/</span> {{ stats.viajes_borrador }}</div>
+      <div class="small text-muted mt-2">Operación activa vs. pendiente de salida</div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="tp-dark-card p-3 h-100">
+      <div class="text-uppercase small fw-semibold mb-2" style="color:#c5d3e3;">Km acumulados (cerrados)</div>
+      <div class="tp-kpi-xl tp-kpi-violet">{{ "{:,.0f}".format(stats.km_total_periodo).replace(",", ".") }}</div>
+      <div class="small text-muted mt-2">Suma de recorridos con odómetro válido</div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="tp-dark-card p-3 h-100">
+      <div class="text-uppercase small fw-semibold mb-2" style="color:#c5d3e3;">Rendimiento prom. Km/L</div>
+      <div class="tp-kpi-lg tp-kpi-rose">{% if stats.rendimiento_promedio_km_l is not none %}{{ stats.rendimiento_promedio_km_l }}{% else %}—{% endif %}</div>
+      <div class="small text-muted mt-2">
+        {% if stats.consumo_promedio_l100 is not none %}100 / {{ stats.consumo_promedio_l100 }}{% else %}Indique litros al cerrar viajes{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-lg-5">
+    <div class="tp-dark-board p-4 h-100">
+      <div class="tp-board-badge mb-2"><i class="bi bi-pie-chart-fill"></i> Estados de hojas de ruta</div>
+      <div class="tp-section-title h5 mb-1">Cartera operativa</div>
+      <div class="tp-section-sub mb-3">Conteo global por estado del ciclo (borrador → curso → cerrado).</div>
+      <div id="chartTpEstado" style="min-height: 280px;"></div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-7">
+    <div class="tp-dark-board p-4 h-100">
+      <div class="tp-board-badge mb-2"><i class="bi bi-graph-up-arrow"></i> Km cerrados por mes</div>
+      <div class="tp-section-title h5 mb-1">Tendencia reciente</div>
+      <div class="tp-section-sub mb-3">Cantidad total de kilómetros en viajes cerrados por mes (según llegada real).</div>
+      <div id="chartTpKmMes" style="min-height: 300px;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-xl-6">
+    <div class="tp-dark-board p-4 h-100">
+      <div class="tp-board-badge mb-2"><i class="bi bi-people-fill"></i> Comparativo choferes</div>
+      <div class="tp-section-title h5 mb-1">Km recorridos por chofer (top periodo)</div>
+      <div class="tp-section-sub mb-3">Total de kilómetros cerrados por chofer en el periodo analizado.</div>
+      <div id="chartTpChoferKm" style="min-height: 320px;"></div>
+    </div>
+  </div>
+  <div class="col-12 col-xl-6">
+    <div class="tp-dark-board p-4 h-100">
+      <div class="tp-board-badge mb-2"><i class="bi bi-truck-front-fill"></i> Flota · consumo</div>
+      <div class="tp-section-title h5 mb-1">Km/L real vs referencial</div>
+      <div class="tp-section-sub mb-3">Barras: rendimiento final en km/L por patente. Se muestra el valor dentro de cada barra.</div>
+      <div id="chartTpFlotaL100" style="min-height: 320px;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-lg-6">
+    <div class="tp-dark-card p-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h3 class="h6 fw-bold mb-0 text-white">Choferes · resumen</h3>
+        <span class="badge rounded-pill bg-white bg-opacity-10 text-white border border-white border-opacity-25">Top {{ comparativo_choferes|length }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm tp-table-dark align-middle">
+          <thead><tr>
+            <th>Chofer</th><th class="text-end">Viajes</th><th class="text-end">Km tot.</th>
+            <th class="text-end">Km prom.</th><th class="text-end">Horas prom.</th><th class="text-end">L/100</th><th class="text-end">Km/L</th><th class="text-end">Δ ref %</th>
+          </tr></thead>
+          <tbody>
+            {% for c in comparativo_choferes %}
+            <tr>
+              <td class="fw-semibold">{{ c.nombre }}</td>
+              <td class="text-end">{{ c.n_viajes }}</td>
+              <td class="text-end">{{ "{:,.0f}".format(c.km_total).replace(",", ".") }}</td>
+              <td class="text-end">{% if c.km_promedio is not none %}{{ c.km_promedio }}{% else %}—{% endif %}</td>
+              <td class="text-end">{% if c.horas_promedio is not none %}{{ c.horas_promedio }}{% else %}—{% endif %}</td>
+              <td class="text-end">{% if c.l100_promedio is not none %}{{ c.l100_promedio }}{% else %}—{% endif %}</td>
+              <td class="text-end">{% if c.km_l_promedio is not none %}{{ c.km_l_promedio }}{% else %}—{% endif %}</td>
+              <td class="text-end">{% if c.desvio_pct_promedio is not none %}<span class="{% if c.desvio_pct_promedio > 5 %}text-warning{% elif c.desvio_pct_promedio < -5 %}text-info{% endif %}">{{ c.desvio_pct_promedio }}%</span>{% else %}—{% endif %}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-muted">Sin viajes cerrados en el periodo.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-6">
+    <div class="tp-dark-card p-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h3 class="h6 fw-bold mb-0 text-white">Patentes · consumo</h3>
+        <span class="badge rounded-pill bg-white bg-opacity-10 text-white border border-white border-opacity-25">Top {{ comparativo_vehiculos|length }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm tp-table-dark align-middle">
+          <thead><tr>
+            <th>Patente</th><th class="text-end">Viajes</th><th class="text-end">Km tot.</th>
+            <th class="text-end">Ref. Km/L</th><th class="text-end">Real L/100</th><th class="text-end">Real Km/L</th>
+          </tr></thead>
+          <tbody>
+            {% for v in comparativo_vehiculos %}
+            <tr>
+              <td class="fw-semibold">{{ v.patente }}</td>
+              <td class="text-end">{{ v.n_viajes }}</td>
+              <td class="text-end">{{ "{:,.0f}".format(v.km_total).replace(",", ".") }}</td>
+              <td class="text-end">{% if v.referencial_km_l is not none %}{{ v.referencial_km_l }}{% else %}—{% endif %}</td>
+              <td class="text-end">{% if v.l100_promedio is not none %}{{ v.l100_promedio }}{% else %}—{% endif %}</td>
+              <td class="text-end">{% if v.km_l_promedio is not none %}{{ v.km_l_promedio }}{% else %}—{% endif %}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-muted">Sin datos de flota en el periodo.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <h3 class="h6 fw-bold mb-0">Últimos movimientos</h3>
+    <a href="{{ request.url_for('transporte_viajes_lista') }}" class="btn btn-sm btn-outline-primary">Ver todo</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Folio</th><th>Estado</th><th>Chofer</th><th>Ruta</th><th>Vehículo</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in ultimos_viajes %}
+        <tr>
+          <td class="fw-semibold">{{ v.folio }}</td>
+          <td><span class="badge bg-secondary bg-opacity-15 text-dark">{{ v.estado }}</span></td>
+          <td>{{ v.empleado.nombre_completo if v.empleado else '—' }}</td>
+          <td class="small">{{ v.origen[:28] }}{% if v.origen|length > 28 %}…{% endif %} → {{ v.destino[:28] }}{% if v.destino|length > 28 %}…{% endif %}</td>
+          <td class="small">{{ v.vehiculo.patente if v.vehiculo else '—' }}</td>
+          <td><a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('transporte_viaje_detalle', viaje_id=v.id) }}">Abrir</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted p-4">Aún no hay hojas de ruta. Cree la primera.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script>
+(function(){
+  var chartData = {{ stats.chart | tojson }};
+  var chChofer = {{ chart_chofer | tojson }};
+  var chFlota = {{ chart_flota | tojson }};
+
+  var donutOpts = {
+    chart: { type: "donut", height: 280, fontFamily: "Plus Jakarta Sans, system-ui, sans-serif", foreColor: "#e2e8f0" },
+    series: chartData.estado_counts,
+    labels: chartData.estado_labels,
+    colors: ["#38bdf8", "#fbbf24", "#34d399", "#fb7185"],
+    plotOptions: {
+      pie: {
+        donut: {
+          size: "68%",
+          labels: {
+            show: true,
+            total: {
+              show: true,
+              label: "Total",
+              formatter: function(){ return chartData.estado_counts.reduce(function(a,b){ return a + Number(b||0); }, 0); }
+            }
+          }
+        }
+      }
+    },
+    legend: { position: "bottom", fontWeight: 600 },
+    dataLabels: { enabled: true, style: { fontWeight: 700, colors: ["#f8fafc"] } },
+    stroke: { width: 0 }
+  };
+
+  var mesOpts = {
+    chart: { type: "bar", height: 300, toolbar: { show: false }, foreColor: "#e2e8f0", fontFamily: "Plus Jakarta Sans, system-ui, sans-serif" },
+    series: [{ name: "Km totales cerrados", data: chartData.mes_kms }],
+    xaxis: { categories: chartData.mes_labels, labels: { style: { fontWeight: 600 } } },
+    yaxis: { labels: { formatter: function(v){ return (v||0).toLocaleString("es-CL"); } } },
+    colors: ["#7dd3fc"],
+    plotOptions: { bar: { borderRadius: 8, columnWidth: "58%" } },
+    grid: { borderColor: "rgba(148,163,184,.2)" },
+    dataLabels: {
+      enabled: true,
+      formatter: function(v){ return Number(v || 0).toLocaleString("es-CL"); },
+      style: { fontWeight: 700, colors: ["#0f172a"] },
+      background: {
+        enabled: false,
+        foreColor: "#0f172a",
+        borderRadius: 4,
+        padding: 4,
+        opacity: 0.95,
+        borderWidth: 1,
+        borderColor: "rgba(148,163,184,.65)",
+        background: "rgba(15,23,42,.88)"
+      }
+    }
+  };
+
+  var sumE = chartData.estado_counts.reduce(function(a,b){ return a + Number(b||0); }, 0);
+  if (!sumE) {
+    donutOpts.series = [1];
+    donutOpts.labels = ["Sin datos"];
+    donutOpts.colors = ["#334155"];
+  }
+
+  var elD = document.querySelector("#chartTpEstado");
+  if (elD && typeof ApexCharts !== "undefined") new ApexCharts(elD, donutOpts).render();
+  var elM = document.querySelector("#chartTpKmMes");
+  if (elM && typeof ApexCharts !== "undefined") new ApexCharts(elM, mesOpts).render();
+
+  var chOk = chChofer.labels && chChofer.labels.length && chChofer.km_total.some(function(x){ return x > 0; });
+  var barChofer = {
+    chart: { type: "bar", height: 320, toolbar: { show: false }, foreColor: "#e2e8f0", fontFamily: "Plus Jakarta Sans, system-ui, sans-serif" },
+    series: [{ name: "Km totales cerrados", data: chChofer.km_total }],
+    xaxis: { categories: chChofer.labels, labels: { rotate: -25, style: { fontSize: "11px", fontWeight: 600 } } },
+    plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: "72%" } },
+    colors: ["#a5b4fc"],
+    grid: { borderColor: "rgba(148,163,184,.2)" },
+    dataLabels: {
+      enabled: true,
+      style: { fontWeight: 700, colors: ["#0f172a"] },
+      background: {
+        enabled: false,
+        foreColor: "#0f172a",
+        borderRadius: 4,
+        padding: 4,
+        opacity: 0.95,
+        borderWidth: 1,
+        borderColor: "rgba(148,163,184,.65)",
+        background: "rgba(15,23,42,.88)"
+      }
+    }
+  };
+  var elC = document.querySelector("#chartTpChoferKm");
+  if (elC && typeof ApexCharts !== "undefined") {
+    if (!chOk) {
+      barChofer.series = [{ name: "Km totales cerrados", data: [0] }];
+      barChofer.xaxis.categories = ["Sin datos suficientes"];
+    }
+    new ApexCharts(elC, barChofer).render();
+  }
+
+  var flOk = chFlota.labels && chFlota.labels.length;
+  var flotaOpts = {
+    chart: { type: "bar", height: 320, toolbar: { show: false }, foreColor: "#e2e8f0", fontFamily: "Plus Jakarta Sans, system-ui, sans-serif" },
+    series: [
+      { name: "Real km/L", data: chFlota.km_l },
+      { name: "Referencial km/L", data: chFlota.ref_km_l }
+    ],
+    xaxis: { categories: chFlota.labels, labels: { style: { fontWeight: 600 } } },
+    yaxis: { labels: { formatter: function(v){ return Number(v || 0).toFixed(2); } } },
+    plotOptions: { bar: { borderRadius: 6, columnWidth: "55%", dataLabels: { position: "center" } } },
+    colors: ["#f9a8d4", "#fcd34d"],
+    legend: { position: "top", fontWeight: 700 },
+    grid: { borderColor: "rgba(148,163,184,.2)" },
+    dataLabels: {
+      enabled: true,
+      formatter: function(val){ return Number(val || 0).toFixed(2); },
+      style: { fontWeight: 700, colors: ["#0f172a"] },
+      background: {
+        enabled: false,
+        foreColor: "#0f172a",
+        borderRadius: 4,
+        padding: 4,
+        opacity: 0.95,
+        borderWidth: 1,
+        borderColor: "rgba(148,163,184,.65)",
+        background: "rgba(15,23,42,.88)"
+      }
+    }
+  };
+  var elF = document.querySelector("#chartTpFlotaL100");
+  if (elF && typeof ApexCharts !== "undefined") {
+    if (!flOk) {
+      flotaOpts.xaxis.categories = ["—"];
+      flotaOpts.series = [{ name: "Real km/L", data: [0] }, { name: "Referencial km/L", data: [0] }];
+    }
+    new ApexCharts(elF, flotaOpts).render();
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "layout/base.html" %}
+{% block title %}Vehículos flota · Fondos por rendir{% endblock %}
+{% block page_title %}Vehículos de flota{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('fondos_rendir_hub') }}">Fondos por rendir</a></li>
+<li class="breadcrumb-item active">Vehículos</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+  <a href="{{ request.url_for('fondos_rendir_hub') }}" class="btn btn-outline-secondary btn-sm">Panel</a>
+  <div class="d-flex gap-2">
+    {% if solo_activos %}
+    <a href="{{ request.url_for('fondos_rendir_vehiculos') }}?todos=1" class="btn btn-outline-secondary btn-sm">Ver todos</a>
+    {% else %}
+    <a href="{{ request.url_for('fondos_rendir_vehiculos') }}" class="btn btn-outline-secondary btn-sm">Solo activos</a>
+    {% endif %}
+    <a href="{{ request.url_for('fondos_rendir_vehiculo_nuevo') }}" class="btn btn-primary btn-sm">Nuevo vehículo</a>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light"><tr><th>Patente</th><th>Marca / modelo</th><th>Año</th><th></th></tr></thead>
+      <tbody>
+        {% for v in vehiculos %}
+        <tr>
+          <td class="fw-semibold font-monospace">{{ v.patente }}</td>
+          <td>{{ v.marca }} {{ v.modelo }}</td>
+          <td>{{ v.anio or '—' }}</td>
+          <td>
+            {% if v.activo %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-secondary">Inactivo</span>{% endif %}
+            <a href="{{ request.url_for('fondos_rendir_vehiculo_editar', vid=v.id) }}" class="btn btn-sm btn-outline-secondary py-0 ms-1">Editar</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center text-muted py-4">Sin vehículos. Registre camiones para asociarlos a anticipos.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

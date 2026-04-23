@@ -1,0 +1,48 @@
+{# templates/inventario/productos_carga_masiva.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Carga masiva de productos · Evalua ERP{% endblock title %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('productos_list') }}">Inventario</a></li>
+<li class="breadcrumb-item active" aria-current="page">Carga masiva</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Carga masiva de productos{% endblock page_title %}
+
+{% block content %}
+
+{% if msg %}
+<div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show mb-4" role="alert">
+  {{ msg }}
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body">
+    <p class="text-muted small mb-3">
+      Límites por petición: archivo hasta <strong>{{ bulk_csv_max_mb }} MiB</strong> y
+      <strong>{{ bulk_csv_max_rows }}</strong> filas de datos aproximadas (saltos de línea). Divida archivos mayores.
+    </p>
+    <form
+      method="post"
+      enctype="multipart/form-data"
+      action="{{ request.url_for('productos_carga_masiva_upload') }}"
+    >
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Archivo CSV <span class="text-danger">*</span></label>
+        <input type="file" name="archivo" class="form-control" accept=".csv" required>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{{ request.url_for('productos_list') }}" class="btn btn-light">Volver al listado</a>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-upload"></i> Importar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock content %}

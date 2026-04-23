@@ -1,0 +1,292 @@
+{# templates/finanzas/cxp_detalle.html #}
+{% extends "layout/base.html" %}
+{% import "finanzas/_cxp_macros.html" as cxp %}
+
+{% block title %}{{ data.documento.tipo }} #{{ data.documento.folio }} · Cuentas por pagar{% endblock %}
+{% block page_title %}{{ data.documento.tipo }} #{{ data.documento.folio }}{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  {% set prov = data.proveedor %}
+  {% set tdoc = data.totales %}
+  {{ prov.razon_social if prov else 'Proveedor' }} · Estado {{ data.documento.estado }} · Saldo pendiente $ {{ cxp.cxp_monto(tdoc.saldo_pendiente) }}
+</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="/finanzas/hub">Finanzas</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('cxp_lista') }}">Cuentas por pagar</a></li>
+<li class="breadcrumb-item active" aria-current="page">Detalle</li>
+{% endblock %}
+
+{% block page_actions %}
+{% set doc = data.documento %}
+{% set prov = data.proveedor %}
+<div class="d-flex gap-2 flex-wrap">
+  <a href="{{ request.url_for('cxp_lista') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-list-ul"></i> Listado</a>
+  {% if prov and prov.id %}
+  <a href="{{ request.url_for('proveedor_editar', proveedor_id=prov.id) }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-truck"></i> Proveedor</a>
+  {% endif %}
+  {% if not doc.asiento_id %}
+  <a href="{{ request.url_for('cxp_editar', documento_id=doc.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Editar</a>
+  {% endif %}
+  {% if (data.totales.saldo_pendiente or 0)|float > 0 %}
+  <a href="{{ request.url_for('cxp_pagar_form', documento_id=doc.id) }}" class="btn btn-success btn-sm"><i class="bi bi-cash-coin"></i> Registrar pago</a>
+  {% endif %}
+  {% if data.puede_eliminar %}
+  <form method="post" action="{{ request.url_for('cxp_eliminar', documento_id=doc.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar este documento y su asiento contable asociado? Esta acción no se puede deshacer.');">
+    <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Eliminar</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block hero_title %}Ficha del documento AP{% endblock %}
+{% block hero_desc %}
+Totales, líneas, otros impuestos e historial de pagos aplicados. El aging refleja la cartera según vencimiento y saldo.
+{% endblock %}
+
+{% block head %}
+<style>
+  .cxp-monto { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if cxp_schema_ok is defined and not cxp_schema_ok %}
+<div class="alert alert-warning border-0 shadow-sm mb-3" role="alert">
+  <strong>Esquema CxP incompleto.</strong> Algunas funciones pueden estar limitadas hasta completar las tablas en <code>fin</code>.
+</div>
+{% endif %}
+{% set doc = data.documento %}
+{% set prov = data.proveedor %}
+{% set tdoc = data.totales %}
+
+{% if tdoc.cabecera_desincronizada and doc.asiento_id %}
+<div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
+  <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+  <div>
+    Los totales mostrados se recalculan desde las líneas del documento porque la cabecera en base de datos no coincide (registro histórico o error corregido en el sistema).
+    El asiento contable <strong>#{{ doc.asiento_id }}</strong> puede reflejar el monto anterior; revísalo con contabilidad si aplica.
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Total</div>
+        <div class="fs-5 fw-bold cxp-monto">$ {{ cxp.cxp_monto(tdoc.total) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100 {% if (tdoc.saldo_pendiente or 0)|float > 0 %}border-warning border{% endif %}">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Saldo pendiente</div>
+        <div class="fs-5 fw-bold cxp-monto {% if (tdoc.saldo_pendiente or 0)|float > 0 %}text-danger{% else %}text-success{% endif %}">$ {{ cxp.cxp_monto(tdoc.saldo_pendiente) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Pagado acumulado</div>
+        <div class="fs-5 fw-bold text-success cxp-monto">$ {{ cxp.cxp_monto(data.total_aplicado) }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body py-3">
+        <div class="small text-muted text-uppercase fw-semibold">Aging</div>
+        <div class="mt-1">
+          {% if data.aging_bucket == 'POR_VENCER' %}
+          <span class="badge text-bg-primary">Por vencer</span>
+          {% elif data.aging_bucket == 'VENCE_HOY' %}
+          <span class="badge text-bg-warning text-dark">Vence hoy</span>
+          {% elif data.aging_bucket == '1_30' %}
+          <span class="badge text-bg-danger">1–30 días</span>
+          {% elif data.aging_bucket == '31_60' %}
+          <span class="badge text-bg-danger">31–60</span>
+          {% elif data.aging_bucket == '61_90' %}
+          <span class="badge text-bg-dark">61–90</span>
+          {% elif data.aging_bucket == '90_PLUS' %}
+          <span class="badge text-bg-dark">90+</span>
+          {% else %}
+          <span class="badge text-bg-success">Al día / pagado</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h3 class="h6 fw-semibold mb-0"><i class="bi bi-file-earmark-text text-primary"></i> Documento</h3>
+      </div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5 text-muted">Estado</dt><dd class="col-7"><span class="badge text-bg-secondary">{{ doc.estado }}</span></dd>
+          <dt class="col-5 text-muted">Emisión</dt><dd class="col-7">{{ doc.fecha_emision }}</dd>
+          <dt class="col-5 text-muted">Recepción</dt><dd class="col-7">{{ doc.fecha_recepcion or '—' }}</dd>
+          <dt class="col-5 text-muted">Vencimiento</dt><dd class="col-7 fw-semibold">{{ doc.fecha_vencimiento }}</dd>
+          <dt class="col-5 text-muted">Moneda</dt><dd class="col-7">{{ doc.moneda }}</dd>
+          <dt class="col-5 text-muted">Referencia</dt><dd class="col-7">{{ doc.referencia or '—' }}</dd>
+          {% if doc.asiento_id %}
+          <dt class="col-5 text-muted">Asiento</dt><dd class="col-7"><span class="badge text-bg-info">#{{ doc.asiento_id }}</span></dd>
+          {% endif %}
+          <dt class="col-5 text-muted">Tipo compra</dt><dd class="col-7">{{ doc.tipo_compra_contable or 'GASTO' }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h3 class="h6 fw-semibold mb-0"><i class="bi bi-building text-primary"></i> Proveedor</h3>
+      </div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5 text-muted">RUT</dt><dd class="col-7">{{ prov.rut if prov else '—' }}</dd>
+          <dt class="col-5 text-muted">Razón social</dt><dd class="col-7 fw-semibold">{{ prov.razon_social if prov else '—' }}</dd>
+          <dt class="col-5 text-muted">Email</dt><dd class="col-7">{{ prov.email if prov and prov.email else '—' }}</dd>
+          <dt class="col-5 text-muted">Teléfono</dt><dd class="col-7">{{ prov.telefono if prov and prov.telefono else '—' }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-0 pt-3 pb-0">
+        <h3 class="h6 fw-semibold mb-0"><i class="bi bi-calculator text-primary"></i> Totales</h3>
+      </div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5 text-muted">Neto</dt><dd class="col-7 cxp-monto">$ {{ cxp.cxp_monto(tdoc.neto) }}</dd>
+          <dt class="col-5 text-muted">Exento</dt><dd class="col-7 cxp-monto">$ {{ cxp.cxp_monto(tdoc.exento) }}</dd>
+          <dt class="col-5 text-muted">IVA</dt><dd class="col-7 cxp-monto">$ {{ cxp.cxp_monto(tdoc.iva) }}</dd>
+          <dt class="col-5 text-muted">Otros imp.</dt><dd class="col-7 cxp-monto">$ {{ cxp.cxp_monto(tdoc.otros_impuestos) }}</dd>
+          <dt class="col-5 text-muted pt-2">Total</dt><dd class="col-7 pt-2 fw-bold cxp-monto">$ {{ cxp.cxp_monto(tdoc.total) }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-center">
+    <h3 class="h6 fw-semibold mb-0">Líneas del documento</h3>
+    <span class="badge bg-light text-dark border">{{ doc.detalles|length }} línea(s)</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Descripción</th>
+          <th class="text-end">Cant.</th>
+          <th class="text-end">P. unit.</th>
+          <th class="text-end">Dto.</th>
+          <th class="text-end">Neto</th>
+          <th class="text-end">IVA</th>
+          <th class="text-end">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for det in doc.detalles %}
+        <tr>
+          <td class="fw-semibold">{{ det.linea }}</td>
+          <td>{{ det.descripcion }}</td>
+          <td class="text-end">{{ det.cantidad }}</td>
+          <td class="text-end cxp-monto">$ {{ cxp.cxp_monto(det.precio_unitario) }}</td>
+          <td class="text-end cxp-monto">$ {{ cxp.cxp_monto(det.descuento) }}</td>
+          <td class="text-end cxp-monto">$ {{ cxp.cxp_monto(det.neto_linea) }}</td>
+          <td class="text-end cxp-monto">$ {{ cxp.cxp_monto(det.iva_linea) }}</td>
+          <td class="text-end fw-medium cxp-monto">$ {{ cxp.cxp_monto(det.total_linea) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center text-muted py-4">Sin líneas de detalle.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-0 pt-3 pb-0">
+    <h3 class="h6 fw-semibold mb-0">Otros impuestos</h3>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Tipo</th>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th class="text-end">Monto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for imp in doc.impuestos %}
+        <tr>
+          <td>{{ imp.tipo }}</td>
+          <td>{{ imp.codigo or '—' }}</td>
+          <td>{{ imp.nombre or '—' }}</td>
+          <td class="text-end cxp-monto">$ {{ cxp.cxp_monto(imp.monto) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="text-muted text-center py-3">Sin otros impuestos.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-center">
+    <h3 class="h6 fw-semibold mb-0">Pagos aplicados</h3>
+    <span class="badge bg-light text-dark border">{{ data.pagos|length }} mov.</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>ID Pago</th>
+          <th>Fecha</th>
+          <th>Medio</th>
+          <th>Referencia</th>
+          <th class="text-end">Monto aplicado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in data.pagos %}
+        <tr>
+          <td class="fw-semibold">#{{ p.id }}</td>
+          <td>{{ p.fecha_pago }}</td>
+          <td><span class="badge text-bg-light text-dark border">{{ p.medio_pago }}</span></td>
+          <td>{{ p.referencia or '—' }}</td>
+          <td class="text-end cxp-monto fw-medium">$ {{ cxp.cxp_monto(p.monto_aplicado) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-muted text-center py-4">
+            <i class="bi bi-inbox d-block fs-3 mb-2 opacity-50"></i>
+            Aún no hay pagos aplicados a este documento.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

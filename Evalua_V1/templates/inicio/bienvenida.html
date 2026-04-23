@@ -1,0 +1,615 @@
+{# templates/inicio/bienvenida.html — portada principal #}
+{% extends "layout/base.html" %}
+
+{% block title %}Inicio · Evalua ERP{% endblock title %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item active" aria-current="page">Inicio</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Inicio{% endblock page_title %}
+{% block page_subtitle %}{% endblock page_subtitle %}
+
+{# Sin hero-card por defecto: el impacto visual va en el bloque content #}
+{% block hero %}{% endblock hero %}
+
+{% block head %}
+<style>
+  .home-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 24px;
+    padding: 2rem 2rem 2.25rem;
+    margin-bottom: 1.75rem;
+    color: #e8eef8;
+    background:
+      radial-gradient(ellipse 90% 80% at 100% -20%, rgba(196, 163, 90, 0.35), transparent 50%),
+      radial-gradient(ellipse 70% 60% at 0% 100%, rgba(56, 189, 248, 0.12), transparent 45%),
+      linear-gradient(135deg, #0a1628 0%, #111d38 38%, #0c1829 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 24px 60px rgba(5, 12, 28, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  .home-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    opacity: 0.9;
+    pointer-events: none;
+  }
+  .home-hero-inner {
+    position: relative;
+    z-index: 1;
+    max-width: 52rem;
+  }
+  .home-hero h2 {
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    font-size: clamp(1.45rem, 3vw, 2rem);
+    margin-bottom: 0.5rem;
+    color: #f8fafc;
+  }
+  .home-hero .lead-hero {
+    color: #94a3b8;
+    font-size: 1.02rem;
+    line-height: 1.55;
+    margin-bottom: 0;
+  }
+  .home-hero-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+  }
+  .home-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.85rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+  }
+  .home-pill i {
+    opacity: 0.85;
+    color: #c4a35a;
+  }
+
+  .home-kpi {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+  .home-kpi-card {
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(30, 58, 95, 0.08);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .home-kpi-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    opacity: 0.9;
+  }
+  .home-kpi-card--v::before { background: linear-gradient(90deg, #1e3a5f, #3b82f6); }
+  .home-kpi-card--c::before { background: linear-gradient(90deg, #0d7a3e, #22c55e); }
+  .home-kpi-card--pc::before { background: linear-gradient(90deg, #b91c1c, #f87171); }
+  .home-kpi-card--ap::before { background: linear-gradient(90deg, #b45309, #fbbf24); }
+  .home-kpi-card--y::before { background: linear-gradient(90deg, #1e3a5f, #64748b); }
+  .home-kpi-card--st::before { background: linear-gradient(90deg, #a16207, #eab308); }
+
+  .home-kpi-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+    border-color: rgba(196, 163, 90, 0.25);
+  }
+  .home-kpi-card a.stretched-link {
+    color: inherit;
+  }
+  .home-kpi-card a.stretched-link:hover {
+    color: var(--primary);
+  }
+  .home-kpi-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    margin-bottom: 0.5rem;
+    background: var(--surface-soft);
+    color: var(--primary);
+  }
+
+  .home-strip {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-soft) 100%);
+    box-shadow: var(--shadow-sm);
+    padding: 1.15rem 1.35rem;
+    margin-bottom: 1.75rem;
+  }
+  .home-strip .mini-stat {
+    min-width: 0;
+  }
+  .home-strip .mini-stat .lbl {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-soft);
+    font-weight: 700;
+  }
+  .home-strip .mini-stat .val {
+    font-weight: 800;
+    font-size: 1.05rem;
+    color: var(--text);
+  }
+
+  .home-section-title {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 800;
+    color: var(--text-soft);
+    margin-bottom: 1rem;
+  }
+
+  .home-mod-card {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    height: 100%;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+    overflow: hidden;
+    position: relative;
+  }
+  .home-mod-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: rgba(30, 58, 95, 0.18);
+  }
+  .home-mod-card::before {
+    content: "";
+    display: block;
+    height: 4px;
+    background: linear-gradient(90deg, var(--mod-a, #1e3a5f), var(--mod-b, #3b82f6));
+  }
+  .home-mod-card .card-body {
+    padding: 1.15rem 1.2rem 1.2rem;
+  }
+  .home-mod-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    color: #fff;
+    margin-bottom: 0.65rem;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  }
+
+  .home-stock-card {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+  .home-stock-card .head {
+    padding: 1.15rem 1.35rem;
+    background: linear-gradient(180deg, var(--surface-soft), var(--surface));
+    border-bottom: 1px solid var(--border);
+  }
+  .home-stock-card .table {
+    margin-bottom: 0;
+  }
+  .home-stock-card thead th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-soft);
+    font-weight: 700;
+    border-bottom-width: 1px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .home-kpi-card,
+    .home-mod-card {
+      transition: none;
+    }
+    .home-kpi-card:hover,
+    .home-mod-card:hover {
+      transform: none;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% macro clp(valor) -%}
+  $ {{ "{:,.0f}".format((valor or 0) | float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+{%- endmacro %}
+
+<section class="home-hero" aria-labelledby="home-hero-heading">
+  <div class="home-hero-inner">
+    <h2 id="home-hero-heading">Tu operación en un solo vistazo</h2>
+    <p class="lead-hero">
+      Indicadores del mes, cartera, obligaciones con proveedores e inventario. Accesos directos a ventas, taller, fondos y finanzas.
+    </p>
+    <div class="home-hero-badges">
+      <span class="home-pill"><i class="bi bi-calendar3"></i> {{ fecha_hoy_largo if fecha_hoy_largo is defined else '' }}</span>
+      <span class="home-pill"><i class="bi bi-calendar2-check"></i> Año fiscal {{ anio_actual if anio_actual is defined else '' }}</span>
+      <span class="home-pill"><i class="bi bi-lightning-charge"></i> Evalua ERP</span>
+    </div>
+  </div>
+</section>
+
+<div class="home-section-title">Indicadores del mes</div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card home-kpi-card home-kpi-card--v border-0 h-100">
+      <div class="card-body py-3 px-3 position-relative">
+        <div class="home-kpi-icon"><i class="bi bi-bag-check"></i></div>
+        <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Ventas</div>
+        <div class="fs-5 fw-bold home-kpi text-primary">{{ clp(resumen_ventas_mes.total_ventas if resumen_ventas_mes is defined else 0) }}</div>
+        <div class="small text-muted mt-1">{{ resumen_ventas_mes.documentos if resumen_ventas_mes is defined else 0 }} doc.</div>
+        <a href="{{ request.url_for('nota_venta_lista') }}" class="stretched-link" aria-label="Ir a notas de venta"></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card home-kpi-card home-kpi-card--c border-0 h-100">
+      <div class="card-body py-3 px-3 position-relative">
+        <div class="home-kpi-icon" style="color:#0d7a3e;"><i class="bi bi-cash-coin"></i></div>
+        <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Cobranza</div>
+        <div class="fs-5 fw-bold home-kpi text-success">{{ clp(resumen_cobranza_mes.total_cobrado if resumen_cobranza_mes is defined else 0) }}</div>
+        <div class="small text-muted mt-1">{{ resumen_cobranza_mes.documentos if resumen_cobranza_mes is defined else 0 }} pagos</div>
+        <a href="{{ request.url_for('cobranza_resumen') }}" class="stretched-link" aria-label="Ir a cobranza"></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card home-kpi-card home-kpi-card--pc border-0 h-100">
+      <div class="card-body py-3 px-3 position-relative">
+        <div class="home-kpi-icon" style="color:#c41e1e;"><i class="bi bi-hourglass-split"></i></div>
+        <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Por cobrar</div>
+        <div class="fs-5 fw-bold home-kpi text-danger">{{ clp(resumen_cobranza_global.total_saldo if resumen_cobranza_global is defined else 0) }}</div>
+        <div class="small text-muted mt-1">{{ resumen_cobranza_global.total_documentos if resumen_cobranza_global is defined else 0 }} doc. con saldo</div>
+        <a href="{{ request.url_for('cobranza_dashboard') }}" class="stretched-link" aria-label="Ir a dashboard cobranza"></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card home-kpi-card home-kpi-card--ap border-0 h-100 {% if cxp_schema_ok is defined and not cxp_schema_ok %}opacity-75{% endif %}">
+      <div class="card-body py-3 px-3 position-relative">
+        <div class="home-kpi-icon" style="color:#b45309;"><i class="bi bi-wallet2"></i></div>
+        <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Por pagar (AP)</div>
+        {% if cxp_schema_ok is defined and cxp_schema_ok %}
+        <div class="fs-5 fw-bold home-kpi text-warning">{{ clp(resumen_cxp.saldo_pendiente if resumen_cxp is defined else 0) }}</div>
+        <div class="small text-muted mt-1">{{ resumen_cxp.documentos if resumen_cxp is defined else 0 }} doc. · Venc. {{ clp(resumen_cxp.saldo_vencido if resumen_cxp is defined else 0) }}</div>
+        {% else %}
+        <div class="fs-6 text-muted">Esquema pendiente</div>
+        <div class="small text-muted mt-1">Tablas <code class="small">fin.ap_*</code></div>
+        {% endif %}
+        <a href="{{ request.url_for('cxp_lista') }}" class="stretched-link" aria-label="Ir a cuentas por pagar"></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card home-kpi-card home-kpi-card--y border-0 h-100">
+      <div class="card-body py-3 px-3">
+        <div class="home-kpi-icon"><i class="bi bi-graph-up"></i></div>
+        <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Ventas año</div>
+        <div class="fs-6 fw-bold home-kpi">{{ clp(resumen_ventas_anual.total_ventas if resumen_ventas_anual is defined else 0) }}</div>
+        <div class="small text-muted mt-1">{{ resumen_ventas_anual.documentos if resumen_ventas_anual is defined else 0 }} doc. acum.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card home-kpi-card home-kpi-card--st h-100 {% if (n_productos_alerta_stock or 0) > 0 %}border border-warning{% else %}border-0{% endif %}">
+      <div class="card-body py-3 px-3 position-relative">
+        <div class="home-kpi-icon" style="color:{% if (n_productos_alerta_stock or 0) > 0 %}#a16207{% else %}#0d7a3e{% endif %};"><i class="bi bi-box-seam"></i></div>
+        <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Stock</div>
+        <div class="fs-5 fw-bold home-kpi {% if (n_productos_alerta_stock or 0) > 0 %}text-warning{% else %}text-success{% endif %}">
+          {{ n_productos_alerta_stock if n_productos_alerta_stock is defined else 0 }}
+        </div>
+        <div class="small text-muted mt-1">{% if (n_productos_alerta_stock or 0) > 0 %}Bajo mínimo{% else %}Sin alertas{% endif %}</div>
+        <a href="{{ request.url_for('productos_list') }}" class="stretched-link" aria-label="Ir a productos"></a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="home-strip mb-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+    <div class="d-flex flex-wrap align-items-stretch gap-3 gap-md-4">
+      <div class="d-flex align-items-center gap-2">
+        <span class="rounded-circle d-inline-flex align-items-center justify-content-center" style="width:42px;height:42px;background:rgba(30,58,95,.1);color:var(--primary);"><i class="bi bi-calendar-month fs-5"></i></span>
+        <div>
+          <div class="small text-muted text-uppercase fw-bold" style="font-size:0.7rem;letter-spacing:.06em;">Período contable</div>
+          {% if periodo_mes_estado %}
+            {% if periodo_mes_estado == 'CERRADO' %}
+            <span class="badge rounded-pill text-bg-secondary">Cerrado</span>
+            {% else %}
+            <span class="badge rounded-pill text-bg-success">Abierto</span>
+            {% endif %}
+            <a href="{{ request.url_for('fin_periodos') }}" class="small ms-1">Gestionar</a>
+          {% else %}
+            <span class="text-muted small">Sin registro</span>
+            <a href="{{ request.url_for('fin_periodos') }}" class="small ms-1">Periodos</a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="vr d-none d-md-block opacity-25"></div>
+      <div class="d-flex flex-wrap gap-4">
+        <div class="mini-stat">
+          <div class="lbl">Clientes activos</div>
+          <div class="val">{{ n_clientes_activos if n_clientes_activos is defined else '—' }}</div>
+        </div>
+        <div class="mini-stat">
+          <div class="lbl">Proveedores</div>
+          <div class="val">{{ n_proveedores_activos if n_proveedores_activos is defined else '—' }}</div>
+        </div>
+        <div class="mini-stat">
+          <div class="lbl">Cobranza año</div>
+          <div class="val">{{ clp(resumen_cobranza_anual.total_cobrado if resumen_cobranza_anual is defined else 0) }}</div>
+        </div>
+      </div>
+    </div>
+    <a href="{{ request.url_for('fin_dashboard') }}" class="btn btn-sm btn-primary px-3">
+      <i class="bi bi-bar-chart-line me-1"></i> Dashboard finanzas
+    </a>
+  </div>
+</div>
+
+<div class="home-section-title">Accesos rápidos</div>
+<div class="row g-3 mb-4">
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#1e3a5f;--mod-b:#2563eb;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#1e3a5f,#3b82f6);"><i class="bi bi-shop"></i></div>
+        <h3 class="h6 fw-bold mb-1">Punto de venta</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Notas de venta e historial.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('nota_venta_form') }}" class="btn btn-primary btn-sm">Nueva venta</a>
+          <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-outline-secondary btn-sm">Historial</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#475569;--mod-b:#94a3b8;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#334155,#64748b);"><i class="bi bi-wrench-adjustable"></i></div>
+        <h3 class="h6 fw-bold mb-1">Taller</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Órdenes de servicio y vehículos.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('taller_hub') }}" class="btn btn-dark btn-sm">Panel</a>
+          <a href="{{ request.url_for('taller_orden_nueva') }}" class="btn btn-outline-secondary btn-sm">Nueva OS</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#b45309;--mod-b:#fbbf24;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#b45309,#f59e0b);"><i class="bi bi-cash-coin"></i></div>
+        <h3 class="h6 fw-bold mb-1">Fondos por rendir</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Anticipos y rendiciones.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('fondos_rendir_hub') }}" class="btn btn-warning btn-sm text-dark fw-semibold">Panel</a>
+          <a href="{{ request.url_for('fondos_rendir_fondo_nuevo') }}" class="btn btn-outline-secondary btn-sm">Nuevo</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#0c4a6e;--mod-b:#0ea5e9;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#0c4a6e,#0284c7);"><i class="bi bi-signpost-split-fill"></i></div>
+        <h3 class="h6 fw-bold mb-1">Transporte</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Hojas de ruta y tablero comparativo.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('transporte_hub') }}" class="btn btn-info btn-sm text-dark fw-semibold">Tablero</a>
+          <a href="{{ request.url_for('transporte_viaje_nuevo') }}" class="btn btn-outline-secondary btn-sm">Nueva HR</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#0d9488;--mod-b:#2dd4bf;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#0f766e,#14b8a6);"><i class="bi bi-people"></i></div>
+        <h3 class="h6 fw-bold mb-1">Clientes</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Maestro y contactos.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('clientes_list') }}" class="btn btn-outline-secondary btn-sm">Listado</a>
+          <a href="{{ request.url_for('clientes_form_nuevo') }}" class="btn btn-primary btn-sm">Nuevo</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#7c3aed;--mod-b:#a78bfa;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#6d28d9,#8b5cf6);"><i class="bi bi-box-seam"></i></div>
+        <h3 class="h6 fw-bold mb-1">Inventario</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Productos y stock.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('productos_list') }}" class="btn btn-outline-secondary btn-sm">Productos</a>
+          <a href="{{ request.url_for('producto_form_nuevo') }}" class="btn btn-primary btn-sm">Nuevo</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#0369a1;--mod-b:#38bdf8;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#0369a1,#0ea5e9);"><i class="bi bi-truck"></i></div>
+        <h3 class="h6 fw-bold mb-1">Proveedores</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Datos y condiciones.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('proveedor_lista') }}" class="btn btn-outline-secondary btn-sm">Listado</a>
+          <a href="{{ request.url_for('proveedor_nuevo') }}" class="btn btn-primary btn-sm">Nuevo</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#4338ca;--mod-b:#818cf8;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#4f46e5,#6366f1);"><i class="bi bi-headset"></i></div>
+        <h3 class="h6 fw-bold mb-1">Postventa</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Seguimiento al cliente.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('postventa_hub') }}" class="btn btn-primary btn-sm">Abrir módulo</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#b91c1c;--mod-b:#f87171;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#b91c1c,#ef4444);"><i class="bi bi-wallet2"></i></div>
+        <h3 class="h6 fw-bold mb-1">Cuentas por pagar</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Facturas, pagos y saldos.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('cxp_lista') }}" class="btn btn-outline-danger btn-sm">Listado</a>
+          <a href="{{ request.url_for('cxp_nuevo') }}" class="btn btn-danger btn-sm">Nuevo doc.</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#15803d;--mod-b:#4ade80;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#15803d,#22c55e);"><i class="bi bi-currency-dollar"></i></div>
+        <h3 class="h6 fw-bold mb-1">Cobranza</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Cuentas por cobrar.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('cobranza_resumen') }}" class="btn btn-outline-secondary btn-sm">Resumen</a>
+          <a href="{{ request.url_for('cobranza_dashboard') }}" class="btn btn-outline-success btn-sm">Dashboard</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#1e293b;--mod-b:#c4a35a;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#0f172a,#1e3a5f);"><i class="bi bi-bank"></i></div>
+        <h3 class="h6 fw-bold mb-1">Finanzas</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Hub y visión ejecutiva.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('finanzas_hub') }}" class="btn btn-outline-primary btn-sm">Hub</a>
+          <a href="{{ request.url_for('fin_dashboard') }}" class="btn btn-outline-secondary btn-sm">Dashboard</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-4 col-xl-3">
+    <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#52525b;--mod-b:#a1a1aa;">
+      <div class="card-body d-flex flex-column">
+        <div class="home-mod-icon" style="background:linear-gradient(135deg,#3f3f46,#71717a);"><i class="bi bi-lock-fill"></i></div>
+        <h3 class="h6 fw-bold mb-1">Cierre mensual</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Apertura de periodos.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('fin_periodos') }}" class="btn btn-outline-secondary btn-sm">Periodos</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="home-stock-card">
+  <div class="head d-flex flex-wrap justify-content-between align-items-start gap-2">
+    <div>
+      <h2 class="h5 mb-1 fw-bold">Inventario · alertas</h2>
+      <p class="text-muted small mb-0">
+        Productos con prioridad (bajo mínimo o sin stock). Revise el listado completo para abastecimiento.
+      </p>
+    </div>
+    <a href="{{ request.url_for('productos_list') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-box-seam"></i> Inventario completo
+    </a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width: 90px;">Código</th>
+          <th>Producto</th>
+          <th class="text-end" style="width: 130px;">Stock actual</th>
+          <th class="text-end" style="width: 130px;">Stock mínimo</th>
+          <th style="width: 140px;">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if productos_stock is defined and productos_stock %}
+          {% for p in productos_stock %}
+          {% set stock_act = (p.stock_actual or 0) %}
+          {% set stock_min = (p.stock_minimo or 0) %}
+          {% set bajo_min = stock_act <= stock_min %}
+          <tr>
+            <td class="text-muted small">{{ p.codigo or '—' }}</td>
+            <td>{{ p.nombre }}</td>
+            <td class="text-end home-kpi">{{ stock_act }}</td>
+            <td class="text-end home-kpi">{{ stock_min }}</td>
+            <td>
+              {% if stock_act == 0 %}
+                <span class="badge bg-secondary">Sin stock</span>
+              {% elif bajo_min %}
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Bajo mínimo</span>
+              {% else %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle">OK</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="5" class="text-center text-muted py-5">
+              <i class="bi bi-inbox d-block fs-3 mb-2 opacity-50"></i>
+              No hay productos registrados o sin datos de stock.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock content %}

@@ -1,0 +1,342 @@
+{# templates/cobranza/cobranza_resumen.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Cobranza · Evalua_V1{% endblock title %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item">
+  <a href="{{ request.url_for('menu_principal') }}">Inicio</a>
+</li>
+<li class="breadcrumb-item active" aria-current="page">Cobranza</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Cobranza · Resumen ejecutivo{% endblock page_title %}
+
+{% block content %}
+
+{% macro clp(valor) -%}
+  {% set v = (valor or 0) | float %}
+  $ {{ "{:,.0f}".format(v).replace(",", ".") }}
+{%- endmacro %}
+
+{% set total_docs = (resumen_global.total_documentos if resumen_global else 0) %}
+{% set total_monto = (resumen_global.total_monto if resumen_global else 0) | float %}
+{% set total_saldo = (resumen_global.total_saldo if resumen_global else 0) | float %}
+
+{% set clientes_con_saldo = (resumen_clientes|length if resumen_clientes else 0) %}
+{% set divisor_clientes = clientes_con_saldo if clientes_con_saldo > 0 else 1 %}
+
+{% set ticket_prom_saldo = (total_saldo / divisor_clientes) %}
+{% set docs_prom_cliente = ((total_docs | float) / divisor_clientes) %}
+{% set ratio_saldo = ((total_saldo / total_monto * 100) if total_monto > 0 else 0) %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+  <div>
+    <h2 class="h4 fw-semibold mb-1">Centro de control de cobranza</h2>
+    <div class="text-muted small">
+      Supervisa la cartera por cobrar, automatiza recordatorios y prioriza la gestión por cliente desde un solo panel.
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    {% if has_dashboard %}
+      <a class="btn btn-outline-secondary btn-sm"
+         href="{{ request.url_for('cobranza_dashboard') }}">
+        <i class="bi bi-graph-up"></i> Dashboard
+      </a>
+    {% endif %}
+
+    <a class="btn btn-outline-success btn-sm"
+       href="{{ request.url_for('cobranza_export_cuentas_excel') }}?solo_con_saldo=true">
+      <i class="bi bi-file-earmark-excel"></i> Export CxC con saldo
+    </a>
+
+    <a class="btn btn-outline-success btn-sm"
+       href="{{ request.url_for('cobranza_export_pagos_excel') }}">
+      <i class="bi bi-file-earmark-excel"></i> Export pagos
+    </a>
+  </div>
+</div>
+
+{% if msg %}
+  <div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
+    <div class="d-flex align-items-start gap-2">
+      {% if (sev or 'info') == 'success' %}
+        <i class="bi bi-check-circle-fill mt-1"></i>
+      {% elif (sev or 'info') == 'warning' %}
+        <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+      {% elif (sev or 'info') == 'danger' %}
+        <i class="bi bi-x-circle-fill mt-1"></i>
+      {% else %}
+        <i class="bi bi-info-circle-fill mt-1"></i>
+      {% endif %}
+      <div class="flex-grow-1">
+        <div class="fw-semibold mb-1">Resultado de la operación</div>
+        <div>{{ msg }}</div>
+      </div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+  </div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Cobranza automatizada</h3>
+        <div class="text-muted small">
+          Ejecuta recordatorios automáticos con control de frecuencia, anti-duplicados y validación de horario hábil.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">Motor de automatización</span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3">
+    <div class="row g-3 align-items-center">
+      <div class="col-lg-7">
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+            <i class="bi bi-shield-check"></i> Anti-duplicados
+          </span>
+          <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+            <i class="bi bi-clock"></i> Ventana horaria
+          </span>
+          <span class="badge bg-success-subtle text-success border border-success-subtle">
+            <i class="bi bi-speedometer2"></i> Rate limit 50/min
+          </span>
+          <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+            <i class="bi bi-calendar-check"></i> Lunes a viernes
+          </span>
+        </div>
+
+        <div class="small text-muted">
+          El sistema envía <strong>1 correo por cliente por día</strong>, solo en horario hábil.
+          Fuera de la ventana permitida, la operación se bloquea automáticamente.
+        </div>
+      </div>
+
+      <div class="col-lg-5">
+        <form method="post"
+              action="{{ request.url_for('cobranza_automatizada_enviar') }}"
+              class="row g-2">
+          <div class="col-sm-5">
+            <label class="form-label small fw-semibold">Días vencido ≥</label>
+            <input type="number"
+                   name="dias_vencido"
+                   class="form-control form-control-sm"
+                   value="0"
+                   min="0"
+                   max="365">
+          </div>
+
+          <div class="col-sm-4 d-flex align-items-end">
+            <div class="form-check small mb-2">
+              <input class="form-check-input"
+                     type="checkbox"
+                     value="1"
+                     id="incluir_detalle_auto"
+                     name="incluir_detalle"
+                     checked>
+              <label class="form-check-label" for="incluir_detalle_auto">
+                Incluir detalle
+              </label>
+            </div>
+          </div>
+
+          <div class="col-sm-3 d-grid">
+            <label class="form-label small fw-semibold d-none d-sm-block">&nbsp;</label>
+            <button class="btn btn-primary btn-sm" type="submit">
+              <i class="bi bi-send"></i> Enviar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="mt-3 pt-3 border-top d-flex justify-content-between flex-wrap gap-2">
+      <div class="small text-muted">
+        Consejo operativo: usa <strong>0</strong> para vencidas hoy o antes, y <strong>3</strong> o más para segundas insistencias.
+      </div>
+      <div class="small text-muted">
+        <i class="bi bi-exclamation-triangle"></i> El bloqueo fuera de horario se aplica automáticamente.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Clientes con saldo</div>
+        <div class="fs-3 fw-bold text-primary">{{ clientes_con_saldo }}</div>
+        <div class="small text-muted mt-2">Clientes actualmente expuestos en cartera.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Saldo promedio</div>
+        <div class="fs-4 fw-bold">{{ clp(ticket_prom_saldo) }}</div>
+        <div class="small text-muted mt-2">Saldo pendiente promedio por cliente con deuda.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Docs promedio</div>
+        <div class="fs-4 fw-bold">{{ "{:,.2f}".format(docs_prom_cliente).replace(",", "X").replace(".", ",").replace("X", ".") }}</div>
+        <div class="small text-muted mt-2">Documentos por cliente con saldo.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Intensidad de cartera</div>
+        <div class="fs-4 fw-bold">
+          {% if ratio_saldo >= 70 %}
+            Alta
+          {% elif ratio_saldo >= 30 %}
+            Media
+          {% else %}
+            Baja
+          {% endif %}
+        </div>
+        <div class="small text-muted mt-2">
+          {{ "{:,.1f}".format(ratio_saldo).replace(".", ",") }}% del monto total permanece pendiente.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Documentos</div>
+        <div class="fs-3 fw-bold">{{ total_docs }}</div>
+        <div class="small text-muted mt-2">Cuentas por cobrar activas en la cartera.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Monto total</div>
+        <div class="fs-4 fw-bold">{{ clp(total_monto) }}</div>
+        <div class="small text-muted mt-2">Base monetaria consolidada de documentos.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Saldo pendiente</div>
+        <div class="fs-4 fw-bold text-danger">{{ clp(total_saldo) }}</div>
+        <div class="small text-muted mt-2">Monto total por recuperar en cartera.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white border-0 pb-0 pt-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h3 class="h6 fw-semibold mb-1">Resumen por cliente</h3>
+        <div class="text-muted small">
+          Vista consolidada de cartera por cliente para priorizar gestión y seguimiento operativo.
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-light text-dark border">
+        {{ resumen_clientes|length if resumen_clientes else 0 }} clientes
+      </span>
+    </div>
+  </div>
+
+  <div class="card-body pt-3 p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width: 50px;">#</th>
+            <th style="min-width: 260px;">Cliente</th>
+            <th class="text-end" style="min-width: 140px;">Monto total</th>
+            <th class="text-end" style="min-width: 140px;">Saldo pendiente</th>
+            <th class="text-end" style="min-width: 100px;">Docs</th>
+            <th class="text-center" style="width: 220px;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if resumen_clientes and resumen_clientes|length > 0 %}
+            {% for row in resumen_clientes %}
+              {% set saldo_cli = row.saldo_pendiente or 0 %}
+              <tr class="{% if saldo_cli == 0 %}table-success-subtle{% endif %}">
+                <td class="text-muted">{{ loop.index }}</td>
+
+                <td>
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <div class="fw-semibold">{{ row.razon_social }}</div>
+                    {% if saldo_cli == 0 %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle">
+                        Al día
+                      </span>
+                    {% else %}
+                      <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                        Con saldo
+                      </span>
+                    {% endif %}
+                  </div>
+                </td>
+
+                <td class="text-end">{{ clp(row.monto_total) }}</td>
+
+                <td class="text-end {% if saldo_cli > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+                  {{ clp(saldo_cli) }}
+                </td>
+
+                <td class="text-end">{{ row.documentos or 0 }}</td>
+
+                <td class="text-center">
+                  <div class="d-flex justify-content-center flex-wrap gap-2">
+                    <a href="{{ request.url_for('cobranza_gestion', cliente_id=row.cliente_id) }}"
+                       class="btn btn-sm btn-outline-secondary">
+                      <i class="bi bi-clipboard-check"></i> Gestionar
+                    </a>
+
+                    <a href="{{ request.url_for('cobranza_detalle_cliente', cliente_id=row.cliente_id) }}"
+                       class="btn btn-sm btn-outline-primary">
+                      Ver detalle
+                    </a>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="6" class="text-center text-muted py-5">
+                <div class="mb-2">
+                  <i class="bi bi-cash-stack fs-3"></i>
+                </div>
+                <div class="fw-semibold">No hay cuentas por cobrar pendientes.</div>
+                <div class="small">Cuando exista cartera activa, los clientes aparecerán aquí para su gestión.</div>
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}

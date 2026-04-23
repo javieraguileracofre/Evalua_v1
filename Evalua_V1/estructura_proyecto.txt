@@ -1,0 +1,209 @@
+Estructura del proyecto
+Root: C:\Users\jagui\OneDrive\Proyecto\Evalua_V1
+Generado: 2026-04-18 12:53:08
+
+/
+├── core/
+│   ├── config.py
+│   ├── logging.py
+│   └── tenant.py
+├── crud/
+│   ├── cobranza/
+│   │   └── cobranza.py
+│   ├── comercial/
+│   │   └── nota_venta.py
+│   ├── comunicaciones/
+│   │   ├── __init__.py
+│   │   └── email_log.py
+│   ├── finanzas/
+│   │   ├── __init__.py
+│   │   ├── config_contable.py
+│   │   ├── contabilidad.py
+│   │   ├── contabilidad_asientos.py
+│   │   ├── cuentas_por_pagar.py
+│   │   ├── dashboard.py
+│   │   ├── periodos.py
+│   │   ├── plan_cuentas.py
+│   │   └── proveedor_fin.py
+│   ├── inventario/
+│   │   └── inventario.py
+│   ├── maestros/
+│   │   ├── cliente.py
+│   │   └── proveedor.py
+│   ├── seguridad/
+│   └── __init__.py
+├── db/
+│   ├── psql/
+│   │   ├── 000_platform_registry.sql
+│   │   ├── 001_tenant_base.sql
+│   │   ├── 002_tenant_security.sql
+│   │   ├── 003_maestros_proveedor.sql
+│   │   ├── 004_fin_proveedor_fin.sql
+│   │   ├── 005_cleanup_legado_proveedor_fin.sql
+│   │   ├── 006_fix_fk_ap_public_proveedor.sql
+│   │   ├── 00_install_fin.sql
+│   │   ├── 086_fin_foreign_keys.sql
+│   │   ├── 087_fin_updated_at_triggers.sql
+│   │   ├── 088_fin_cxp_premium.sql
+│   │   ├── 089_fin_plan_cuentas.sql
+│   │   ├── 090_fin_config_contable.sql
+│   │   ├── 091_fin_inventario_recepcion_premium.sql
+│   │   ├── 092_fin_ventas_costo_venta_premium.sql
+│   │   ├── 70_fin_dashboard_views.sql
+│   │   ├── 80_fin_roles_grants.sql
+│   │   ├── 81_fin_periodos_cierre.sql
+│   │   ├── 82_fin_lock_periodo_triggers.sql
+│   │   ├── 83_fin_presupuesto.sql
+│   │   ├── 84_fin_conciliacion_bancaria.sql
+│   │   └── 85_fin_admin_only_periodos.sql
+│   ├── seed/
+│   ├── __init__.py
+│   ├── base_class.py
+│   ├── session.py
+│   └── tenant_registry.py
+├── docs/
+│   ├── db_inspect/
+│   │   ├── db_columns_detail.csv
+│   │   ├── db_structure.json
+│   │   ├── db_structure_summary.txt
+│   │   ├── models_autogen.py
+│   │   ├── schema_diagram.mmd
+│   │   └── schema_report.md
+│   └── arranque sistema.docx
+├── models/
+│   ├── cobranza/
+│   │   ├── __init__.py
+│   │   └── cuentas_por_cobrar.py
+│   ├── comercial/
+│   │   ├── __init__.py
+│   │   └── nota_venta.py
+│   ├── comunicaciones/
+│   │   ├── __init__.py
+│   │   └── email_log.py
+│   ├── finanzas/
+│   │   ├── __init__.py
+│   │   ├── caja.py
+│   │   ├── compras_finanzas.py
+│   │   ├── contabilidad.py
+│   │   ├── contabilidad_asientos.py
+│   │   └── plan_cuentas.py
+│   ├── inventario/
+│   │   └── inventario.py
+│   ├── maestros/
+│   │   ├── __init__.py
+│   │   ├── cliente.py
+│   │   └── proveedor.py
+│   ├── seguridad/
+│   └── __init__.py
+├── routes/
+│   ├── api/
+│   ├── ui/
+│   │   ├── __init__.py
+│   │   ├── cliente.py
+│   │   ├── cobranza.py
+│   │   ├── contabilidad.py
+│   │   ├── cuentas_por_pagar.py
+│   │   ├── fin_periodos.py
+│   │   ├── finanzas.py
+│   │   ├── home.py
+│   │   ├── inicio.py
+│   │   ├── inventario.py
+│   │   ├── proveedor.py
+│   │   └── ventas_pos.py
+│   └── __init__.py
+├── schemas/
+│   ├── cobranza/
+│   ├── comercial/
+│   ├── finanzas/
+│   │   ├── __init__.py
+│   │   ├── cuentas_por_pagar.py
+│   │   ├── plan_cuentas.py
+│   │   └── proveedor_fin.py
+│   ├── inventario/
+│   │   └── inventario.py
+│   ├── maestros/
+│   │   ├── __init__.py
+│   │   ├── cliente.py
+│   │   └── proveedor.py
+│   ├── seguridad/
+│   └── __init__.py
+├── services/
+│   ├── cobranza/
+│   │   └── pago_service.py
+│   ├── comercial/
+│   │   └── ventas_service.py
+│   ├── comunicaciones/
+│   │   ├── __init__.py
+│   │   └── email_service.py
+│   ├── finanzas/
+│   │   ├── __init__.py
+│   │   ├── integracion_inventario.py
+│   │   └── integracion_ventas.py
+│   ├── inventario/
+│   ├── reportes/
+│   ├── seguridad/
+│   ├── shared/
+│   └── __init__.py
+├── static/
+│   ├── css/
+│   ├── img/
+│   └── js/
+├── templates/
+│   ├── admin/
+│   │   └── cobranza_dashboard.html
+│   ├── auth/
+│   ├── clientes/
+│   │   ├── clientes.html
+│   │   ├── clientes_carga_masiva.html
+│   │   └── form_cliente.html
+│   ├── cobranza/
+│   │   ├── cobranza_detalle_cliente.html
+│   │   ├── cobranza_gestion.html
+│   │   ├── cobranza_pago_form.html
+│   │   └── cobranza_resumen.html
+│   ├── comercial/
+│   │   ├── nota_venta_detalle.html
+│   │   ├── nota_venta_form.html
+│   │   ├── nota_venta_lista.html
+│   │   └── ticket_80mm.html
+│   ├── dashboard/
+│   │   └── fin_dashboard.html
+│   ├── finanzas/
+│   │   ├── asiento_detalle.html
+│   │   ├── asientos_lista.html
+│   │   ├── balance_general.html
+│   │   ├── cxp_detalle.html
+│   │   ├── cxp_form.html
+│   │   ├── cxp_lista.html
+│   │   ├── cxp_pago_form.html
+│   │   ├── estado_resultados.html
+│   │   ├── fin_periodos.html
+│   │   ├── plan_cuenta_form.html
+│   │   └── plan_cuentas_lista.html
+│   ├── inicio/
+│   │   └── bienvenida.html
+│   ├── inventario/
+│   │   ├── categorias.html
+│   │   ├── producto_form.html
+│   │   ├── productos.html
+│   │   └── unidades_medida.html
+│   ├── layout/
+│   │   └── base.html
+│   └── proveedores/
+│       ├── form_proveedor.html
+│       └── proveedores.html
+├── tests/
+├── tools/
+│   ├── bootstrap_athletic_tenant.py
+│   ├── create_tenant_database.py
+│   ├── export_estructura.py
+│   ├── generar_mapa_bd.py
+│   └── inspeccionar_estructura_bd.py
+├── .env
+├── .htaccess
+├── __init__.py
+├── estructura.txt
+├── estructura_proyecto.txt
+├── main.py
+├── passenger_wsgi.py
+└── requirements.txt
