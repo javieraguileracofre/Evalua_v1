@@ -2,7 +2,8 @@ Supabase — tablas vacías hasta que cargues el esquema (y la clave del panel)
 ============================================================================
 
 Proyecto (API): https://qtrqsdabrpxitmqvqdko.supabase.co
-Host PostgreSQL:  db.qtrqsdabrpxitmqvqdko.supabase.co  puerto 5432  base postgres  usuario postgres
+Host PostgreSQL (directo):  db.qtrqsdabrpxitmqvqdko.supabase.co  puerto 5432  base postgres  usuario postgres
+Para la app con IPv4 / pooler: URI del panel (Connect) — modo transacción suele ser *.pooler.supabase.com puerto 6543 y usuario postgres.qtrqsdabrpxitmqvqdko; ver .env.supabase.template.
 
 Aclaración importante
 ---------------------

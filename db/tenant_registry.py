@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
-from core.config import settings
+from core.config import postgres_engine_connect_args, settings
 
 
 @dataclass(frozen=True)
@@ -36,7 +36,10 @@ def get_platform_engine() -> Engine:
         future=True,
         pool_pre_ping=True,
         pool_timeout=30,
-        connect_args={"connect_timeout": settings.db_connect_timeout_seconds},
+        connect_args=postgres_engine_connect_args(
+            settings.platform_database_url,
+            settings.db_connect_timeout_seconds,
+        ),
     )
 
 
@@ -95,7 +98,10 @@ def build_database_url(record: TenantRecord) -> str:
     password = quote_plus(record.db_password)
     ssl_raw = (record.db_sslmode or "").strip()
     # Supabase exige TLS desde Internet; sin sslmode psycopg puede colgar hasta connect_timeout.
-    if not ssl_raw and "supabase.co" in (record.db_host or "").lower():
+    host_lo = (record.db_host or "").lower()
+    if not ssl_raw and (
+        "supabase.co" in host_lo or "pooler.supabase.com" in host_lo
+    ):
         ssl_raw = "require"
     ssl_q = f"?sslmode={quote_plus(ssl_raw)}" if ssl_raw else ""
 

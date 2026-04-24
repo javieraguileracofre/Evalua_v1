@@ -9,7 +9,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.config import settings
+from core.config import postgres_engine_connect_args, settings
 from core.tenant import get_current_tenant_code
 from db.tenant_registry import get_database_url_for_tenant
 
@@ -34,7 +34,10 @@ def get_engine(tenant_code: str | None = None) -> Engine:
             future=True,
             pool_pre_ping=True,
             pool_timeout=30,
-            connect_args={"connect_timeout": settings.db_connect_timeout_seconds},
+            connect_args=postgres_engine_connect_args(
+                database_url,
+                settings.db_connect_timeout_seconds,
+            ),
         )
 
     return _ENGINE_CACHE[resolved_tenant]

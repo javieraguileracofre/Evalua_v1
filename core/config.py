@@ -88,6 +88,18 @@ def _to_int(value: str | None, default: int) -> int:
     return n
 
 
+def postgres_engine_connect_args(database_url: str, connect_timeout_seconds: int) -> dict:
+    """
+    Args para SQLAlchemy + psycopg. El pooler Supabase en puerto 6543 (modo transacción)
+    no mantiene prepared statements entre transacciones; prepare_threshold=None lo evita.
+    """
+    args: dict = {"connect_timeout": int(connect_timeout_seconds)}
+    u = database_url or ""
+    if ":6543/" in u or ":6543?" in u:
+        args["prepare_threshold"] = None
+    return args
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str
