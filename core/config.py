@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -88,6 +89,61 @@ def _to_int(value: str | None, default: int) -> int:
     return n
 
 
+def rewrite_supabase_direct_db_url_to_pooler(url: str) -> str:
+    """
+    db.<ref>.supabase.co:5432 suele resolver a IPv6; en Render (solo IPv4) aparece
+    «Network is unreachable». Reescribe a pooler transacción :6543 con usuario postgres.<ref>.
+
+    Host/puerto del pooler: SUPABASE_POOLER_HOST / SUPABASE_POOLER_PORT (defaults del template).
+    Para forzar la URL directa (p. ej. máquina con IPv6): SUPABASE_ALLOW_DIRECT_DB_URL=true.
+    """
+    if os.getenv("SUPABASE_ALLOW_DIRECT_DB_URL", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return url
+    raw = (url or "").strip()
+    if not raw:
+        return raw
+    try:
+        from sqlalchemy.engine.url import URL, make_url
+
+        u = make_url(raw)
+    except Exception:
+        return url
+    host = (u.host or "").lower()
+    if "pooler.supabase.com" in host:
+        return url
+    if not re.match(r"^db\.[^.]+\.supabase\.co$", host):
+        return url
+    p = u.port
+    if p is not None and p != 5432:
+        return url
+    ref = host.removeprefix("db.").removesuffix(".supabase.co")
+    if not ref:
+        return url
+    pooler_host = os.getenv(
+        "SUPABASE_POOLER_HOST", "aws-1-us-east-2.pooler.supabase.com"
+    ).strip()
+    pooler_port = _to_int(os.getenv("SUPABASE_POOLER_PORT"), 6543)
+    q = dict(u.query) if u.query else {}
+    ql = {k.lower() for k in q}
+    if "sslmode" not in ql:
+        q["sslmode"] = "require"
+    new_u = URL.create(
+        "postgresql+psycopg",
+        username=f"postgres.{ref}",
+        password=u.password,
+        host=pooler_host,
+        port=pooler_port,
+        database=u.database or "postgres",
+        query=q,
+    )
+    return new_u.render_as_string(hide_password=False)
+
+
 def postgres_engine_connect_args(database_url: str, connect_timeout_seconds: int) -> dict:
     """
     Args para SQLAlchemy + psycopg. El pooler Supabase en puerto 6543 (modo transacción)
@@ -150,6 +206,8 @@ class Settings:
 
         database_url = _normalize_postgres_url_for_psycopg(database_url)
         platform_database_url = _normalize_postgres_url_for_psycopg(platform_database_url)
+        database_url = rewrite_supabase_direct_db_url_to_pooler(database_url)
+        platform_database_url = rewrite_supabase_direct_db_url_to_pooler(platform_database_url)
         database_url = _ensure_sslmode_require_for_supabase(database_url)
         platform_database_url = _ensure_sslmode_require_for_supabase(platform_database_url)
 
@@ -203,6 +261,12 @@ class Settings:
         if db_connect_timeout > 120:
             db_connect_timeout = 120
 
+        admin_postgres_url = os.getenv("ADMIN_POSTGRES_URL", "").strip() or None
+        if admin_postgres_url:
+            admin_postgres_url = _normalize_postgres_url_for_psycopg(admin_postgres_url)
+            admin_postgres_url = rewrite_supabase_direct_db_url_to_pooler(admin_postgres_url)
+            admin_postgres_url = _ensure_sslmode_require_for_supabase(admin_postgres_url)
+
         return Settings(
             app_name=os.getenv("APP_NAME", "EvaluaERP").strip(),
             app_env=app_env_raw,
@@ -212,7 +276,7 @@ class Settings:
             uvicorn_port=uvicorn_port,
             database_url=database_url,
             platform_database_url=platform_database_url,
-            admin_postgres_url=os.getenv("ADMIN_POSTGRES_URL", "").strip() or None,
+            admin_postgres_url=admin_postgres_url,
             default_tenant_code=os.getenv("DEFAULT_TENANT_CODE", "athletic").strip(),
             tenant_header_name=os.getenv("TENANT_HEADER_NAME", "X-Tenant-Code").strip(),
             tenant_query_param=os.getenv("TENANT_QUERY_PARAM", "tenant").strip(),

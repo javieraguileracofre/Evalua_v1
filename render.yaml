@@ -9,6 +9,8 @@
 # Si POST /login devuelve 500 y en logs aparece "No existe tenant_code": en Supabase
 # cree la fila en public.tenants, o en Environment ponga EVALUA_SINGLE_DB_TENANT=true
 # (un solo Postgres sin tabla tenants).
+# DATABASE_URL con db.*.supabase.co:5432 (IPv6) en Render: la app reescribe al pooler :6543;
+# ajusta SUPABASE_POOLER_HOST si tu proyecto usa otro host del panel Connect.
 #
 # Python nativo en Render (sin Docker): el default 3.14 fuerza build Rust de pydantic-core.
 # Fija versión con .python-version en la raíz o PYTHON_VERSION (evita pydantic-core build en 3.14).

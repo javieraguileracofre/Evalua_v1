@@ -11,7 +11,11 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
-from core.config import postgres_engine_connect_args, settings
+from core.config import (
+    postgres_engine_connect_args,
+    rewrite_supabase_direct_db_url_to_pooler,
+    settings,
+)
 
 
 @dataclass(frozen=True)
@@ -105,10 +109,11 @@ def build_database_url(record: TenantRecord) -> str:
         ssl_raw = "require"
     ssl_q = f"?sslmode={quote_plus(ssl_raw)}" if ssl_raw else ""
 
-    return (
+    url = (
         f"{record.db_driver}://{record.db_user}:{password}"
         f"@{record.db_host}:{record.db_port}/{record.db_name}{ssl_q}"
     )
+    return rewrite_supabase_direct_db_url_to_pooler(url)
 
 
 def _single_db_tenant_fallback_enabled() -> bool:
