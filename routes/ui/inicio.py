@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import logging
+from collections.abc import Generator
 from datetime import date
 from decimal import Decimal
 
@@ -11,6 +12,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import case, extract, func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.config import settings
@@ -18,9 +20,10 @@ from core.paths import TEMPLATES_DIR
 from core.public_errors import log_unhandled
 from crud.cobranza import cobranza as crud_cobranza
 from crud.finanzas.cuentas_por_pagar import cuentas_por_pagar as crud_cxp
-from db.session import get_db
+from db.session import get_session_local
 from models import Cliente, NotaVenta, PagoCliente, Producto, Proveedor
 from models.finanzas.compras_finanzas import Periodo
+from routes.ui.auth import render_login_form
 
 router = APIRouter(tags=["Inicio"])
 
@@ -67,6 +70,22 @@ _DIAS_ES = (
 
 def _fecha_larga_es(d: date) -> str:
     return f"{_DIAS_ES[d.weekday()]}, {d.day} de {_MESES_ES[d.month - 1]} de {d.year}"
+
+
+def get_db_for_menu_principal(request: Request) -> Generator[Session | None, None, None]:
+    """Sin sesión no abre BD: la portada muestra el login en `/`."""
+    if getattr(request.state, "auth_user", None) is None:
+        yield None
+        return
+    SessionLocal = get_session_local()
+    db: Session = SessionLocal()
+    try:
+        yield db
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
@@ -231,10 +250,17 @@ def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
 @router.get("/", response_class=HTMLResponse, name="menu_principal")
 def menu_principal(
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session | None = Depends(get_db_for_menu_principal),
 ):
     """Portada: ante cualquier fallo (BD incompleta, plantilla, etc.) no devolver 500 opaco."""
     try:
+        if db is None:
+            return render_login_form(
+                request,
+                next_url=(request.query_params.get("next") or "").strip(),
+                msg=request.query_params.get("msg"),
+                sev=(request.query_params.get("sev") or "danger"),
+            )
         return _menu_principal_impl(request, db)
     except Exception as exc:
         err_id = log_unhandled("Error al renderizar la portada (/)", exc)

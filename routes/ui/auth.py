@@ -24,6 +24,30 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 logger = logging.getLogger("evalua.auth")
 
 
+def render_login_form(
+    request: Request,
+    *,
+    next_url: str | None = None,
+    msg: str | None = None,
+    sev: str = "danger",
+) -> HTMLResponse:
+    """HTML del formulario de login (`templates/auth/login.html`)."""
+    if "csrf_login" not in request.session:
+        request.session["csrf_login"] = secrets.token_urlsafe(32)
+    err = request.session.pop("login_error", None)
+    return templates.TemplateResponse(
+        "auth/login.html",
+        {
+            "request": request,
+            "csrf_token": request.session.get("csrf_login", ""),
+            "next_url": (next_url or "").strip(),
+            "error_message": err,
+            "query_msg": msg,
+            "query_sev": sev,
+        },
+    )
+
+
 def _safe_next_url(request: Request, raw: str | None) -> str:
     """Evita redirecciones abiertas a dominios externos."""
     if not raw or not str(raw).strip():
@@ -51,20 +75,7 @@ def login_get(
         )
     if raw_auth is not None:
         request.session.pop("auth", None)
-    if "csrf_login" not in request.session:
-        request.session["csrf_login"] = secrets.token_urlsafe(32)
-    err = request.session.pop("login_error", None)
-    return templates.TemplateResponse(
-        "auth/login.html",
-        {
-            "request": request,
-            "csrf_token": request.session.get("csrf_login", ""),
-            "next_url": next or "",
-            "error_message": err,
-            "query_msg": msg,
-            "query_sev": sev,
-        },
-    )
+    return render_login_form(request, next_url=next or "", msg=msg, sev=sev)
 
 
 @router.post("/login", name="auth_login_submit")

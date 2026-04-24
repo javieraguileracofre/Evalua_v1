@@ -8,7 +8,8 @@ from core.config import Settings
 
 def is_public_path(path: str, settings: Settings) -> bool:
     """True si el middleware no debe exigir login."""
-    if path in ("/health", "/favicon.ico"):
+    # "/" la resuelve `menu_principal`: invitados ven login; usuarios autenticados, el panel.
+    if path in ("/health", "/favicon.ico", "/"):
         return True
     if path.startswith("/static/"):
         return True
