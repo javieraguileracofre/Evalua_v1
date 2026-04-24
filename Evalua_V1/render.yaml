@@ -1,0 +1,13 @@
+# Blueprint Render.com: conecta el repo (carpeta raíz = Evalua_V1) y define variables en el panel.
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: evalua-v1
+    runtime: python
+    plan: free
+    region: ohio
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
