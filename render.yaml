@@ -6,6 +6,9 @@
 #
 # Postgres: crea "PostgreSQL" en Render, copia Internal Database URL en DATABASE_URL
 # al desplegar (una sola variable basta: PLATFORM_DATABASE_URL se deduce si falta).
+#
+# Python nativo en Render (sin Docker): el default 3.14 fuerza build Rust de pydantic-core.
+# Fija versión con .python-version en la raíz o PYTHON_VERSION (evita pydantic-core build en 3.14).
 
 services:
   - type: web
@@ -19,6 +22,8 @@ services:
     healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.11"
       - key: APP_ENV
         value: production
       - key: APP_DEBUG
