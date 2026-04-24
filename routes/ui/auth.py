@@ -127,7 +127,19 @@ def login_post(
 
     if not u:
         request.session["csrf_login"] = secrets.token_urlsafe(32)
-        request.session["login_error"] = "Credenciales incorrectas o usuario desactivado."
+        if crud_auth.contar_usuarios(db) == 0:
+            request.session["login_error"] = (
+                "No hay ningún usuario en esta base de datos. En el servidor (misma DATABASE_URL) "
+                "ejecute una vez: python tools/create_admin_user.py --email su@correo.cl "
+                '--password "SuClaveDeAlMenos10Caracteres" — o python tools/supabase_bootstrap.py '
+                "si aún no aplicó el esquema."
+            )
+        else:
+            request.session["login_error"] = (
+                "Credenciales incorrectas o cuenta desactivada. "
+                "Compruebe el correo (se compara en minúsculas) y la contraseña. "
+                "En los logs del servidor verá si el correo no existe, la cuenta está inactiva o la clave no coincide."
+            )
         q = ""
         if (next or "").strip():
             from urllib.parse import urlencode

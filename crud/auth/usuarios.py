@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -10,6 +11,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from models.auth.usuario import Rol, Usuario
+
+logger = logging.getLogger("evalua.auth")
+
+
+def contar_usuarios(db: Session) -> int:
+    """Total de filas en auth_usuarios (útil para detectar entorno sin bootstrap)."""
+    return int(db.scalar(select(func.count()).select_from(Usuario)) or 0)
 
 
 def hash_password(plain: str) -> str:
@@ -98,10 +106,16 @@ def serializar_sesion_usuario(usuario: Usuario) -> dict[str, Any]:
 
 
 def autenticar(db: Session, email: str, password: str) -> Usuario | None:
+    e = (email or "").strip().lower()
     u = get_usuario_por_email(db, email)
-    if not u or not u.activo:
+    if not u:
+        logger.info("Login rechazado: no existe usuario con email=%r", e)
+        return None
+    if not u.activo:
+        logger.info("Login rechazado: cuenta inactiva id=%s email=%r", u.id, e)
         return None
     if not verify_password(password, u.password_hash):
+        logger.info("Login rechazado: contraseña incorrecta email=%r", e)
         return None
     return u
 
