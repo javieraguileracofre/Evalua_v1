@@ -7,6 +7,9 @@
 -- 1) Copia la nueva contraseña del panel de Supabase (no la subas a Git).
 -- 2) Sustituye TENANT_CODE y la contraseña en comillas simples (si contiene ', duplícala).
 -- 3) Actualiza también DATABASE_URL / PLATFORM_DATABASE_URL en Render con la URI nueva.
+--
+-- Si desde Render ves "connection timeout" hacia Supabase, en la misma fila use host/puerto
+-- del panel (pooler o db.<ref>.supabase.co) y db_sslmode = 'require' si la columna existe.
 
 UPDATE public.tenants
 SET db_password = 'PEGAR_AQUI_LA_NUEVA_CLAVE'

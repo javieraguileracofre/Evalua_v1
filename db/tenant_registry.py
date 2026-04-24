@@ -93,11 +93,15 @@ def get_tenant_record(tenant_code: str) -> TenantRecord | None:
 
 def build_database_url(record: TenantRecord) -> str:
     password = quote_plus(record.db_password)
-    sslmode = f"?sslmode={record.db_sslmode}" if record.db_sslmode else ""
+    ssl_raw = (record.db_sslmode or "").strip()
+    # Supabase exige TLS desde Internet; sin sslmode psycopg puede colgar hasta connect_timeout.
+    if not ssl_raw and "supabase.co" in (record.db_host or "").lower():
+        ssl_raw = "require"
+    ssl_q = f"?sslmode={quote_plus(ssl_raw)}" if ssl_raw else ""
 
     return (
         f"{record.db_driver}://{record.db_user}:{password}"
-        f"@{record.db_host}:{record.db_port}/{record.db_name}{sslmode}"
+        f"@{record.db_host}:{record.db_port}/{record.db_name}{ssl_q}"
     )
 
 
