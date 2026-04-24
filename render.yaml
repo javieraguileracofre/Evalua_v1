@@ -6,6 +6,9 @@
 #
 # Postgres: crea "PostgreSQL" en Render, copia Internal Database URL en DATABASE_URL
 # al desplegar (una sola variable basta: PLATFORM_DATABASE_URL se deduce si falta).
+# Si POST /login devuelve 500 y en logs aparece "No existe tenant_code": en Supabase
+# cree la fila en public.tenants, o en Environment ponga EVALUA_SINGLE_DB_TENANT=true
+# (un solo Postgres sin tabla tenants).
 #
 # Python nativo en Render (sin Docker): el default 3.14 fuerza build Rust de pydantic-core.
 # Fija versión con .python-version en la raíz o PYTHON_VERSION (evita pydantic-core build en 3.14).

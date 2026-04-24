@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from urllib.parse import quote_plus
@@ -100,9 +101,21 @@ def build_database_url(record: TenantRecord) -> str:
     )
 
 
+def _single_db_tenant_fallback_enabled() -> bool:
+    """Un solo Postgres (p. ej. Supabase): sin fila en public.tenants, usar DATABASE_URL."""
+    return os.getenv("EVALUA_SINGLE_DB_TENANT", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def get_database_url_for_tenant(tenant_code: str) -> str:
     record = get_tenant_record(tenant_code)
     if record is None:
+        if _single_db_tenant_fallback_enabled():
+            return settings.database_url
         raise RuntimeError(f"No existe tenant_code='{tenant_code}' en la base platform.")
     if not record.is_active:
         raise RuntimeError(f"El tenant '{tenant_code}' está inactivo.")
