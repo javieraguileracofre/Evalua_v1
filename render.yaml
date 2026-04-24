@@ -1,13 +1,35 @@
-# Blueprint Render.com: raíz del repo = raíz de la app; variables en el panel.
-# https://render.com/docs/blueprint-spec
+# Blueprint Render: https://render.com/docs/blueprint-spec
+#
+# Uso: Dashboard → New → Blueprint → repo GitHub javieraguileracofre/Evalua_v1.
+# También puedes crear solo "Web Service" desde el mismo repo (Runtime: Docker);
+# entonces este archivo sirve de referencia; variables sensibles en el panel.
+#
+# Postgres: crea "PostgreSQL" en Render, copia Internal Database URL en DATABASE_URL
+# al desplegar (una sola variable basta: PLATFORM_DATABASE_URL se deduce si falta).
+
 services:
   - type: web
     name: evalua-v1
-    runtime: python
+    runtime: docker
+    branch: main
+    region: oregon
     plan: free
-    region: ohio
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: commit
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.12.0"
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DEFAULT_TENANT_CODE
+        value: athletic
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true

@@ -17,6 +17,24 @@ ENV_FILE = BASE_DIR / ".env"
 load_dotenv(dotenv_path=ENV_FILE)
 
 
+def _normalize_postgres_url_for_psycopg(url: str) -> str:
+    """
+    Render, Heroku y otros entregan `postgres://` o `postgresql://`; el proyecto usa
+    SQLAlchemy 2 + psycopg 3 (`postgresql+psycopg://`).
+    """
+    u = (url or "").strip()
+    if not u:
+        return u
+    lower = u.lower()
+    if lower.startswith("postgresql+psycopg:") or lower.startswith("postgresql+asyncpg:"):
+        return u
+    if lower.startswith("postgres://"):
+        return "postgresql+psycopg://" + u[len("postgres://") :]
+    if lower.startswith("postgresql://"):
+        return "postgresql+psycopg://" + u[len("postgresql://") :]
+    return u
+
+
 def _database_url_from_db_parts() -> str | None:
     """
     Si no hay DATABASE_URL, arma postgresql+psycopg desde DB_USER, DB_PASSWORD,
@@ -104,6 +122,9 @@ class Settings:
         platform_database_url = os.getenv("PLATFORM_DATABASE_URL", "").strip()
         if not platform_database_url and database_url:
             platform_database_url = database_url
+
+        database_url = _normalize_postgres_url_for_psycopg(database_url)
+        platform_database_url = _normalize_postgres_url_for_psycopg(platform_database_url)
 
         if not database_url:
             raise RuntimeError(
