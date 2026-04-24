@@ -1,5 +1,5 @@
 -- =============================================================================
--- Evalua_V1 — esquema mínimo en Supabase (public + fin)
+-- Evalua (repo Evalua_v1) — esquema mínimo en Supabase (public + fin)
 -- Ejecutar en: Supabase Dashboard → SQL Editor → New query → Run
 -- (Aquí no hace falta contraseña en tu PC; el editor ya está autenticado.)
 -- Después: en tu máquina, pon DATABASE_URL en .env y ejecuta:

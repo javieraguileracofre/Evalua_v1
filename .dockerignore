@@ -16,3 +16,15 @@ venv
 *.md
 docs/db_inspect/*.csv
 Thumbs.db
+
+# Monorepo local: no meter en la imagen
+EvaluaERP/
+Backups/
+Legal/
+LINKEDIN/
+Web/
+dump/
+Evalua_V1/
+static_root_backup/
+*.zip
+*.rar

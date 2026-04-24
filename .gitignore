@@ -29,3 +29,7 @@ build/
 # OS
 Thumbs.db
 Desktop.ini
+
+# Respaldo al aplanar repo (no versionar)
+requirements_root_backup.txt
+static_root_backup/
