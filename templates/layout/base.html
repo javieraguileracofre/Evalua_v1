@@ -203,6 +203,22 @@
       opacity:.95;
     }
 
+    .brand-proline{
+      margin-top:3px;
+      display:inline-flex;
+      align-items:center;
+      gap:.32rem;
+      border-radius:999px;
+      padding:.14rem .5rem;
+      font-size:.58rem;
+      letter-spacing:.09em;
+      font-weight:800;
+      text-transform:uppercase;
+      color:#f2e4ba;
+      border:1px solid rgba(196,163,90,.34);
+      background:rgba(196,163,90,.13);
+    }
+
     .sidebar-collapse-btn{
       flex-shrink:0;
       width:36px;
@@ -246,11 +262,30 @@
       padding:1rem .85rem .4rem .85rem;
       font-weight:700;
       margin:0;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:.5rem;
       transition:opacity .2s ease, padding .28s ease, font-size .28s ease;
     }
 
     .sidebar-section-text{
       display:inline-block;
+    }
+
+    .sidebar-section-pill{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:999px;
+      padding:.08rem .42rem;
+      font-size:.56rem;
+      letter-spacing:.1em;
+      font-weight:800;
+      color:var(--accent-premium);
+      background:rgba(196,163,90,.12);
+      border:1px solid rgba(196,163,90,.26);
+      line-height:1.35;
     }
 
     body.evalua-sidebar-collapsed .sidebar-section-title{
@@ -307,12 +342,29 @@
       transition:opacity .2s ease, transform .22s ease;
     }
 
+    .nav-item-badge{
+      margin-left:auto;
+      border-radius:999px;
+      padding:.1rem .42rem;
+      font-size:.56rem;
+      letter-spacing:.1em;
+      font-weight:800;
+      color:var(--accent-premium);
+      background:rgba(196,163,90,.12);
+      border:1px solid rgba(196,163,90,.3);
+      line-height:1.35;
+    }
+
     body.evalua-sidebar-collapsed .nav-item-label{
       opacity:0;
       transform:translateX(-6px);
       width:0;
       overflow:hidden;
       pointer-events:none;
+    }
+    body.evalua-sidebar-collapsed .nav-item-badge,
+    body.evalua-sidebar-collapsed .sidebar-section-pill{
+      display:none;
     }
 
     body.evalua-sidebar-collapsed .nav-item-evalua{
@@ -824,6 +876,7 @@
       <div class="brand-text-wrap">
         <div class="brand-title">Evalua ERP</div>
         <div class="brand-sub">Suite empresarial</div>
+        <div class="brand-proline"><i class="bi bi-gem" aria-hidden="true"></i>Premium Pro</div>
       </div>
       <button type="button" class="sidebar-collapse-btn" id="sidebarToggle" title="Contraer menú" aria-label="Contraer o expandir menú lateral">
         <i class="bi bi-chevron-double-left" aria-hidden="true"></i>
