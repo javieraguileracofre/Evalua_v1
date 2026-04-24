@@ -48,6 +48,13 @@ Usuario maestro tras bootstrap exitoso
   email:    javier.aguilera@evaluasoluciones.cl
   password: Evalua1234##   (cámbiala en cuanto puedas)
 
+──────────────────────────────────────────────────────────────────────────────
+Alta solo en Supabase (SQL Editor), sin ejecutar Python en Render
+──────────────────────────────────────────────────────────────────────────────
+1) Abre el archivo local:  db/supabase/seed_auth_admin.sql
+2) Edita en el propio editor de Supabase el correo, nombre y la contraseña dentro de crypt('...', gen_salt('bf')).
+3) Run. El hash es compatible con el login de la app (bcrypt vía pgcrypto).
+
 Si algo falla
 -------------
 - "password authentication failed": la clave no es la del proyecto en la nube; reset en Database.
