@@ -35,6 +35,19 @@ def _normalize_postgres_url_for_psycopg(url: str) -> str:
     return u
 
 
+def _ensure_sslmode_require_for_supabase(url: str) -> str:
+    """Supabase (db.*.supabase.co o *.pooler.supabase.com) exige TLS; sin sslmode puede colgar hasta connect_timeout."""
+    u = (url or "").strip()
+    if not u:
+        return u
+    lo = u.lower()
+    if "supabase.co" not in lo and "pooler.supabase.com" not in lo:
+        return u
+    if "sslmode=" in u.lower():
+        return u
+    return f"{u}{'&' if '?' in u else '?'}sslmode=require"
+
+
 def _database_url_from_db_parts() -> str | None:
     """
     Si no hay DATABASE_URL, arma postgresql+psycopg desde DB_USER, DB_PASSWORD,
@@ -125,6 +138,8 @@ class Settings:
 
         database_url = _normalize_postgres_url_for_psycopg(database_url)
         platform_database_url = _normalize_postgres_url_for_psycopg(platform_database_url)
+        database_url = _ensure_sslmode_require_for_supabase(database_url)
+        platform_database_url = _ensure_sslmode_require_for_supabase(platform_database_url)
 
         if not database_url:
             raise RuntimeError(
