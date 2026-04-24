@@ -3,7 +3,7 @@
 """
 Bootstrap de Supabase: esquema mínimo (000–002), fila tenants, create_all, usuario ADMIN.
 
-  cd Evalua_V1
+  (desde la raíz del repositorio)
   python tools/supabase_bootstrap.py
 
 Credenciales (en orden de prioridad):

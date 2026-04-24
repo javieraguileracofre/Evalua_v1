@@ -17,17 +17,17 @@ OPCIÓN A — Ver tablas YA sin pelear con la clave en tu PC (recomendada primer
 ──────────────────────────────────────────────────────────────────────────────
 1) Supabase → SQL Editor → New query.
 2) Abre el archivo local:
-      Evalua_V1/db/supabase/bootstrap_public_schema.sql
+      db/supabase/bootstrap_public_schema.sql
    Copia TODO el contenido, pégalo en el editor y pulsa RUN.
 3) Table Editor → schema public → deberías ver tenants, seguridad_roles, etc.
 
 Luego, para fila tenant + tablas SQLAlchemy + usuario maestro desde tu máquina:
 
 4) Dashboard → Settings → Database → copia la contraseña actual (o resetéala).
-5) En Evalua_V1, .env con DATABASE_URL y PLATFORM_DATABASE_URL (usuario postgres y esa clave),
+5) En la raíz del repo, .env con DATABASE_URL y PLATFORM_DATABASE_URL (usuario postgres y esa clave),
    host db.qtrqsdabrpxitmqvqdko.supabase.co, ?sslmode=require
    (puedes partir de .env.supabase.template).
-6) En la raíz de Evalua_V1:
+6) En la raíz del repositorio:
       python tools/supabase_bootstrap.py --skip-sql
 
 ──────────────────────────────────────────────────────────────────────────────
