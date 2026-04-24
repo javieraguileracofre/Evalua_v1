@@ -91,11 +91,13 @@ CREATE INDEX IF NOT EXISTS ix_prov_direccion_proveedor
 
 CREATE OR REPLACE FUNCTION public.fn_normalizar_rut(p_rut TEXT)
 RETURNS TEXT
-LANGUAGE plpgsql
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
 AS $$
-BEGIN
-    RETURN UPPER(REPLACE(REPLACE(REPLACE(COALESCE(TRIM(p_rut), ''), '.', ''), '-', ''), ' ', ''));
-END;
+    SELECT UPPER(
+        REPLACE(REPLACE(REPLACE(COALESCE(TRIM(p_rut), ''), '.', ''), '-', ''), ' ', '')
+    );
 $$;
 
 -- ============================================================

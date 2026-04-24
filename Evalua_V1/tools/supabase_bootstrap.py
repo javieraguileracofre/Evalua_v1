@@ -26,6 +26,8 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 PSQL_DIR = ROOT / "db" / "psql"
 
 DEFAULT_PROJECT_REF = "qtrqsdabrpxitmqvqdko"
@@ -306,17 +308,28 @@ def main() -> int:
         PSQL_DIR / "000_platform_registry.sql",
         PSQL_DIR / "001_tenant_base.sql",
         PSQL_DIR / "002_tenant_security.sql",
+        PSQL_DIR / "002a_fn_normalizar_rut.sql",
+        PSQL_DIR / "002b_fin_enum_types.sql",
     ]
     for f in files:
         if not f.is_file():
             print(f"Error: no existe {f}", file=sys.stderr)
             return 1
 
+    prereq_skip_sql = (
+        PSQL_DIR / "002a_fn_normalizar_rut.sql",
+        PSQL_DIR / "002b_fin_enum_types.sql",
+    )
     try:
         if not args.skip_sql:
             for f in files:
                 print(f"Aplicando {f.name}...")
                 _run_sql_file(engine, f)
+        else:
+            for p in prereq_skip_sql:
+                if p.is_file():
+                    print(f"Aplicando {p.name} (requerido para create_all)...")
+                    _run_sql_file(engine, p)
         print("Registrando tenant en public.tenants...")
         _upsert_tenant(engine, resolved)
     except Exception as exc:

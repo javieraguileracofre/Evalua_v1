@@ -127,3 +127,16 @@ VALUES
     ('COMERCIAL', 'Comercial', 'Clientes, notas de venta, cotización'),
     ('INVENTARIO', 'Inventario', 'Productos, stock, categorías')
 ON CONFLICT (codigo) DO NOTHING;
+
+-- --- 002a_fn_normalizar_rut.sql (columna generada en modelo Proveedor) ---
+
+CREATE OR REPLACE FUNCTION public.fn_normalizar_rut(p_rut TEXT)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+    SELECT UPPER(
+        REPLACE(REPLACE(REPLACE(COALESCE(TRIM(p_rut), ''), '.', ''), '-', ''), ' ', '')
+    );
+$$;
