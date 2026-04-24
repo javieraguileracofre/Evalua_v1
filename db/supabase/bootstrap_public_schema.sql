@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS public.tenants (
     tenant_name       VARCHAR(160) NOT NULL,
     db_driver         VARCHAR(80)  NOT NULL DEFAULT 'postgresql+psycopg',
     db_host           VARCHAR(120) NOT NULL,
-    db_port           INTEGER      NOT NULL DEFAULT 5432,
+    db_port           INTEGER      NOT NULL DEFAULT 6543,
     db_name           VARCHAR(120) NOT NULL UNIQUE,
     db_user           VARCHAR(120) NOT NULL,
     db_password       TEXT         NOT NULL,

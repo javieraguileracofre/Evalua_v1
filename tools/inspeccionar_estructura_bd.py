@@ -24,6 +24,11 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 load_dotenv(BASE_DIR / ".env")
 
+import sys
+
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
@@ -130,7 +135,16 @@ SQL_INDEXES = text(
 # ============================================================
 
 def get_engine() -> Engine:
-    return create_engine(DATABASE_URL, future=True)
+    from core.config import postgres_engine_connect_args, settings
+
+    return create_engine(
+        DATABASE_URL,
+        future=True,
+        connect_args=postgres_engine_connect_args(
+            DATABASE_URL or "",
+            settings.db_connect_timeout_seconds,
+        ),
+    )
 
 
 def normalize_table_type(table_type: str) -> str:

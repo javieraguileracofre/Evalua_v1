@@ -2,8 +2,7 @@ Supabase — tablas vacías hasta que cargues el esquema (y la clave del panel)
 ============================================================================
 
 Proyecto (API): https://qtrqsdabrpxitmqvqdko.supabase.co
-Host PostgreSQL (directo):  db.qtrqsdabrpxitmqvqdko.supabase.co  puerto 5432  base postgres  usuario postgres
-Para la app con IPv4 / pooler: URI del panel (Connect) — modo transacción suele ser *.pooler.supabase.com puerto 6543 y usuario postgres.qtrqsdabrpxitmqvqdko; ver .env.supabase.template.
+Referencia app / scripts: pooler transacción *.pooler.supabase.com puerto 6543, usuario postgres.qtrqsdabrpxitmqvqdko (copiar URI exacta del panel Connect). Directo db.* :5432 solo para casos puntuales del panel.
 
 Aclaración importante
 ---------------------
@@ -25,9 +24,8 @@ OPCIÓN A — Ver tablas YA sin pelear con la clave en tu PC (recomendada primer
 Luego, para fila tenant + tablas SQLAlchemy + usuario maestro desde tu máquina:
 
 4) Dashboard → Settings → Database → copia la contraseña actual (o resetéala).
-5) En la raíz del repo, .env con DATABASE_URL y PLATFORM_DATABASE_URL (usuario postgres y esa clave),
-   host db.qtrqsdabrpxitmqvqdko.supabase.co, ?sslmode=require
-   (puedes partir de .env.supabase.template).
+5) En la raíz del repo, .env con DATABASE_URL, PLATFORM_DATABASE_URL y ADMIN_POSTGRES_URL (misma URI pooler :6543 del panel; ?sslmode=require).
+   Parte de .env.supabase.template.
 6) En la raíz del repositorio:
       python tools/supabase_bootstrap.py --skip-sql
 

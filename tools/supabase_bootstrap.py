@@ -10,8 +10,9 @@ Credenciales (en orden de prioridad):
   1) DATABASE_URL en .env
   2) DB_HOST + DB_USER + DB_PASSWORD + DB_NAME (+ DB_PORT, DB_SSLMODE opcionales), igual que core.config
   3) Si no hay DATABASE_URL ni DB_* completos: SUPABASE_POSTGRES_PASSWORD en .env
-     (clave del panel Settings → Database) + SUPABASE_PROJECT_REF → postgres@db.<ref>.supabase.co
-  4) DB_PASSWORD + SUPABASE_PROJECT_REF (host por defecto Supabase)
+     (clave del panel Settings → Database) + SUPABASE_PROJECT_REF → pooler transacción
+     postgres.<ref>@SUPABASE_POOLER_HOST:6543 (por defecto aws-1-us-east-2.pooler.supabase.com)
+  4) DB_PASSWORD + SUPABASE_PROJECT_REF (sin DB_HOST: mismo pooler :6543)
 
 La fila en public.tenants usa el mismo usuario/host/bd que la conexión resuelta
 (para que la app coincida con tu .env).
@@ -31,6 +32,8 @@ if str(ROOT) not in sys.path:
 PSQL_DIR = ROOT / "db" / "psql"
 
 DEFAULT_PROJECT_REF = "qtrqsdabrpxitmqvqdko"
+DEFAULT_SUPABASE_POOLER_HOST = "aws-1-us-east-2.pooler.supabase.com"
+DEFAULT_SUPABASE_POOLER_PORT = 6543
 DEFAULT_TENANT = "athletic"
 MASTER_EMAIL = "javier.aguilera@evaluasoluciones.cl"
 MASTER_PASSWORD = "Evalua1234##"
@@ -121,7 +124,7 @@ def _from_full_db_env() -> ResolvedDb | None:
 
 
 def _from_cli_postgres_supabase(args: argparse.Namespace) -> ResolvedDb | None:
-    """Solo para --db-password en CLI: postgres@db.<ref>.supabase.co (no mezcla DB_HOST/DB_USER del .env)."""
+    """Solo para --db-password en CLI: pooler transacción postgres.<ref> (no mezcla DB_HOST/DB_USER del .env)."""
     pwd = (getattr(args, "db_password", None) or "").strip()
     if not pwd:
         return None
@@ -130,10 +133,13 @@ def _from_cli_postgres_supabase(args: argparse.Namespace) -> ResolvedDb | None:
         .strip()
         or DEFAULT_PROJECT_REF
     )
-    host = f"db.{ref}.supabase.co"
-    user = "postgres"
+    host = os.getenv("SUPABASE_POOLER_HOST", DEFAULT_SUPABASE_POOLER_HOST).strip()
+    user = f"postgres.{ref}"
     name = "postgres"
-    port = 5432
+    port = int(
+        os.getenv("SUPABASE_POOLER_PORT", str(DEFAULT_SUPABASE_POOLER_PORT)).strip()
+        or str(DEFAULT_SUPABASE_POOLER_PORT)
+    )
     sslmode = "require"
     url = _build_url(host, user, pwd, name, port, sslmode)
     return ResolvedDb(
@@ -158,15 +164,35 @@ def _from_password_and_ref(args: argparse.Namespace) -> ResolvedDb | None:
         .strip()
         or DEFAULT_PROJECT_REF
     )
-    host = os.getenv("DB_HOST", "").strip() or f"db.{ref}.supabase.co"
-    user = os.getenv("DB_USER", "").strip() or "postgres"
+    host = os.getenv("DB_HOST", "").strip()
+    port_str = os.getenv("DB_PORT", "").strip()
+    user = os.getenv("DB_USER", "").strip()
     name = os.getenv("DB_NAME", "").strip() or "postgres"
-    port = int((os.getenv("DB_PORT") or "5432").strip() or "5432")
+    if not host:
+        host = os.getenv("SUPABASE_POOLER_HOST", DEFAULT_SUPABASE_POOLER_HOST).strip()
+        if not user:
+            user = f"postgres.{ref}"
+        if not port_str:
+            port_str = (
+                os.getenv("SUPABASE_POOLER_PORT", str(DEFAULT_SUPABASE_POOLER_PORT)).strip()
+                or str(DEFAULT_SUPABASE_POOLER_PORT)
+            )
+    else:
+        if not user:
+            user = "postgres"
+        if not port_str:
+            port_str = "5432"
+    port = int(port_str)
     ssl_raw = os.getenv("DB_SSLMODE", "").strip()
     if ssl_raw:
         sslmode: str | None = ssl_raw
     else:
-        sslmode = "require" if "supabase.co" in host.lower() else None
+        hlo = host.lower()
+        sslmode = (
+            "require"
+            if ("supabase.co" in hlo or "pooler.supabase.com" in hlo)
+            else None
+        )
     url = _build_url(host, user, pwd, name, port, sslmode)
     return ResolvedDb(
         sqlalchemy_url=url,
@@ -259,7 +285,7 @@ def main() -> int:
         "--db-password",
         default=None,
         metavar="CLAVE",
-        help="Clave del usuario postgres en db.<ref>.supabase.co (ignora DB_HOST/DB_USER del .env). Prioridad sobre DATABASE_URL.",
+        help="Clave del panel (postgres) — conecta al pooler :6543 postgres.<ref> (ignora DB_HOST/DB_USER del .env). Prioridad sobre DATABASE_URL.",
     )
     p.add_argument(
         "--project-ref",
@@ -297,11 +323,14 @@ def main() -> int:
 
     from sqlalchemy import create_engine
 
+    from core.config import postgres_engine_connect_args
+
+    connect_timeout = int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "25").strip() or "25")
     engine = create_engine(
         url,
         future=True,
         pool_pre_ping=True,
-        connect_args={"connect_timeout": 25},
+        connect_args=postgres_engine_connect_args(url, connect_timeout),
     )
 
     files = [

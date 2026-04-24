@@ -9,7 +9,7 @@
 -- 3) Actualiza también DATABASE_URL / PLATFORM_DATABASE_URL en Render con la URI nueva.
 --
 -- Si desde Render ves "connection timeout" hacia Supabase, en la misma fila use host/puerto
--- del panel (pooler o db.<ref>.supabase.co) y db_sslmode = 'require' si la columna existe.
+-- del panel (pooler transacción :6543, usuario postgres.<ref>) y db_sslmode = 'require' si existe la columna.
 
 UPDATE public.tenants
 SET db_password = 'PEGAR_AQUI_LA_NUEVA_CLAVE'
