@@ -24,10 +24,8 @@ from .maestros.proveedor import (
 # COMERCIAL
 # ============================================================
 
-from .comercial.leasing_financiero_cotizacion import (
-    LeasingFinancieroCotizacion,
-    LeasingFinancieroProyeccionLinea,
-)
+from .comercial.leasing_financiero_credito import LeasingFinancieroAnalisisCredito
+from .comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion, LeasingFinancieroProyeccionLinea
 from .comercial.nota_venta import NotaVenta, NotaVentaDetalle
 from .comercial.orden_servicio import OrdenServicio
 from .comercial.orden_servicio_linea import OrdenServicioCotizacionLinea
@@ -119,6 +117,7 @@ __all__ = [
     "ProveedorDireccion",
     "NotaVenta",
     "NotaVentaDetalle",
+    "LeasingFinancieroAnalisisCredito",
     "LeasingFinancieroCotizacion",
     "LeasingFinancieroProyeccionLinea",
     "OrdenServicio",

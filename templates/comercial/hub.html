@@ -8,32 +8,32 @@
     <div class="col-lg-8">
       <h1 class="h4 fw-semibold mb-1">Área comercial</h1>
       <p class="text-secondary mb-0">
-        Acceso centralizado a postventa y al cotizador de leasing financiero (tabla de amortización y proyección contable).
+        Acceso centralizado a nota de venta, cotizador leasing y scoring de crédito.
       </p>
     </div>
   </div>
 
   <div class="row g-3">
-    <div class="col-md-6">
+    <div class="col-md-4">
       <div class="card border-0 shadow-sm h-100">
         <div class="card-body d-flex flex-column">
           <div class="d-flex align-items-center gap-2 mb-2">
-            <span class="rounded-circle bg-primary-subtle text-primary d-inline-flex p-2">
-              <i class="bi bi-headset fs-5"></i>
+            <span class="rounded-circle bg-success-subtle text-success d-inline-flex p-2">
+              <i class="bi bi-shop fs-5"></i>
             </span>
-            <h2 class="h6 mb-0">Postventa</h2>
+            <h2 class="h6 mb-0">Nota de venta</h2>
           </div>
           <p class="text-secondary small flex-grow-1">
-            Seguimiento de clientes, interacciones y solicitudes de servicio.
+            Registro comercial de ventas, detalle y emisión de comprobante.
           </p>
-          <a href="{{ request.url_for('postventa_hub') }}" class="btn btn-primary btn-sm align-self-start">
-            Abrir postventa
+          <a href="{{ request.url_for('nota_venta_form') }}" class="btn btn-success btn-sm align-self-start">
+            Abrir nota de venta
           </a>
         </div>
       </div>
     </div>
 
-    <div class="col-md-6">
+    <div class="col-md-4">
       <div class="card border-0 shadow-sm h-100">
         <div class="card-body d-flex flex-column">
           <div class="d-flex align-items-center gap-2 mb-2">
@@ -43,10 +43,29 @@
             <h2 class="h6 mb-0">Leasing financiero</h2>
           </div>
           <p class="text-secondary small flex-grow-1">
-            Cotizaciones, amortización, exportación Excel/PDF y líneas contables proyectadas (cuentas 113701, 210701, 410701).
+            Cotizaciones y amortización de leasing financiero con datos UF/USD diarios.
           </p>
           <a href="{{ request.url_for('lf_cotizaciones_list') }}" class="btn btn-dark btn-sm align-self-start">
             Abrir cotizador
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="rounded-circle bg-primary-subtle text-primary d-inline-flex p-2">
+              <i class="bi bi-shield-check fs-5"></i>
+            </span>
+            <h2 class="h6 mb-0">Scoring crédito</h2>
+          </div>
+          <p class="text-secondary small flex-grow-1">
+            Evaluación de riesgo para persona natural y jurídica, vinculada a la cotización leasing.
+          </p>
+          <a href="{{ request.url_for('lf_credito_home') }}" class="btn btn-primary btn-sm align-self-start">
+            Abrir scoring
           </a>
         </div>
       </div>

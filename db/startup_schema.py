@@ -368,6 +368,15 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
                 """
             )
         ).scalar()
+        has_credit = conn.execute(
+            text(
+                """
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'comercial_lf_analisis_credito'
+                LIMIT 1
+                """
+            )
+        ).scalar()
         leasing_cfg = None
         if _has_table(engine, schema="fin", table="config_contable_detalle_modulo"):
             leasing_cfg = conn.execute(
@@ -379,7 +388,7 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
                     """
                 )
             ).scalar()
-    if has_cot and leasing_cfg:
+    if has_cot and has_credit and leasing_cfg:
         return
     try:
         _run_sql_patch_autocommit(engine, _PATCH_100)

@@ -102,6 +102,12 @@
             <option value="UF">UF</option>
             <option value="USD">USD</option>
           </select>
+          <div id="rates_info" class="hint mt-1">UF/USD diario sin cargar.</div>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+          <button type="button" id="btn_rates" class="btn btn-outline-secondary btn-sm w-100" {% if not has_clientes %}disabled{% endif %}>
+            Cargar UF/USD del día
+          </button>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Plazo (meses) *</label>
@@ -110,19 +116,19 @@
 
         <div class="col-md-3">
           <label class="form-label small">Valor neto operación</label>
-          <input type="text" name="valor_neto" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+          <input type="text" name="valor_neto" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Monto financiado</label>
-          <input type="text" name="monto_financiado" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+          <input type="text" name="monto_financiado" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Monto total (referencia)</label>
-          <input type="text" name="monto" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+          <input type="text" name="monto" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Tasa nominal anual</label>
-          <input type="text" name="tasa" class="form-control" placeholder="Ej: 0,12" {% if not has_clientes %}disabled{% endif %}>
+          <input type="text" name="tasa" class="form-control js-rate" placeholder="Ej: 0,1200" {% if not has_clientes %}disabled{% endif %}>
         </div>
 
         <div class="col-md-3">
@@ -131,7 +137,7 @@
         </div>
         <div class="col-md-3">
           <label class="form-label small">Opción de compra</label>
-          <input type="text" name="opcion_compra" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+          <input type="text" name="opcion_compra" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Tipo pago inicial</label>
@@ -143,7 +149,7 @@
         </div>
         <div class="col-md-3">
           <label class="form-label small">Valor pago inicial</label>
-          <input type="text" name="pago_inicial_valor" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+          <input type="text" name="pago_inicial_valor" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
         </div>
 
         <div class="col-md-3">
@@ -155,19 +161,19 @@
         </div>
         <div class="col-md-3">
           <label class="form-label small">Monto seguro (UF)</label>
-          <input type="text" name="seguro_monto_uf" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+          <input type="text" name="seguro_monto_uf" class="form-control js-rate" {% if not has_clientes %}disabled{% endif %}>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Otros montos en pesos</label>
-          <input type="text" name="otros_montos_pesos" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+          <input type="text" name="otros_montos_pesos" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Valor UF</label>
-          <input type="text" name="uf_valor" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+          <input type="text" id="uf_valor" name="uf_valor" class="form-control js-rate" {% if not has_clientes %}disabled{% endif %}>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Valor dólar</label>
-          <input type="text" name="dolar_valor" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+          <input type="text" id="dolar_valor" name="dolar_valor" class="form-control js-rate" {% if not has_clientes %}disabled{% endif %}>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Concesionario</label>
@@ -202,8 +208,67 @@
   const help = document.getElementById("cliente_help");
   const datalist = document.getElementById("clientes_datalist");
   const monedaSelect = document.getElementById("moneda_select");
+  const ratesInfo = document.getElementById("rates_info");
+  const btnRates = document.getElementById("btn_rates");
   const monedaDefault = (form.getAttribute("data-moneda-default") || "CLP").trim();
   if (monedaSelect && monedaDefault) monedaSelect.value = monedaDefault;
+  const moneyInputs = form.querySelectorAll(".js-money");
+  const rateInputs = form.querySelectorAll(".js-rate");
+  function normalizeNumericString(v) {
+    let s = (v || "").toString().trim();
+    if (!s) return "";
+    s = s.replace(/\s+/g, "");
+    if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+    return s.replace(/[^\d.-]/g, "");
+  }
+  function formatThousands(v) {
+    const raw = normalizeNumericString(v);
+    if (!raw || raw === "-" || raw === ".") return "";
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return "";
+    const [intPart, decPart] = raw.split(".");
+    const intFmt = Number(intPart).toLocaleString("es-CL");
+    return decPart != null ? `${intFmt},${decPart}` : intFmt;
+  }
+  function onBlurFormat(e) {
+    const val = e.target.value;
+    e.target.value = formatThousands(val);
+  }
+  function onFocusUnformat(e) {
+    const raw = normalizeNumericString(e.target.value);
+    e.target.value = raw ? raw.replace(".", ",") : "";
+  }
+  moneyInputs.forEach((el) => {
+    el.addEventListener("focus", onFocusUnformat);
+    el.addEventListener("blur", onBlurFormat);
+  });
+  rateInputs.forEach((el) => {
+    el.addEventListener("focus", onFocusUnformat);
+    el.addEventListener("blur", onBlurFormat);
+  });
+
+  async function cargarIndicadores() {
+    if (!btnRates) return;
+    btnRates.disabled = true;
+    btnRates.textContent = "Consultando...";
+    try {
+      const res = await fetch("{{ request.url_for('api_lf_rates_today') }}", { headers: { "Accept": "application/json" } });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      const ufInput = document.getElementById("uf_valor");
+      const usdInput = document.getElementById("dolar_valor");
+      if (ufInput && data.uf) ufInput.value = formatThousands(String(data.uf).replace(".", ","));
+      if (usdInput && data.dolar) usdInput.value = formatThousands(String(data.dolar).replace(".", ","));
+      if (ratesInfo) ratesInfo.textContent = `Actualizado ${data.fecha} · UF ${data.uf} · USD ${data.dolar} (${data.fuente})`;
+    } catch (err) {
+      if (ratesInfo) ratesInfo.textContent = "No se pudo consultar UF/USD. Intente nuevamente.";
+    } finally {
+      btnRates.disabled = false;
+      btnRates.textContent = "Cargar UF/USD del día";
+    }
+  }
+  if (btnRates) btnRates.addEventListener("click", cargarIndicadores);
+
 
   {% if cliente is defined and cliente %}
   if (hiddenId) hiddenId.value = "{{ cliente.id }}";
@@ -277,6 +342,8 @@
     });
   }
   validar();
+  moneyInputs.forEach((el) => { if (el.value) el.value = formatThousands(el.value); });
+  rateInputs.forEach((el) => { if (el.value) el.value = formatThousands(el.value); });
 })();
 </script>
 {% endblock %}

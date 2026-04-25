@@ -1,6 +1,6 @@
 # routes/ui/comercial.py
 # -*- coding: utf-8 -*-
-"""Hub del área comercial: enlaces a postventa y leasing financiero."""
+"""Hub del área comercial: nota de venta, leasing y scoring."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Request

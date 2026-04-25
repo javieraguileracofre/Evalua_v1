@@ -22,6 +22,7 @@ from schemas.comercial.leasing_cotizacion import (
     LeasingCotizacionUpdate,
 )
 from services import leasing_financiero
+from services.indicadores_mercado import obtener_uf_dolar_hoy
 from services.leasing_financiero_export import build_amortizacion_excel, build_amortizacion_pdf
 
 router = APIRouter(prefix="/comercial/leasing/cotizaciones", tags=["Comercial · Leasing financiero"])
@@ -89,6 +90,14 @@ def _normalizar_estado(value: str | None) -> str:
         "ANULADA",
     }
     return v if v in validos else "PENDIENTE"
+
+
+@router.get("/api/rates/today")
+def api_lf_rates_today():
+    try:
+        return obtener_uf_dolar_hoy()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"No fue posible obtener UF/USD: {exc}") from exc
 
 
 @router.get("/", response_class=HTMLResponse, name="lf_cotizaciones_list")

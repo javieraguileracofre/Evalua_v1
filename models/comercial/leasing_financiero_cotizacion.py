@@ -25,6 +25,7 @@ from db.base_class import Base
 
 if TYPE_CHECKING:
     from models.maestros.cliente import Cliente
+    from models.comercial.leasing_financiero_credito import LeasingFinancieroAnalisisCredito
 
 
 class LeasingFinancieroCotizacion(Base):
@@ -97,6 +98,13 @@ class LeasingFinancieroCotizacion(Base):
         back_populates="cotizacion",
         cascade="all, delete-orphan",
         order_by="LeasingFinancieroProyeccionLinea.secuencia",
+    )
+    analisis_credito: Mapped["LeasingFinancieroAnalisisCredito | None"] = relationship(
+        "LeasingFinancieroAnalisisCredito",
+        back_populates="cotizacion",
+        uselist=False,
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
 
     creado_en: Mapped[datetime] = mapped_column(

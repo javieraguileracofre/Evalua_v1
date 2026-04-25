@@ -215,6 +215,81 @@ CREATE TABLE IF NOT EXISTS public.comercial_lf_proyeccion_linea (
 CREATE INDEX IF NOT EXISTS ix_comercial_lf_proy_cot
     ON public.comercial_lf_proyeccion_linea (cotizacion_id);
 
+CREATE TABLE IF NOT EXISTS public.comercial_lf_analisis_credito (
+    id                          BIGSERIAL PRIMARY KEY,
+    cotizacion_id               BIGINT NOT NULL UNIQUE
+                                    REFERENCES public.comercial_lf_cotizaciones(id) ON DELETE CASCADE,
+    cliente_id                  BIGINT NOT NULL
+                                    REFERENCES public.clientes(id) ON DELETE CASCADE,
+    tipo_persona                VARCHAR(20) NOT NULL DEFAULT 'NATURAL',
+    tipo_producto               VARCHAR(30) NOT NULL DEFAULT 'leasing_financiero',
+    moneda_referencia           VARCHAR(10) NOT NULL DEFAULT 'CLP',
+
+    -- Variables scoring persona natural
+    ingreso_neto_mensual        NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    carga_financiera_mensual    NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    antiguedad_laboral_meses    INTEGER NOT NULL DEFAULT 0,
+
+    -- Variables scoring persona jurídica
+    ventas_anuales              NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    ebitda_anual                NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    deuda_financiera_total      NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    patrimonio                  NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    anios_operacion             INTEGER NOT NULL DEFAULT 0,
+
+    -- Variables comunes de riesgo
+    score_buro                  INTEGER NULL,
+    comportamiento_pago         VARCHAR(20) NOT NULL DEFAULT 'SIN_HISTORIAL',
+    ltv_pct                     NUMERIC(7, 2) NOT NULL DEFAULT 0,
+    dscr                        NUMERIC(9, 4) NULL,
+    leverage_ratio              NUMERIC(9, 4) NULL,
+
+    -- Resultado
+    score_total                 NUMERIC(6, 2) NOT NULL DEFAULT 0,
+    rating                      VARCHAR(4) NOT NULL DEFAULT 'E',
+    recomendacion               VARCHAR(20) NOT NULL DEFAULT 'RECHAZADO',
+    nivel_riesgo                VARCHAR(20) NOT NULL DEFAULT 'ALTO',
+    motivo_resumen              TEXT NOT NULL DEFAULT '',
+    supuestos                   TEXT NOT NULL DEFAULT '',
+    analista                    VARCHAR(200) NOT NULL DEFAULT 'sistema',
+    creado_en                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    actualizado_en              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chk_lf_analisis_tipo_persona
+        CHECK (tipo_persona IN ('NATURAL', 'JURIDICA')),
+    CONSTRAINT chk_lf_analisis_comportamiento
+        CHECK (comportamiento_pago IN ('BUENO', 'REGULAR', 'MALO', 'SIN_HISTORIAL')),
+    CONSTRAINT chk_lf_analisis_recomendacion
+        CHECK (recomendacion IN ('APROBADO', 'RECHAZADO', 'OBSERVACION')),
+    CONSTRAINT chk_lf_analisis_nivel_riesgo
+        CHECK (nivel_riesgo IN ('BAJO', 'MEDIO', 'ALTO')),
+    CONSTRAINT chk_lf_analisis_rating
+        CHECK (rating IN ('A', 'B', 'C', 'D', 'E'))
+);
+
+CREATE INDEX IF NOT EXISTS ix_lf_analisis_cliente
+    ON public.comercial_lf_analisis_credito (cliente_id);
+
+CREATE INDEX IF NOT EXISTS ix_lf_analisis_recomendacion
+    ON public.comercial_lf_analisis_credito (recomendacion);
+
+CREATE INDEX IF NOT EXISTS ix_lf_analisis_rating
+    ON public.comercial_lf_analisis_credito (rating);
+
+CREATE OR REPLACE FUNCTION public.trg_lf_analisis_credito_set_updated()
+RETURNS trigger AS $$
+BEGIN
+    NEW.actualizado_en := NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_lf_analisis_credito_updated ON public.comercial_lf_analisis_credito;
+CREATE TRIGGER trg_lf_analisis_credito_updated
+    BEFORE UPDATE ON public.comercial_lf_analisis_credito
+    FOR EACH ROW
+    EXECUTE FUNCTION public.trg_lf_analisis_credito_set_updated();
+
 CREATE OR REPLACE FUNCTION public.trg_comercial_lf_cotizaciones_set_updated()
 RETURNS trigger AS $$
 BEGIN

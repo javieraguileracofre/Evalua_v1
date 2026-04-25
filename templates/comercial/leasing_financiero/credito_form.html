@@ -1,0 +1,147 @@
+{% extends "layout/base.html" %}
+{% block title %}Scoring crédito · Cotización {{ cotizacion.id }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h5 fw-semibold mb-0">Scoring crédito · Cotización #{{ cotizacion.id }}</h1>
+      <p class="small text-muted mb-0">
+        Cliente: {{ cotizacion.cliente.razon_social if cotizacion.cliente else 'N/D' }} ·
+        Monto: {{ "{:,.0f}".format((cotizacion.monto_financiado or cotizacion.valor_neto or cotizacion.monto or 0)).replace(",", ".") }}
+        {{ cotizacion.moneda or 'CLP' }}
+      </p>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{{ request.url_for('lf_credito_home') }}" class="btn btn-outline-secondary btn-sm">Volver</a>
+      <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=cotizacion.id) }}" class="btn btn-outline-dark btn-sm">Detalle cotización</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <form class="card border-0 shadow-sm" method="post" action="{{ request.url_for('lf_credito_calcular', cotizacion_id=cotizacion.id) }}">
+        <div class="card-body">
+          <h2 class="h6">Parámetros de riesgo</h2>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Tipo persona</label>
+              <select class="form-select" id="tipo_persona" name="tipo_persona">
+                <option value="NATURAL" {% if analisis and analisis.tipo_persona=='NATURAL' %}selected{% endif %}>Natural</option>
+                <option value="JURIDICA" {% if analisis and analisis.tipo_persona=='JURIDICA' %}selected{% endif %}>Jurídica</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Moneda referencia</label>
+              <select class="form-select" name="moneda_referencia">
+                <option value="CLP" {% if not analisis or analisis.moneda_referencia=='CLP' %}selected{% endif %}>CLP</option>
+                <option value="UF" {% if analisis and analisis.moneda_referencia=='UF' %}selected{% endif %}>UF</option>
+                <option value="USD" {% if analisis and analisis.moneda_referencia=='USD' %}selected{% endif %}>USD</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Comportamiento pago</label>
+              <select class="form-select" name="comportamiento_pago">
+                {% for item in ['BUENO','REGULAR','MALO','SIN_HISTORIAL'] %}
+                  <option value="{{ item }}" {% if analisis and analisis.comportamiento_pago==item %}selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-4 js-natural">
+              <label class="form-label">Ingreso neto mensual</label>
+              <input class="form-control" name="ingreso_neto_mensual" value="{{ analisis.ingreso_neto_mensual if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-natural">
+              <label class="form-label">Carga financiera mensual</label>
+              <input class="form-control" name="carga_financiera_mensual" value="{{ analisis.carga_financiera_mensual if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-natural">
+              <label class="form-label">Antigüedad laboral (meses)</label>
+              <input class="form-control" type="number" min="0" name="antiguedad_laboral_meses" value="{{ analisis.antiguedad_laboral_meses if analisis else 0 }}">
+            </div>
+
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">Ventas anuales</label>
+              <input class="form-control" name="ventas_anuales" value="{{ analisis.ventas_anuales if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">EBITDA anual</label>
+              <input class="form-control" name="ebitda_anual" value="{{ analisis.ebitda_anual if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">Deuda financiera total</label>
+              <input class="form-control" name="deuda_financiera_total" value="{{ analisis.deuda_financiera_total if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">Patrimonio</label>
+              <input class="form-control" name="patrimonio" value="{{ analisis.patrimonio if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">Años de operación</label>
+              <input class="form-control" type="number" min="0" name="anios_operacion" value="{{ analisis.anios_operacion if analisis else 0 }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Score buró (0-1000)</label>
+              <input class="form-control" type="number" min="0" max="1000" name="score_buro" value="{{ analisis.score_buro if analisis and analisis.score_buro is not none else '' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">LTV (%)</label>
+              <input class="form-control" name="ltv_pct" value="{{ analisis.ltv_pct if analisis else '' }}">
+            </div>
+            <div class="col-md-8">
+              <label class="form-label">Supuestos / observaciones del analista</label>
+              <textarea class="form-control" name="supuestos" rows="2">{{ analisis.supuestos if analisis else '' }}</textarea>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer text-end">
+          <button class="btn btn-primary btn-sm" type="submit">Calcular scoring</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h6">Resultado</h2>
+          {% if analisis %}
+            <div class="mb-2"><strong>Score:</strong> {{ analisis.score_total }}</div>
+            <div class="mb-2"><strong>Rating:</strong> {{ analisis.rating }}</div>
+            <div class="mb-2"><strong>Riesgo:</strong> {{ analisis.nivel_riesgo }}</div>
+            <div class="mb-2"><strong>Recomendación:</strong> {{ analisis.recomendacion }}</div>
+            <div class="small text-muted">{{ analisis.motivo_resumen }}</div>
+            <hr>
+            <div class="small">
+              <div><strong>DSCR:</strong> {{ analisis.dscr or '-' }}</div>
+              <div><strong>Leverage:</strong> {{ analisis.leverage_ratio or '-' }}</div>
+              <div><strong>Actualizado:</strong> {{ analisis.actualizado_en }}</div>
+            </div>
+          {% else %}
+            <p class="text-muted small mb-0">Sin cálculo aún.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+(() => {
+  const tipo = document.getElementById("tipo_persona");
+  if (!tipo) return;
+  const naturalRows = document.querySelectorAll(".js-natural");
+  const juridicaRows = document.querySelectorAll(".js-juridica");
+  const sync = () => {
+    const isJ = (tipo.value || "").toUpperCase() === "JURIDICA";
+    naturalRows.forEach((el) => { el.style.display = isJ ? "none" : ""; });
+    juridicaRows.forEach((el) => { el.style.display = isJ ? "" : "none"; });
+  };
+  tipo.addEventListener("change", sync);
+  sync();
+})();
+</script>
+{% endblock %}

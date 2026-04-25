@@ -42,6 +42,7 @@
         <a href="{{ request.url_for('lf_cotizacion_nueva_form') }}?cliente_id={{ cli.id }}" class="btn btn-sm btn-eva-primary">+ Nueva cotización</a>
       {% endif %}
       <a href="{{ request.url_for('lf_cotizacion_amortizacion', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-eva-primary">Ver amortización</a>
+      <a href="{{ request.url_for('lf_credito_form', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Scoring crédito</a>
       <a href="{{ request.url_for('lf_cotizacion_amortizacion_excel', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-success">Excel</a>
       <a href="{{ request.url_for('lf_cotizacion_amortizacion_pdf', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-danger">PDF</a>
     </div>

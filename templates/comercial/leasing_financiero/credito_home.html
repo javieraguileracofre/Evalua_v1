@@ -1,0 +1,53 @@
+{% extends "layout/base.html" %}
+{% block title %}Análisis de crédito leasing{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h5 fw-semibold mb-0">Análisis de crédito · Leasing financiero</h1>
+      <p class="small text-muted mb-0">Evaluación de riesgo para persona natural y jurídica.</p>
+    </div>
+    <a href="{{ request.url_for('comercial_hub') }}" class="btn btn-outline-secondary btn-sm">Área comercial</a>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>ID</th>
+            <th>Cliente</th>
+            <th>Monto</th>
+            <th>Estado cotización</th>
+            <th>Rating</th>
+            <th>Recomendación</th>
+            <th class="text-end">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in cotizaciones %}
+          {% set a = c.analisis_credito %}
+          <tr>
+            <td>#{{ c.id }}</td>
+            <td>{{ c.cliente.razon_social if c.cliente else 'N/D' }}</td>
+            <td>
+              {% set base = c.monto_financiado or c.valor_neto or c.monto %}
+              {{ "{:,.0f}".format(base or 0).replace(",", ".") }} {{ c.moneda or 'CLP' }}
+            </td>
+            <td>{{ c.estado }}</td>
+            <td>{{ a.rating if a else '-' }}</td>
+            <td>{{ a.recomendacion if a else '-' }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-primary" href="{{ request.url_for('lf_credito_form', cotizacion_id=c.id) }}">Evaluar</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center py-4 text-muted">No hay cotizaciones.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

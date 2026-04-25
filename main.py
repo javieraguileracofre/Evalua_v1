@@ -72,6 +72,7 @@ ROUTER_ORDER = [
     "postventa",
     "comercial",
     "leasing_financiero",
+    "leasing_credito",
     "inventario",
     "ventas_pos",
     "taller",
