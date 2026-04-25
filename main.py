@@ -31,6 +31,7 @@ from db.session import get_engine
 from db.startup_schema import (
     ensure_ap_documento_contabilidad_columns,
     ensure_auth_roles_seed,
+    ensure_fin_config_contable_seed,
     ensure_fondos_rendir_asiento_columns,
     ensure_taller_ordenes_cotizacion_columns,
     ensure_vehiculo_transporte_consumo_column,
@@ -235,6 +236,7 @@ def create_app() -> FastAPI:
         ensure_fondos_rendir_asiento_columns(engine)
         ensure_vehiculo_transporte_consumo_column(engine)
         ensure_auth_roles_seed(engine)
+        ensure_fin_config_contable_seed(engine)
     except Exception as e:
         logger.exception("Error creando metadata: %s", e)
 

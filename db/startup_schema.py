@@ -23,6 +23,9 @@ _ROOT = Path(__file__).resolve().parent.parent
 _PATCH_093 = _ROOT / "db" / "psql" / "093_fin_ap_documento_contabilidad.sql"
 _PATCH_097 = _ROOT / "db" / "psql" / "097_taller_ordenes_cotizacion_columns.sql"
 _PATCH_099 = _ROOT / "db" / "psql" / "099_fondos_rendir_asientos.sql"
+_PATCH_090 = _ROOT / "db" / "psql" / "090_fin_config_contable.sql"
+_PATCH_091 = _ROOT / "db" / "psql" / "091_fin_inventario_recepcion_premium.sql"
+_PATCH_092 = _ROOT / "db" / "psql" / "092_fin_ventas_costo_venta_premium.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -262,3 +265,102 @@ def ensure_auth_roles_seed(engine: Engine) -> None:
                 )
         except Exception:
             pass
+
+
+def _has_table(engine: Engine, *, schema: str, table: str) -> bool:
+    with engine.connect() as conn:
+        return bool(
+            conn.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = :schema
+                      AND table_name = :table
+                    LIMIT 1
+                    """
+                ),
+                {"schema": schema, "table": table},
+            ).scalar()
+        )
+
+
+def _run_sql_patch_autocommit(engine: Engine, path: Path) -> None:
+    sql = path.read_text(encoding="utf-8")
+    with engine.connect() as conn:
+        conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+        conn.exec_driver_sql(sql)
+
+
+def ensure_fin_config_contable_seed(engine: Engine) -> None:
+    """
+    Garantiza configuración contable mínima para:
+    - Inventario recepción sin factura (asientos al ingresar stock)
+    - Ventas nota de venta (ingreso + costo de venta)
+
+    Si faltan reglas, aplica 090/091/092 de forma idempotente.
+    """
+    if engine.dialect.name != "postgresql":
+        return
+
+    for p in (_PATCH_090, _PATCH_091, _PATCH_092):
+        if not p.is_file():
+            logger.warning("No se encontró %s; no se puede sembrar config contable.", p)
+            return
+
+    if not _has_table(engine, schema="fin", table="config_contable_detalle_modulo"):
+        try:
+            logger.info("Aplicando seed contable 090/091/092 (tablas fin.config_* no existen).")
+            for p in (_PATCH_090, _PATCH_091, _PATCH_092):
+                _run_sql_patch_autocommit(engine, p)
+        except Exception as exc:
+            logger.warning("No se pudo aplicar seed contable 090/091/092: %s", exc)
+        return
+
+    with engine.connect() as conn:
+        inv_ok = bool(
+            conn.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM fin.config_contable_detalle_modulo
+                    WHERE modulo = 'INVENTARIO'
+                      AND submodulo = 'RECEPCION'
+                      AND tipo_documento = 'COMPRA_SIN_FACTURA'
+                      AND codigo_evento = 'INGRESO_COMPRA_SIN_FACTURA'
+                      AND estado = 'ACTIVO'
+                    LIMIT 1
+                    """
+                )
+            ).scalar()
+        )
+        venta_ok = bool(
+            conn.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM fin.config_contable_detalle_modulo
+                    WHERE modulo = 'VENTAS'
+                      AND submodulo = 'NOTA_VENTA'
+                      AND codigo_evento IN ('VENTA_CONTADO', 'VENTA_CREDITO')
+                      AND estado = 'ACTIVO'
+                    LIMIT 1
+                    """
+                )
+            ).scalar()
+        )
+
+    if inv_ok and venta_ok:
+        return
+
+    try:
+        logger.info(
+            "Reglas contables faltantes (inventario=%s, ventas=%s). Aplicando 090/091/092...",
+            inv_ok,
+            venta_ok,
+        )
+        for p in (_PATCH_090, _PATCH_091, _PATCH_092):
+            _run_sql_patch_autocommit(engine, p)
+        logger.info("Seed contable 090/091/092 aplicado correctamente.")
+    except Exception as exc:
+        logger.warning("No se pudo aplicar seed contable 090/091/092: %s", exc)
