@@ -19,7 +19,7 @@ OPCIÓN A — Ver tablas YA sin pelear con la clave en tu PC (recomendada primer
 2) Abre el archivo local:
       db/supabase/bootstrap_public_schema.sql
    Copia TODO el contenido, pégalo en el editor y pulsa RUN.
-3) Table Editor → schema public → deberías ver tenants, seguridad_roles, etc.
+3) Table Editor → schema public → tenants, seguridad_roles, etc.; en schema fin → plan_cuenta (plan base ya sembrado).
 
 Luego, para fila tenant + tablas SQLAlchemy + usuario maestro desde tu máquina:
 
@@ -59,4 +59,4 @@ Si algo falla
 -------------
 - "password authentication failed": la clave no es la del proyecto en la nube; reset en Database.
 - "debe ser dueño de la tabla tenants": conectas con un usuario sin permisos; usa postgres en URL o SQL Editor.
-- Si cambias db/psql/000, 001 o 002, actualiza también bootstrap_public_schema.sql para mantenerlos alineados.
+- Si cambias db/psql/000, 001, 002 o 089_fin_plan_cuentas.sql, actualiza también bootstrap_public_schema.sql para mantenerlos alineados.

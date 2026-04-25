@@ -339,6 +339,7 @@ def main() -> int:
         PSQL_DIR / "002_tenant_security.sql",
         PSQL_DIR / "002a_fn_normalizar_rut.sql",
         PSQL_DIR / "002b_fin_enum_types.sql",
+        PSQL_DIR / "089_fin_plan_cuentas.sql",
     ]
     for f in files:
         if not f.is_file():
@@ -348,6 +349,7 @@ def main() -> int:
     prereq_skip_sql = (
         PSQL_DIR / "002a_fn_normalizar_rut.sql",
         PSQL_DIR / "002b_fin_enum_types.sql",
+        PSQL_DIR / "089_fin_plan_cuentas.sql",
     )
     try:
         if not args.skip_sql:
