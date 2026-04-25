@@ -24,6 +24,15 @@ from .maestros.proveedor import (
 # COMERCIAL
 # ============================================================
 
+from .comercial.credito_riesgo import (
+    CreditoComite,
+    CreditoDocumento,
+    CreditoEvaluacion,
+    CreditoGarantia,
+    CreditoHistorial,
+    CreditoPolitica,
+    CreditoSolicitud,
+)
 from .comercial.leasing_financiero_credito import LeasingFinancieroAnalisisCredito
 from .comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion, LeasingFinancieroProyeccionLinea
 from .comercial.nota_venta import NotaVenta, NotaVentaDetalle
@@ -120,6 +129,13 @@ __all__ = [
     "LeasingFinancieroAnalisisCredito",
     "LeasingFinancieroCotizacion",
     "LeasingFinancieroProyeccionLinea",
+    "CreditoPolitica",
+    "CreditoSolicitud",
+    "CreditoEvaluacion",
+    "CreditoGarantia",
+    "CreditoDocumento",
+    "CreditoComite",
+    "CreditoHistorial",
     "OrdenServicio",
     "OrdenServicioCotizacionLinea",
     "Vehiculo",

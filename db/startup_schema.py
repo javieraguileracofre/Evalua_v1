@@ -27,6 +27,7 @@ _PATCH_090 = _ROOT / "db" / "psql" / "090_fin_config_contable.sql"
 _PATCH_091 = _ROOT / "db" / "psql" / "091_fin_inventario_recepcion_premium.sql"
 _PATCH_092 = _ROOT / "db" / "psql" / "092_fin_ventas_costo_venta_premium.sql"
 _PATCH_100 = _ROOT / "db" / "psql" / "100_comercial_leasing_financiero.sql"
+_PATCH_101 = _ROOT / "db" / "psql" / "101_credito_riesgo.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -397,6 +398,37 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
         logger.warning(
             "No se pudo aplicar 100_comercial_leasing_financiero.sql. "
             "Ejecute manualmente en la base si es necesario. Detalle: %s",
+            exc,
+        )
+
+
+def ensure_credito_riesgo_schema(engine: Engine) -> None:
+    """
+    Tablas credito_* (101) si aún no están aplicadas.
+    Requiere public.clientes. Idempotente con 101_credito_riesgo.sql.
+    """
+    if engine.dialect.name != "postgresql" or not _PATCH_101.is_file():
+        return
+    if not _has_table(engine, schema="public", table="clientes"):
+        return
+    with engine.connect() as conn:
+        has = conn.execute(
+            text(
+                """
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'credito_solicitud'
+                LIMIT 1
+                """
+            )
+        ).scalar()
+    if has:
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_101)
+        logger.info("Parche aplicado: crédito y riesgo (101).")
+    except Exception as exc:
+        logger.warning(
+            "No se pudo aplicar 101_credito_riesgo.sql. Ejecute manualmente en la base si es necesario. Detalle: %s",
             exc,
         )
 

@@ -74,6 +74,16 @@ cuentas 113701/210701/410701 y reglas en fin.config_contable* para LEASING_FIN_*
 La app también intenta aplicar este parche al arrancar si falta la config COMERCIAL/LEASING_FIN
 o la tabla de análisis de crédito.
 
+Crédito y riesgo (macro + micro, score 0–1000) — producción / Supabase
+----------------------------------------------------------------------
+Con public.clientes ya creada, en SQL Editor ejecute TODO (idempotente):
+
+  db/psql/101_credito_riesgo.sql
+
+Crea credito_solicitud, credito_evaluacion, credito_garantia, credito_documento, credito_comite,
+credito_historial, credito_politica (ponderaciones y snapshot macro sembrados).
+La app intenta aplicar este parche al arrancar si falta credito_solicitud.
+
 Si algo falla
 -------------
 - "password authentication failed": la clave no es la del proyecto en la nube; reset en Database.

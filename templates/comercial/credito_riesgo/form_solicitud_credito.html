@@ -1,0 +1,184 @@
+{% extends "layout/base.html" %}
+{% block title %}Nueva solicitud de crédito{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width: 960px;">
+  <div class="mb-3">
+    <a href="{{ request.url_for('credito_riesgo_solicitudes_list') }}" class="small text-decoration-none">← Volver al listado</a>
+    <h1 class="h5 fw-semibold mt-2">Nueva solicitud de crédito</h1>
+    <p class="text-secondary small">Antecedentes para el motor macro/micro (score 0–1000).</p>
+  </div>
+
+  <form method="post" action="{{ request.url_for('credito_riesgo_solicitud_nueva_post') }}" class="card border-0 shadow-sm">
+    <div class="card-body row g-3">
+      <div class="col-12"><h2 class="h6 text-primary">Identificación</h2></div>
+      <div class="col-md-6">
+        <label class="form-label">Cliente *</label>
+        <select name="cliente_id" class="form-select" required>
+          <option value="">— Seleccione —</option>
+          {% for c in clientes %}
+          <option value="{{ c.id }}">{{ c.razon_social }} ({{ c.rut }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Tipo persona</label>
+        <select name="tipo_persona" class="form-select">
+          <option value="NATURAL">Natural</option>
+          <option value="JURIDICA">Jurídica</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Producto</label>
+        <select name="producto" class="form-select">
+          <option value="LEASING_FIN">Leasing financiero</option>
+          <option value="COMERCIAL">Crédito comercial</option>
+          <option value="FACTORING">Factoring</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Sector / giro</label>
+        <input name="sector_actividad" class="form-control" placeholder="Ej. transporte, salud, construcción…" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Moneda</label>
+        <input name="moneda" class="form-control" value="CLP" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">ID cotización leasing (opc.)</label>
+        <input name="comercial_lf_cotizacion_id" class="form-control" placeholder="Vacío si no aplica" />
+      </div>
+
+      <div class="col-12 mt-2"><h2 class="h6 text-primary">Operación</h2></div>
+      <div class="col-md-4">
+        <label class="form-label">Monto solicitado</label>
+        <input name="monto_solicitado" type="text" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Plazo (meses)</label>
+        <input name="plazo_solicitado" type="number" class="form-control" value="36" min="1" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Exposición USD % (0–100)</label>
+        <input name="exposicion_usd_pct" class="form-control" value="0" />
+      </div>
+
+      <div class="col-12 mt-2"><h2 class="h6 text-primary">Capacidad de pago</h2></div>
+      <div class="col-md-3">
+        <label class="form-label">Ingreso mensual</label>
+        <input name="ingreso_mensual" class="form-control" value="0" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Gastos mensuales</label>
+        <input name="gastos_mensual" class="form-control" value="0" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Cuotas deuda vigente</label>
+        <input name="deuda_cuotas_mensual" class="form-control" value="0" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Cuota propuesta</label>
+        <input name="cuota_propuesta" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Tipo contrato (persona natural)</label>
+        <select name="tipo_contrato" class="form-select">
+          <option value="">—</option>
+          <option value="INDEFINIDO">Indefinido</option>
+          <option value="PLAZO">Plazo fijo</option>
+          <option value="HONORARIOS">Honorarios</option>
+          <option value="INFORMAL">Informal</option>
+        </select>
+      </div>
+
+      <div class="col-12 mt-2"><h2 class="h6 text-primary">Comportamiento</h2></div>
+      <div class="col-md-3">
+        <label class="form-label">Mora máx. días (12m)</label>
+        <input name="mora_max_dias_12m" type="number" class="form-control" value="0" min="0" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Protestos</label>
+        <input name="protestos" type="number" class="form-control" value="0" min="0" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Castigos</label>
+        <input name="castigos" type="number" class="form-control" value="0" min="0" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Reprogramaciones</label>
+        <input name="reprogramaciones" type="number" class="form-control" value="0" min="0" />
+      </div>
+
+      <div class="col-12 mt-2"><h2 class="h6 text-primary">Empresa / rentabilidad</h2></div>
+      <div class="col-md-4">
+        <label class="form-label">Ventas anual</label>
+        <input name="ventas_anual" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Margen bruto %</label>
+        <input name="margen_bruto_pct" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">EBITDA anual</label>
+        <input name="ebitda_anual" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Utilidad neta anual</label>
+        <input name="utilidad_neta_anual" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Flujo caja mensual</label>
+        <input name="flujo_caja_mensual" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Capital trabajo</label>
+        <input name="capital_trabajo" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Deuda total</label>
+        <input name="deuda_total" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Patrimonio</label>
+        <input name="patrimonio" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Liquidez corriente</label>
+        <input name="liquidez_corriente" class="form-control" placeholder="Activo CP / Pasivo CP" />
+      </div>
+
+      <div class="col-12 mt-2"><h2 class="h6 text-primary">Antigüedad</h2></div>
+      <div class="col-md-6">
+        <label class="form-label">Antigüedad laboral (meses) — natural</label>
+        <input name="antiguedad_meses_natural" type="number" class="form-control" value="0" min="0" />
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Años operación — empresa</label>
+        <input name="anios_operacion_empresa" type="number" class="form-control" value="0" min="0" />
+      </div>
+
+      <div class="col-12 mt-2"><h2 class="h6 text-primary">Garantías</h2></div>
+      <div class="col-md-4">
+        <label class="form-label">Tipo garantía</label>
+        <input name="garantia_tipo" class="form-control" placeholder="Hipoteca, aval…" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Valor comercial</label>
+        <input name="garantia_valor_comercial" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Valor liquidación</label>
+        <input name="garantia_valor_liquidacion" class="form-control" value="0" />
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Observaciones</label>
+        <textarea name="observaciones" class="form-control" rows="2"></textarea>
+      </div>
+    </div>
+    <div class="card-footer bg-white border-0 d-flex gap-2">
+      <button type="submit" class="btn btn-primary">Guardar solicitud</button>
+      <a href="{{ request.url_for('credito_riesgo_solicitudes_list') }}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

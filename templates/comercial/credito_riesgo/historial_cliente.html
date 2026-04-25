@@ -1,0 +1,40 @@
+{% extends "layout/base.html" %}
+{% block title %}Historial evaluaciones cliente{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h1 class="h5 fw-semibold mb-3">Historial de evaluaciones · cliente #{{ cliente_id }}</h1>
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Eval #</th>
+            <th>Solicitud</th>
+            <th>Score</th>
+            <th>Cat.</th>
+            <th>Recomendación</th>
+            <th>Fecha</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ev in evaluaciones %}
+          <tr>
+            <td>{{ ev.id }}</td>
+            <td>{{ ev.solicitud.codigo if ev.solicitud else ev.solicitud_id }}</td>
+            <td>{{ "%.0f"|format(ev.score_total) }}</td>
+            <td>{{ ev.categoria }}</td>
+            <td>{{ ev.recomendacion }}</td>
+            <td class="small">{{ ev.creado_en }}</td>
+            <td><a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('credito_riesgo_score_detalle', eval_id=ev.id) }}">Detalle</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-4">Sin evaluaciones.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <a href="{{ request.url_for('credito_riesgo_solicitudes_list') }}" class="btn btn-link px-0 mt-2">Volver</a>
+</div>
+{% endblock %}

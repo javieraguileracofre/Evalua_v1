@@ -1,0 +1,71 @@
+{% extends "layout/base.html" %}
+{% block title %}Comité de crédito{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+      <h1 class="h5 fw-semibold mb-0">Comité de crédito</h1>
+      <p class="small text-muted mb-0">Casos pendientes de resolución.</p>
+    </div>
+    <a href="{{ request.url_for('credito_riesgo_dashboard') }}" class="btn btn-outline-secondary btn-sm">Dashboard</a>
+  </div>
+
+  {% if modo == 'detalle' and comite %}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-warning-subtle fw-semibold">Ítem #{{ comite.id }} — {{ comite.solicitud.codigo if comite.solicitud else '' }}</div>
+    <div class="card-body">
+      <p class="small"><strong>Cliente:</strong> {{ comite.solicitud.cliente.razon_social if comite.solicitud and comite.solicitud.cliente else 'N/D' }}</p>
+      <p class="small"><strong>Resumen ingreso:</strong> {{ comite.resumen or '—' }}</p>
+      <form method="post" action="{{ request.url_for('credito_riesgo_comite_resolver', comite_id=comite.id) }}" class="row g-2 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label small">Decisión</label>
+          <select name="decision" class="form-select" required>
+            <option value="APROBAR">Aprobar</option>
+            <option value="CONDICIONES">Aprobar con condiciones</option>
+            <option value="RECHAZAR">Rechazar</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small">Comentario sala</label>
+          <input name="comentario" class="form-control" placeholder="Acta / condiciones" />
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary w-100">Registrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>ID</th>
+            <th>Solicitud</th>
+            <th>Cliente</th>
+            <th>Abierto</th>
+            <th class="text-end">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+          <tr>
+            <td>#{{ it.id }}</td>
+            <td class="font-monospace">{{ it.solicitud.codigo if it.solicitud else it.solicitud_id }}</td>
+            <td>{{ it.solicitud.cliente.razon_social if it.solicitud and it.solicitud.cliente else '' }}</td>
+            <td class="small">{{ it.fecha_apertura }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-warning" href="{{ request.url_for('credito_riesgo_comite_detalle', comite_id=it.id) }}">Resolver</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-4">No hay ítems pendientes.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

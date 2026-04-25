@@ -1,0 +1,77 @@
+{% extends "layout/base.html" %}
+{% block title %}Ficha evaluación — {{ sol.codigo or sol.id }}{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <a href="{{ request.url_for('credito_riesgo_solicitudes_list') }}" class="small text-decoration-none">← Solicitudes</a>
+      <h1 class="h5 fw-semibold mt-2 mb-0">Ficha evaluación crediticia</h1>
+      <p class="text-secondary small mb-0">{{ sol.codigo or ('#' ~ sol.id) }} · {{ sol.cliente.razon_social if sol.cliente else 'Cliente' }}</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <span class="badge rounded-pill text-bg-secondary align-self-center">{{ sol.estado }}</span>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('credito_riesgo_export_excel', solicitud_id=sol.id) }}">Excel</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('credito_riesgo_export_pdf', solicitud_id=sol.id) }}">PDF comité</a>
+      {% if sol.cliente %}
+      <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('credito_riesgo_historial_cliente', cliente_id=sol.cliente_id) }}">Historial cliente</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Resumen solicitud</div>
+        <div class="card-body row g-2 small">
+          <div class="col-6"><span class="text-secondary">Monto</span><br><strong>{{ "{:,.0f}".format(sol.monto_solicitado).replace(",", ".") }} {{ sol.moneda }}</strong></div>
+          <div class="col-6"><span class="text-secondary">Plazo</span><br><strong>{{ sol.plazo_solicitado }} meses</strong></div>
+          <div class="col-6"><span class="text-secondary">Sector</span><br>{{ sol.sector_actividad or '—' }}</div>
+          <div class="col-6"><span class="text-secondary">Tipo persona</span><br>{{ sol.tipo_persona }}</div>
+          <div class="col-6"><span class="text-secondary">Carga financiera implícita</span><br>
+            {% set ing = sol.ingreso_mensual %}{% if ing and ing > 0 %}
+              {{ "%.1f"|format(((sol.deuda_cuotas_mensual + sol.cuota_propuesta) / ing * 100)) }}%
+            {% else %}—{% endif %}
+          </div>
+          <div class="col-6"><span class="text-secondary">Exposición USD</span><br>{{ sol.exposicion_usd_pct }}%</div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold">Motor de scoring</div>
+        <div class="card-body">
+          <p class="small text-muted">Ejecuta el motor 0–1000 con ponderaciones oficiales, estrés de tasa y snapshot macro (BCCh / CMF referencia interna).</p>
+          <form method="post" action="{{ request.url_for('credito_riesgo_evaluar', solicitud_id=sol.id) }}" class="d-inline">
+            <button type="submit" class="btn btn-primary">Calcular y guardar evaluación</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Derivar a comité</div>
+        <div class="card-body">
+          <form method="post" action="{{ request.url_for('credito_riesgo_comite_abrir', solicitud_id=sol.id) }}" class="d-flex flex-column gap-2">
+            <input class="form-control form-control-sm" name="resumen" placeholder="Resumen para sala (opcional)" />
+            <button type="submit" class="btn btn-warning btn-sm">Abrir ítem de comité</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold">Evaluaciones previas</div>
+        <ul class="list-group list-group-flush">
+          {% for ev in sol.evaluaciones|sort(attribute='id', reverse=true) %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>#{{ ev.id }} · {{ ev.categoria }} · {{ "%.0f"|format(ev.score_total) }} pts</span>
+            <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('credito_riesgo_score_detalle', eval_id=ev.id) }}">Ver</a>
+          </li>
+          {% else %}
+          <li class="list-group-item text-muted small">Aún no hay evaluaciones guardadas.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

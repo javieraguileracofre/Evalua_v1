@@ -1,0 +1,87 @@
+{% extends "layout/base.html" %}
+{% block title %}Score #{{ ev.id }}{% endblock %}
+{% block content %}
+{% set cat = ev.categoria %}
+{% set colors = {'A': 'success', 'B': 'primary', 'C': 'warning', 'D': 'danger', 'E': 'dark'} %}
+{% set sem = colors.get(cat, 'secondary') %}
+<div class="container py-4">
+  <div class="mb-3">
+    <a href="{{ request.url_for('credito_riesgo_solicitud_detalle', solicitud_id=sol.id) }}" class="small text-decoration-none">← Ficha solicitud</a>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-lg text-center overflow-hidden">
+        <div class="py-4 bg-{{ sem }}-subtle">
+          <div class="text-secondary small text-uppercase">Score total</div>
+          <div class="display-4 fw-bold text-{{ sem }}">{{ "%.0f"|format(ev.score_total) }}</div>
+          <div class="fs-5 mt-1">Categoría <span class="badge bg-{{ sem }}">{{ cat }}</span></div>
+          <div class="mt-2 small">Riesgo: <strong>{{ ev.clasificacion_riesgo }}</strong></div>
+          <div class="mt-1 small">Recomendación: <strong>{{ ev.recomendacion }}</strong></div>
+        </div>
+        <div class="card-body small text-start">
+          <div class="d-flex justify-content-between border-bottom py-2"><span>Monto máx. sugerido</span><strong>{{ "{:,.0f}".format(ev.monto_maximo_sugerido).replace(",", ".") }}</strong></div>
+          <div class="d-flex justify-content-between border-bottom py-2"><span>Plazo máx. sugerido</span><strong>{{ ev.plazo_maximo_sugerido }} meses</strong></div>
+          <div class="d-flex justify-content-between py-2"><span>Tasa anual sugerida</span><strong>{{ "%.2f"|format(ev.tasa_sugerida_anual) }}%</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Semáforo y decisión</div>
+        <div class="card-body">
+          <div class="progress" style="height: 10px;">
+            <div class="progress-bar bg-success" style="width: 35%"></div>
+            <div class="progress-bar bg-primary" style="width: 15%"></div>
+            <div class="progress-bar bg-warning" style="width: 15%"></div>
+            <div class="progress-bar bg-danger" style="width: 15%"></div>
+            <div class="progress-bar bg-dark" style="width: 20%"></div>
+          </div>
+          <div class="d-flex justify-content-between small text-muted mt-1">
+            <span>E</span><span>D</span><span>C</span><span>B</span><span>A</span>
+          </div>
+          <p class="mt-3 mb-0 small" style="white-space: pre-wrap;">{{ ev.explicacion }}</p>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Desglose por dimensión</div>
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead class="table-light"><tr><th>Dimensión</th><th class="text-end">Puntos</th></tr></thead>
+            <tbody>
+              {% set ss = ev.desglose_json.get('subscores', {}) %}
+              {% for k, label in [
+                ('capacidad_pago','Capacidad de pago'),
+                ('historial_pago','Historial de pago'),
+                ('endeudamiento','Endeudamiento'),
+                ('liquidez_flujo','Liquidez / flujo'),
+                ('antiguedad','Antigüedad'),
+                ('garantias','Garantías'),
+                ('macro_sectorial','Macro / sector')
+              ] %}
+              <tr><td>{{ label }}</td><td class="text-end">{{ "%.1f"|format(ss.get(k, 0)) }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Estrés de tasa (cuota mensual estimada)</div>
+        <div class="card-body small">
+          <pre class="mb-0 bg-light p-2 rounded small">{{ (ev.stress_cuotas_json or {}) | tojson(indent=2) }}</pre>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold">Variables macro (referencia)</div>
+        <div class="card-body small">
+          <pre class="mb-0 bg-light p-2 rounded small">{{ (ev.macro_json or {}) | tojson(indent=2) }}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

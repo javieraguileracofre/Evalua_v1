@@ -1,0 +1,53 @@
+{% extends "layout/base.html" %}
+{% block title %}Solicitudes de crédito{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+      <h1 class="h5 fw-semibold mb-0">Solicitudes de crédito</h1>
+      <p class="small text-muted mb-0">Fichas macro + micro, motor 0–1000.</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{{ request.url_for('credito_riesgo_dashboard') }}" class="btn btn-outline-secondary btn-sm">Dashboard</a>
+      <a href="{{ request.url_for('credito_riesgo_solicitud_nueva_get') }}" class="btn btn-primary btn-sm">Nueva</a>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Código</th>
+            <th>Cliente</th>
+            <th>Monto</th>
+            <th>Plazo</th>
+            <th>Estado</th>
+            <th>Última cat.</th>
+            <th class="text-end">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in solicitudes %}
+          {% set evs = s.evaluaciones|sort(attribute='id', reverse=true) %}
+          {% set last = evs[0] if evs else none %}
+          <tr>
+            <td class="font-monospace">{{ s.codigo or ('#' ~ s.id) }}</td>
+            <td>{{ s.cliente.razon_social if s.cliente else 'N/D' }}</td>
+            <td>{{ "{:,.0f}".format(s.monto_solicitado).replace(",", ".") }} {{ s.moneda }}</td>
+            <td>{{ s.plazo_solicitado }} meses</td>
+            <td><span class="badge text-bg-light border">{{ s.estado }}</span></td>
+            <td>{% if last %}<span class="badge bg-primary-subtle text-primary-emphasis">{{ last.categoria }}</span>{% else %}—{% endif %}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('credito_riesgo_solicitud_detalle', solicitud_id=s.id) }}">Ficha</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-4">No hay solicitudes aún.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
