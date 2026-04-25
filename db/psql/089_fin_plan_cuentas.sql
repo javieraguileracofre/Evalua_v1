@@ -29,6 +29,11 @@ CREATE TABLE IF NOT EXISTS fin.plan_cuenta (
         ON DELETE RESTRICT
 );
 
+-- Si la tabla ya existía (p. ej. create_all de SQLAlchemy sin server_default), los INSERT sin created_at fallan.
+ALTER TABLE fin.plan_cuenta
+    ALTER COLUMN created_at SET DEFAULT now(),
+    ALTER COLUMN updated_at SET DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS ix_fin_plan_cuenta_padre
     ON fin.plan_cuenta(cuenta_padre_id);
 
