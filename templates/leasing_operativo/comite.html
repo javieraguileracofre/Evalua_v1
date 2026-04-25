@@ -1,0 +1,50 @@
+{% extends "layout/base.html" %}
+{% block title %}Comité leasing operativo{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/leasing_operativo.css" />
+<div class="container py-4 lo-page">
+  <div class="d-flex justify-content-between mb-3">
+    <h1 class="h5 fw-semibold mb-0">Comité — Leasing operativo</h1>
+    <a href="{{ request.url_for('leasing_operativo_list') }}" class="btn btn-outline-secondary btn-sm">Simulaciones</a>
+    <a href="{{ request.url_for('leasing_operativo_cartera') }}" class="btn btn-outline-secondary btn-sm">Cartera</a>
+  </div>
+  {% if modo == 'detalle' and comite %}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-warning-subtle fw-semibold">Ítem #{{ comite.id }}</div>
+    <div class="card-body small">
+      <p><strong>Simulación:</strong> {{ comite.simulacion.codigo if comite.simulacion else '' }} — {{ comite.simulacion.nombre if comite.simulacion else '' }}</p>
+      <form method="post" action="{{ request.url_for('leasing_operativo_comite_resolver', cid=comite.id) }}" class="row g-2">
+        <div class="col-md-4">
+          <select name="decision" class="form-select" required>
+            <option value="APROBAR">Aprobar</option>
+            <option value="CONDICIONES">Condiciones</option>
+            <option value="RECHAZAR">Rechazar</option>
+          </select>
+        </div>
+        <div class="col-md-6"><input name="comentario" class="form-control" placeholder="Comentario" /></div>
+        <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Registrar</button></div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light"><tr><th>#</th><th>Simulación</th><th>Abierto</th><th></th></tr></thead>
+        <tbody>
+          {% for it in items %}
+          <tr>
+            <td>{{ it.id }}</td>
+            <td>{{ it.simulacion.codigo if it.simulacion else '' }}</td>
+            <td class="small">{{ it.fecha_apertura }}</td>
+            <td><a class="btn btn-sm btn-outline-warning" href="{{ request.url_for('leasing_operativo_comite_detail', cid=it.id) }}">Resolver</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-muted py-4">Sin pendientes.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+/* static/css/leasing_operativo.css — Leasing operativo EvaluaERP */
+.lo-page { --lo-accent: #0d6efd; --lo-ink: #0f172a; --lo-muted: #64748b; }
+.lo-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 45%, #0d6efd 120%);
+  color: #fff;
+  border-radius: 1rem;
+  padding: 1.75rem 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
+}
+.lo-hero h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 0.35rem; }
+.lo-hero p { margin: 0; opacity: 0.88; font-size: 0.9rem; }
+.lo-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+.lo-kpi {
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+.lo-kpi .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--lo-muted); }
+.lo-kpi .value { font-size: 1.25rem; font-weight: 700; color: var(--lo-ink); }
+.lo-section-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--lo-muted);
+  margin: 1.5rem 0 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid #e2e8f0;
+}
+.lo-table-wrap { border-radius: 0.75rem; overflow: hidden; border: 1px solid #e2e8f0; }
+.lo-nav-pills .nav-link { border-radius: 0.5rem; font-size: 0.85rem; }
+.lo-nav-pills .nav-link.active { background: var(--lo-accent); }

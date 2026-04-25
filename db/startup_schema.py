@@ -28,6 +28,8 @@ _PATCH_091 = _ROOT / "db" / "psql" / "091_fin_inventario_recepcion_premium.sql"
 _PATCH_092 = _ROOT / "db" / "psql" / "092_fin_ventas_costo_venta_premium.sql"
 _PATCH_100 = _ROOT / "db" / "psql" / "100_comercial_leasing_financiero.sql"
 _PATCH_101 = _ROOT / "db" / "psql" / "101_credito_riesgo.sql"
+_PATCH_102 = _ROOT / "db" / "psql" / "102_leasing_operativo.sql"
+_PATCH_103 = _ROOT / "db" / "psql" / "103_leasing_operativo_contrato_cuota.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -431,6 +433,35 @@ def ensure_credito_riesgo_schema(engine: Engine) -> None:
             "No se pudo aplicar 101_credito_riesgo.sql. Ejecute manualmente en la base si es necesario. Detalle: %s",
             exc,
         )
+
+
+def ensure_leasing_operativo_schema(engine: Engine) -> None:
+    """
+    Tablas leasing_op_* (102) y contrato/cuota (103) si aún no están aplicadas.
+    Requiere public.clientes. Idempotente.
+    """
+    if engine.dialect.name != "postgresql":
+        return
+    if not _has_table(engine, schema="public", table="clientes"):
+        return
+    if _PATCH_102.is_file() and not _has_table(engine, schema="public", table="leasing_op_simulacion"):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_102)
+            logger.info("Parche aplicado: leasing operativo (102).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 102_leasing_operativo.sql. Ejecute manualmente en la base si es necesario. Detalle: %s",
+                exc,
+            )
+    if _PATCH_103.is_file() and not _has_table(engine, schema="public", table="leasing_op_contrato"):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_103)
+            logger.info("Parche aplicado: leasing operativo contrato/cuota (103).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 103_leasing_operativo_contrato_cuota.sql. Detalle: %s",
+                exc,
+            )
 
 
 def ensure_fin_config_contable_seed(engine: Engine) -> None:

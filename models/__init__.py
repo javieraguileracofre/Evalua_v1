@@ -24,6 +24,16 @@ from .maestros.proveedor import (
 # COMERCIAL
 # ============================================================
 
+from .leasing_operativo.models import (
+    LeasingOpComite,
+    LeasingOpContrato,
+    LeasingOpCostoPlantilla,
+    LeasingOpCuota,
+    LeasingOpHistorial,
+    LeasingOpPolitica,
+    LeasingOpSimulacion,
+    LeasingOpTipoActivo,
+)
 from .comercial.credito_riesgo import (
     CreditoComite,
     CreditoDocumento,
@@ -136,6 +146,14 @@ __all__ = [
     "CreditoDocumento",
     "CreditoComite",
     "CreditoHistorial",
+    "LeasingOpTipoActivo",
+    "LeasingOpPolitica",
+    "LeasingOpCostoPlantilla",
+    "LeasingOpSimulacion",
+    "LeasingOpContrato",
+    "LeasingOpCuota",
+    "LeasingOpComite",
+    "LeasingOpHistorial",
     "OrdenServicio",
     "OrdenServicioCotizacionLinea",
     "Vehiculo",

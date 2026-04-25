@@ -1,0 +1,115 @@
+{% extends "layout/base.html" %}
+{% block title %}Simulador leasing operativo{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/leasing_operativo.css" />
+<div class="container py-4 lo-page" style="max-width: 1100px;">
+  <div class="mb-3">
+    <a href="{{ request.url_for('leasing_operativo_list') }}" class="small text-decoration-none">← Listado</a>
+    <h1 class="h5 fw-semibold mt-2">Simulador</h1>
+    <p class="text-secondary small">¿Cuánto cobrar para cubrir costos, riesgo, capital y rentabilidad?</p>
+  </div>
+  <form method="post" action="{{ request.url_for('leasing_operativo_simulador_post') }}" class="card border-0 shadow-sm">
+    <div class="card-body row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Nombre caso</label>
+        <input name="nombre" class="form-control" placeholder="Ej. Camión Volvo Ruta Norte" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Tipo activo *</label>
+        <select name="tipo_activo_id" class="form-select" required>
+          {% for t in tipos %}
+          <option value="{{ t.id }}">{{ t.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Cliente</label>
+        <select name="cliente_id" class="form-select">
+          <option value="">— Opcional —</option>
+          {% for c in clientes %}
+          <option value="{{ c.id }}">{{ c.razon_social }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label">Plazo (meses)</label><input type="number" name="plazo_meses" class="form-control" value="36" min="1" /></div>
+      <div class="col-md-2">
+        <label class="form-label">Escenario</label>
+        <select name="escenario" class="form-select">
+          <option value="CONSERVADOR">Conservador</option>
+          <option value="BASE" selected>Base</option>
+          <option value="OPTIMISTA">Optimista</option>
+          <option value="ESTRES">Estrés</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Método pricing</label>
+        <select name="metodo_pricing" class="form-select">
+          <option value="COSTO_SPREAD">Costo + spread %</option>
+          <option value="MARGEN_VENTA">Margen sobre venta %</option>
+          <option value="TIR_OBJETIVO">TIR objetivo anual %</option>
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label">Spread %</label><input name="spread_pct" class="form-control" value="8" /></div>
+      <div class="col-md-2"><label class="form-label">Margen %</label><input name="margen_pct" class="form-control" value="12" /></div>
+      <div class="col-md-2"><label class="form-label">TIR obj. % anual</label><input name="tir_objetivo_anual" class="form-control" value="14" /></div>
+
+      <div class="col-12 lo-section-title">CAPEX activable</div>
+      <div class="col-md-4"><label class="form-label">Precio compra</label><input name="precio_compra" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Importación</label><input name="importacion" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Inscripción</label><input name="inscripcion" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Patente</label><input name="patente" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">GPS / telemetría</label><input name="gps_telemetria" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Traslado</label><input name="traslado" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Acondicionamiento</label><input name="acondicionamiento" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Puesta en marcha</label><input name="puesta_marcha" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Comisión proveedor</label><input name="comision_proveedor" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Otros activables</label><input name="otros_activables" class="form-control" value="0" /></div>
+
+      <div class="col-12 lo-section-title">Uso y activo</div>
+      <div class="col-md-3"><label class="form-label">Km anual</label><input name="km_anual" class="form-control" value="80000" /></div>
+      <div class="col-md-3"><label class="form-label">Horas anual</label><input name="horas_anual" class="form-control" value="0" /></div>
+      <div class="col-md-2"><label class="form-label">Factor marca</label><input name="marca_modelo_factor" class="form-control" value="1" /></div>
+      <div class="col-md-2"><label class="form-label">Mult. sector</label><input name="sector_economico_mult" class="form-control" value="1" /></div>
+      <div class="col-md-2"><label class="form-label">Infl. activo % a.</label><input name="inflacion_activo_pct_anual" class="form-control" value="3" /></div>
+      <div class="col-md-2"><label class="form-label">Condición</label><input name="condicion_factor" class="form-control" value="1" /></div>
+
+      <div class="col-12 lo-section-title">Collateral / recupero</div>
+      <div class="col-md-4"><label class="form-label">Valor mercado</label><input name="col_valor_mercado" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Repossession</label><input name="col_repossession" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Legal</label><input name="col_legal" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Transporte</label><input name="col_transporte" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Reacondicionamiento</label><input name="col_reacond" class="form-control" value="0" /></div>
+      <div class="col-md-2"><label class="form-label">Desc. venta forz. %</label><input name="col_desc_forzada_pct" class="form-control" value="12" /></div>
+      <div class="col-md-2"><label class="form-label">Meses liquidación</label><input name="col_meses_liq" class="form-control" value="4" /></div>
+      <div class="col-md-2"><label class="form-label">Tasa fin. liq. mens.</label><input name="col_tasa_fin_m" class="form-control" value="0.008" /></div>
+
+      <div class="col-12 lo-section-title">Costo comercial (total, se prorratea)</div>
+      <div class="col-md-4"><label class="form-label">Comisión vendedor</label><input name="com_vendedor" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Comisión canal</label><input name="com_canal" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Adquisición cliente</label><input name="com_adq" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Evaluación</label><input name="com_eval" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Legal</label><input name="com_legal" class="form-control" value="0" /></div>
+      <div class="col-md-4"><label class="form-label">Onboarding</label><input name="com_onb" class="form-control" value="0" /></div>
+
+      <div class="col-12 lo-section-title">Riesgo</div>
+      <div class="col-md-3">
+        <label class="form-label">Segmento cliente</label>
+        <select name="riesgo_segmento" class="form-select">
+          <option value="BAJO">Bajo</option>
+          <option value="MEDIO" selected>Medio</option>
+          <option value="ALTO">Alto</option>
+          <option value="CRITICO">Crítico</option>
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label">Mult. sector riesgo</label><input name="riesgo_sector_mult" class="form-control" value="1" /></div>
+      <div class="col-md-2"><label class="form-label">Mult. activo</label><input name="riesgo_activo_mult" class="form-control" value="1" /></div>
+      <div class="col-md-2"><label class="form-label">Uso intensivo</label><input name="riesgo_uso_mult" class="form-control" value="1" /></div>
+      <div class="col-md-2"><label class="form-label">Liquidez</label><input name="riesgo_liq_mult" class="form-control" value="1" /></div>
+    </div>
+    <div class="card-footer bg-white border-0">
+      <button type="submit" class="btn btn-primary">Calcular y guardar</button>
+      <a href="{{ request.url_for('leasing_operativo_list') }}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

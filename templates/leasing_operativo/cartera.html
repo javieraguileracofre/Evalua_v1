@@ -1,0 +1,50 @@
+{% extends "layout/base.html" %}
+{% block title %}Cartera leasing operativo{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/leasing_operativo.css" />
+<div class="container py-4 lo-page">
+  <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+    <div>
+      <a href="{{ request.url_for('leasing_operativo_list') }}" class="small text-decoration-none">← Simulaciones</a>
+      <h1 class="h5 fw-semibold mt-1 mb-0">Cartera — contratos vigentes</h1>
+      <p class="text-secondary small mb-0">Contratos generados desde operaciones aprobadas.</p>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('comercial_hub') }}">Hub comercial</a>
+  </div>
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Contrato</th>
+            <th>Simulación</th>
+            <th>Cliente</th>
+            <th>Inicio</th>
+            <th>Plazo</th>
+            <th>Renta</th>
+            <th>Estado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in items %}
+          {% set s = c.simulacion %}
+          <tr>
+            <td class="font-monospace small">{{ c.codigo }}</td>
+            <td class="font-monospace small">{{ s.codigo if s else '—' }}</td>
+            <td class="small">{% if s and s.cliente %}{{ s.cliente.nombre_fantasia or s.cliente.razon_social }}{% else %}—{% endif %}</td>
+            <td>{{ c.fecha_inicio }}</td>
+            <td>{{ c.plazo_meses }}</td>
+            <td>{{ "{:,.0f}".format(c.renta_mensual or 0).replace(",", ".") }}</td>
+            <td><span class="badge bg-light text-dark border">{{ c.estado }}</span></td>
+            <td><a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('leasing_operativo_contrato_detail', cid=c.id) }}">Cuotas</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-muted py-4">Sin contratos aún.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -8,7 +8,7 @@
     <div class="col-lg-8">
       <h1 class="h4 fw-semibold mb-1">Área comercial</h1>
       <p class="text-secondary mb-0">
-        Acceso centralizado a nota de venta, cotizador leasing y scoring de crédito.
+        Nota de venta, leasing financiero, leasing operativo, scoring y crédito/riesgo.
       </p>
     </div>
   </div>
@@ -85,6 +85,25 @@
           </p>
           <a href="{{ request.url_for('credito_riesgo_dashboard') }}" class="btn btn-info btn-sm align-self-start">
             Abrir módulo
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6 col-xl-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="rounded-circle bg-secondary-subtle text-secondary-emphasis d-inline-flex p-2">
+              <i class="bi bi-truck-front fs-5"></i>
+            </span>
+            <h2 class="h6 mb-0">Leasing operativo</h2>
+          </div>
+          <p class="text-secondary small flex-grow-1">
+            Motor económico: CAPEX, residual, collateral, costo de fondo, riesgo, VAN/TIR y pricing.
+          </p>
+          <a href="{{ request.url_for('leasing_operativo_list') }}" class="btn btn-secondary btn-sm align-self-start">
+            Abrir simulaciones
           </a>
         </div>
       </div>

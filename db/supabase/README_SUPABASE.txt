@@ -84,6 +84,18 @@ Crea credito_solicitud, credito_evaluacion, credito_garantia, credito_documento,
 credito_historial, credito_politica (ponderaciones y snapshot macro sembrados).
 La app intenta aplicar este parche al arrancar si falta credito_solicitud.
 
+Leasing operativo (motor económico CAPEX / residual / pricing) — Supabase
+---------------------------------------------------------------------------
+Con public.clientes existente, en SQL Editor ejecute TODO (idempotente):
+
+  db/psql/102_leasing_operativo.sql
+  db/psql/103_leasing_operativo_contrato_cuota.sql
+
+Crea leasing_op_tipo_activo, leasing_op_politica, leasing_op_costo_plantilla, leasing_op_simulacion,
+leasing_op_comite, leasing_op_historial y datos semilla (tipos, políticas, plantillas de costo).
+El 103 añade leasing_op_contrato y leasing_op_cuota (cartera).
+La app intenta aplicar 102/103 al arrancar si faltan las tablas.
+
 Si algo falla
 -------------
 - "password authentication failed": la clave no es la del proyecto en la nube; reset en Database.
