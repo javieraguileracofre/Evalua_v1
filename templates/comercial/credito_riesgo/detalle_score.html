@@ -96,6 +96,9 @@
             <form method="post" action="{{ request.url_for('credito_riesgo_rechazar', solicitud_id=sol.id) }}" class="d-inline" onsubmit="return confirm('¿Registrar rechazo?');">
               <button type="submit" class="btn btn-outline-danger btn-sm">Rechazar</button>
             </form>
+            <form method="post" action="{{ request.url_for('credito_riesgo_reabrir_evaluacion', solicitud_id=sol.id) }}" class="d-inline" onsubmit="return confirm('¿Volver estado a EN EVALUACIÓN?');">
+              <button type="submit" class="btn btn-outline-secondary btn-sm">Volver a en evaluación</button>
+            </form>
           </div>
           <a class="btn btn-link btn-sm px-0 mt-2" href="{{ request.url_for('credito_riesgo_solicitud_detalle', solicitud_id=sol.id) }}">Volver a ficha completa</a>
         </div>

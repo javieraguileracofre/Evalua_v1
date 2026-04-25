@@ -227,6 +227,23 @@ def solicitud_condiciones(request: Request, solicitud_id: int, db: Session = Dep
     return _redirect_ficha_solicitud(request, solicitud_id)
 
 
+@router.post("/solicitudes/{solicitud_id}/reabrir-evaluacion", name="credito_riesgo_reabrir_evaluacion")
+def solicitud_reabrir_evaluacion(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    sol = crud_cr.obtener_solicitud(db, solicitud_id)
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    try:
+        crud_cr.aplicar_decision_manual(
+            db,
+            sol,
+            "EN_EVALUACION",
+            evento="DECISION_REABIERTA_EN_EVALUACION",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _redirect_ficha_solicitud(request, solicitud_id)
+
+
 @router.get("/score/{eval_id}", response_class=HTMLResponse, name="credito_riesgo_score_detalle")
 def detalle_score(request: Request, eval_id: int, db: Session = Depends(get_db)):
     ev = crud_cr.obtener_evaluacion(db, eval_id)
