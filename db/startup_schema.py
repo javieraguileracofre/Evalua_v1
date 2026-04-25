@@ -292,6 +292,59 @@ def _run_sql_patch_autocommit(engine: Engine, path: Path) -> None:
         conn.exec_driver_sql(sql)
 
 
+def _ensure_plan_cuenta_minima_for_contabilidad_seed(engine: Engine) -> None:
+    """
+    Crea/actualiza cuentas mínimas requeridas por 090/091/092 para evitar fallos FK
+    al sembrar configuración contable en bases nuevas.
+    """
+    if not _has_table(engine, schema="fin", table="plan_cuenta"):
+        return
+
+    sql = """
+    INSERT INTO fin.plan_cuenta (
+        codigo, nombre, nivel, cuenta_padre_id, tipo, clasificacion, naturaleza,
+        acepta_movimiento, requiere_centro_costo, estado, descripcion
+    ) VALUES
+    ('110201', 'CAJA Y BANCOS', 3, NULL, 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', TRUE, FALSE, 'ACTIVO', 'Fondos disponibles'),
+    ('110301', 'CLIENTES', 3, NULL, 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', TRUE, FALSE, 'ACTIVO', 'Cuentas por cobrar clientes'),
+    ('110401', 'INVENTARIO MERCADERIA', 3, NULL, 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', TRUE, FALSE, 'ACTIVO', 'Inventario valorizado'),
+    ('110501', 'IVA CREDITO FISCAL', 3, NULL, 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', TRUE, FALSE, 'ACTIVO', 'IVA crédito'),
+    ('210000', 'PASIVOS CORRIENTES', 2, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', FALSE, FALSE, 'ACTIVO', 'Agrupador pasivos corrientes'),
+    ('210101', 'PROVEEDORES', 3, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'Proveedores por pagar'),
+    ('210110', 'PROVEEDORES POR FACTURAR', 3, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'Recepción sin factura'),
+    ('210201', 'IVA DEBITO FISCAL', 3, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'IVA débito'),
+    ('410101', 'VENTAS', 3, NULL, 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', TRUE, TRUE, 'ACTIVO', 'Ingresos por ventas'),
+    ('510000', 'COSTOS DE VENTAS', 2, NULL, 'COSTO', 'COSTO_VENTA', 'DEUDORA', FALSE, TRUE, 'ACTIVO', 'Agrupador costos'),
+    ('510101', 'COSTO DE VENTAS', 3, NULL, 'COSTO', 'COSTO_VENTA', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Costo mercadería vendida'),
+    ('610104', 'GASTOS GENERALES', 3, NULL, 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Gastos de administración')
+    ON CONFLICT (codigo) DO UPDATE SET
+        nombre = EXCLUDED.nombre,
+        nivel = EXCLUDED.nivel,
+        tipo = EXCLUDED.tipo,
+        clasificacion = EXCLUDED.clasificacion,
+        naturaleza = EXCLUDED.naturaleza,
+        acepta_movimiento = EXCLUDED.acepta_movimiento,
+        requiere_centro_costo = EXCLUDED.requiere_centro_costo,
+        estado = EXCLUDED.estado,
+        descripcion = EXCLUDED.descripcion;
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '210110'
+       AND p.codigo = '210000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '510101'
+       AND p.codigo = '510000';
+    """
+    with engine.connect() as conn:
+        conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+        conn.exec_driver_sql(sql)
+
+
 def ensure_fin_config_contable_seed(engine: Engine) -> None:
     """
     Garantiza configuración contable mínima para:
@@ -307,6 +360,11 @@ def ensure_fin_config_contable_seed(engine: Engine) -> None:
         if not p.is_file():
             logger.warning("No se encontró %s; no se puede sembrar config contable.", p)
             return
+    try:
+        _ensure_plan_cuenta_minima_for_contabilidad_seed(engine)
+    except Exception as exc:
+        logger.warning("No se pudo preparar plan de cuentas mínimo para seed contable: %s", exc)
+        return
 
     if not _has_table(engine, schema="fin", table="config_contable_detalle_modulo"):
         try:
