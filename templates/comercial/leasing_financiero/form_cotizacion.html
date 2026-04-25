@@ -1,0 +1,282 @@
+{# templates/comercial/leasing_financiero/form_cotizacion.html #}
+{% extends "layout/base.html" %}
+{% block title %}Nueva cotización leasing financiero{% endblock %}
+
+{% block head %}
+<style>
+  :root{
+    --eva-navy:#0B1F3B;
+    --eva-border:#E5E7EB;
+    --eva-muted:#6B7280;
+    --eva-card:#FFFFFF;
+  }
+  .eva-card{ border:1px solid var(--eva-border) !important; border-radius:14px; background:var(--eva-card); }
+  .eva-title{ color:var(--eva-navy); }
+  .eva-btn-primary{ background:var(--eva-navy); border-color:var(--eva-navy); color:#fff; }
+  .eva-btn-primary:hover{ background:#08182E; border-color:#08182E; color:#fff; }
+  .eva-btn-outline{ border-color:var(--eva-border); color:var(--eva-navy); }
+  .eva-btn-outline:hover{ background:#F3F4F6; }
+  .eva-badge{
+    display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .6rem; border-radius:999px; font-size:.75rem;
+    border:1px solid rgba(212,175,55,.35); background:rgba(212,175,55,.12); color:#6B4E00;
+  }
+  .form-label.small{ color:var(--eva-muted); font-weight:600; }
+  .hint{ font-size:.75rem; color:var(--eva-muted); }
+  .alert-eva{ border:1px solid rgba(212,175,55,.35); background:rgba(212,175,55,.10); color:#6B4E00; border-radius:12px; }
+</style>
+{% endblock head %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h5 fw-semibold mb-1 eva-title">Nueva cotización</h1>
+      <span class="eva-badge"><i class="bi bi-graph-up-arrow"></i> Leasing Financiero</span>
+    </div>
+    <a href="{{ request.url_for('lf_cotizaciones_list') }}" class="btn eva-btn-outline btn-sm">Volver a cotizaciones</a>
+  </div>
+
+  {% set has_clientes = (clientes is defined and clientes and (clientes|length > 0)) %}
+
+  {% if not has_clientes %}
+    <div class="alert alert-eva mb-3">
+      <div class="d-flex align-items-start gap-2 p-2">
+        <i class="bi bi-exclamation-triangle mt-1"></i>
+        <div>
+          <div class="fw-semibold">No hay clientes registrados</div>
+          <div class="small">
+            Cree al menos un cliente en <a href="{{ request.url_for('clientes_list') }}">Clientes</a>.
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <form id="cotForm"
+        method="post"
+        action="{{ request.url_for('lf_cotizacion_nueva_post') }}"
+        class="card eva-card shadow-sm border-0"
+        data-has-clientes="{{ '1' if has_clientes else '0' }}"
+        data-moneda-default="{{ moneda_default if moneda_default is defined and moneda_default else 'CLP' }}">
+
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label small">Cliente *</label>
+          <input id="cliente_search" class="form-control mb-2" list="clientes_datalist"
+                 placeholder="Escribe para buscar por razón social..."
+                 {% if not has_clientes %}disabled{% endif %} autocomplete="off">
+          <select id="cliente_select" class="form-select" {% if not has_clientes %}disabled{% endif %}>
+            <option value="" selected disabled>— Selecciona un cliente —</option>
+            {% if has_clientes %}
+              {% for c in clientes %}
+                <option value="{{ c.id }}" data-razon="{{ c.razon_social }}" data-rut="{{ c.rut }}">
+                  {{ c.razon_social }}{% if c.rut %} ({{ c.rut }}){% endif %}
+                </option>
+              {% endfor %}
+            {% endif %}
+          </select>
+          <input type="hidden" id="cliente_id" name="cliente_id" {% if not has_clientes %}disabled{% endif %} required>
+          <datalist id="clientes_datalist">
+            {% if has_clientes %}
+              {% for c in clientes %}
+                <option value="{{ c.razon_social }}" data-id="{{ c.id }}" data-rut="{{ c.rut }}"></option>
+              {% endfor %}
+            {% endif %}
+          </datalist>
+          <div id="cliente_help" class="hint mt-1"></div>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small">Fecha cotización</label>
+          <input type="date" name="fecha_cotizacion" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Fecha inicio *</label>
+          <input type="date" name="fecha_inicio" class="form-control" {% if not has_clientes %}disabled{% endif %} required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Moneda</label>
+          <select id="moneda_select" name="moneda" class="form-select" {% if not has_clientes %}disabled{% endif %}>
+            <option value="CLP">CLP</option>
+            <option value="UF">UF</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Plazo (meses) *</label>
+          <input type="number" min="1" step="1" name="plazo" class="form-control" {% if not has_clientes %}disabled{% endif %} required>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small">Valor neto operación</label>
+          <input type="text" name="valor_neto" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Monto financiado</label>
+          <input type="text" name="monto_financiado" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Monto total (referencia)</label>
+          <input type="text" name="monto" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Tasa nominal anual</label>
+          <input type="text" name="tasa" class="form-control" placeholder="Ej: 0,12" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small">Periodos de gracia</label>
+          <input type="number" min="0" step="1" name="periodos_gracia" class="form-control" value="0" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Opción de compra</label>
+          <input type="text" name="opcion_compra" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Tipo pago inicial</label>
+          <select name="pago_inicial_tipo" class="form-select" {% if not has_clientes %}disabled{% endif %}>
+            <option value="">Sin pago inicial</option>
+            <option value="PORCENTAJE">Porcentaje (%)</option>
+            <option value="MONTO">Monto fijo</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Valor pago inicial</label>
+          <input type="text" name="pago_inicial_valor" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small">¿Incluye seguro financiado?</label>
+          <select name="financia_seguro" class="form-select" {% if not has_clientes %}disabled{% endif %}>
+            <option value="false" selected>No</option>
+            <option value="true">Sí</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Monto seguro (UF)</label>
+          <input type="text" name="seguro_monto_uf" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Otros montos en pesos</label>
+          <input type="text" name="otros_montos_pesos" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Valor UF</label>
+          <input type="text" name="uf_valor" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Valor dólar</label>
+          <input type="text" name="dolar_valor" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Concesionario</label>
+          <input type="text" name="concesionario" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Ejecutivo</label>
+          <input type="text" name="ejecutivo" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-footer d-flex justify-content-between align-items-center">
+      <span class="small text-muted">* Campos obligatorios</span>
+      <button id="btnSubmit" type="submit" class="btn eva-btn-primary btn-sm" {% if not has_clientes %}disabled{% endif %}>
+        Crear cotización
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const form = document.getElementById("cotForm");
+  if (!form) return;
+  const btn = document.getElementById("btnSubmit");
+  const hasClientes = (form.getAttribute("data-has-clientes") || "").trim() === "1";
+  const inputSearch = document.getElementById("cliente_search");
+  const selectList = document.getElementById("cliente_select");
+  const hiddenId = document.getElementById("cliente_id");
+  const help = document.getElementById("cliente_help");
+  const datalist = document.getElementById("clientes_datalist");
+  const monedaSelect = document.getElementById("moneda_select");
+  const monedaDefault = (form.getAttribute("data-moneda-default") || "CLP").trim();
+  if (monedaSelect && monedaDefault) monedaSelect.value = monedaDefault;
+
+  {% if cliente is defined and cliente %}
+  if (hiddenId) hiddenId.value = "{{ cliente.id }}";
+  if (selectList) selectList.value = "{{ cliente.id }}";
+  if (inputSearch) inputSearch.value = "{{ cliente.razon_social }}";
+  if (help) help.textContent = "{{ cliente.rut or '' }}";
+  {% endif %}
+
+  function validar() {
+    const ok = !!(hiddenId && hiddenId.value && hiddenId.value.trim() !== "");
+    if (btn) btn.disabled = (!hasClientes) || (!ok);
+    return ok;
+  }
+  function setCliente(id, razon, rut) {
+    if (hiddenId) hiddenId.value = (id || "").trim();
+    if (inputSearch && razon != null) inputSearch.value = razon;
+    if (selectList && id != null) selectList.value = String(id);
+    if (help) help.textContent = rut ? ("RUT: " + rut) : "Cliente seleccionado";
+    validar();
+  }
+  function limpiar() {
+    if (hiddenId) hiddenId.value = "";
+    if (selectList) selectList.value = "";
+    if (help) help.textContent = "Seleccione un cliente válido.";
+    validar();
+  }
+  function buscarEnDatalist(valor) {
+    if (!datalist) return null;
+    const options = datalist.querySelectorAll("option");
+    const v = (valor || "").trim();
+    if (!v) return null;
+    for (let i = 0; i < options.length; i++) {
+      const o = options[i];
+      if ((o.value || "").trim() === v) return o;
+    }
+    const vLower = v.toLowerCase();
+    for (let i = 0; i < options.length; i++) {
+      const o = options[i];
+      if (((o.value || "").trim().toLowerCase()) === vLower) return o;
+    }
+    return null;
+  }
+  if (inputSearch && datalist) {
+    inputSearch.addEventListener("input", function () {
+      if (!(inputSearch.value || "").trim()) limpiar();
+    });
+    inputSearch.addEventListener("change", function () {
+      const val = (inputSearch.value || "").trim();
+      if (!val) return limpiar();
+      const found = buscarEnDatalist(val);
+      if (found) {
+        setCliente(found.getAttribute("data-id") || "", found.value || "", found.getAttribute("data-rut") || "");
+      } else limpiar();
+    });
+  }
+  if (selectList) {
+    selectList.addEventListener("change", function () {
+      const idx = selectList.selectedIndex;
+      const o = idx >= 0 ? selectList.options[idx] : null;
+      if (!o || !o.value) return limpiar();
+      setCliente(o.value, o.getAttribute("data-razon") || "", o.getAttribute("data-rut") || "");
+    });
+  }
+  if (!hasClientes) {
+    if (help) help.textContent = "No existen clientes.";
+    if (btn) btn.disabled = true;
+    form.addEventListener("submit", function (e) { e.preventDefault(); alert("Debe crear un cliente antes de cotizar."); });
+  } else {
+    form.addEventListener("submit", function (e) {
+      if (!validar()) { e.preventDefault(); alert("Selecciona un cliente válido."); }
+    });
+  }
+  validar();
+})();
+</script>
+{% endblock %}

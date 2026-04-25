@@ -1,0 +1,209 @@
+{% extends "layout/base.html" %}
+{% block title %}Cotización {{ cotizacion.id }}{% endblock %}
+
+{% block head %}
+<style>
+  :root{ --eva-navy:#0B1F3B; --eva-border:#E5E7EB; --eva-muted:#6B7280; }
+  .eva-title{ color: var(--eva-navy); }
+  .eva-card{ border:1px solid var(--eva-border) !important; border-radius:14px; background:#fff; }
+  .btn-eva-primary{ background: var(--eva-navy); border-color: var(--eva-navy); color:#fff; }
+  .btn-eva-primary:hover{ background:#07162B; border-color:#07162B; color:#fff; }
+  .eva-badge{ display:inline-flex; align-items:center; gap:.35rem; padding:.22rem .6rem; border-radius:999px; font-size:.75rem; font-weight:600; border:1px solid var(--eva-border); background:#F9FAFB; color:#111827; white-space:nowrap; }
+  .eva-badge--ok{ border-color: rgba(22,163,74,.35); background: rgba(22,163,74,.10); color:#065F46; }
+  .eva-badge--warn{ border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.12); color:#92400E; }
+  .eva-badge--bad{ border-color: rgba(220,38,38,.35); background: rgba(220,38,38,.10); color:#7F1D1D; }
+  .eva-kv dt{ color:#374151; }
+  .eva-kv dd{ color:#111827; }
+  .eva-link{ color: var(--eva-navy); font-weight:600; text-decoration:none; }
+  .eva-link:hover{ text-decoration:underline; }
+</style>
+{% endblock head %}
+
+{% block content %}
+<div class="container py-4">
+  {% set cli = cotizacion.cliente %}
+  {% set cli_nombre = (cli.razon_social if cli else 'Cliente no disponible') %}
+  {% set cli_rut = (cli.rut if cli else '') %}
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+      <h1 class="h5 fw-semibold mb-0 eva-title">
+        Cotización #{{ cotizacion.id }}{% if cli %} · {{ cli_nombre }}{% endif %}
+      </h1>
+      <div class="small" style="color:var(--eva-muted);">
+        {% if cli_rut %}RUT {{ cli_rut }} · {% endif %}
+        Moneda {{ cotizacion.moneda or 'CLP' }} · Estado {{ cotizacion.estado or 'PENDIENTE' }}
+      </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ request.url_for('lf_cotizaciones_list') }}" class="btn btn-sm btn-outline-secondary">← Listado</a>
+      {% if cli %}
+        <a href="{{ request.url_for('clientes_form_editar', cliente_id=cli.id) }}" class="btn btn-sm btn-outline-secondary">Ficha cliente</a>
+        <a href="{{ request.url_for('lf_cotizacion_nueva_form') }}?cliente_id={{ cli.id }}" class="btn btn-sm btn-eva-primary">+ Nueva cotización</a>
+      {% endif %}
+      <a href="{{ request.url_for('lf_cotizacion_amortizacion', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-eva-primary">Ver amortización</a>
+      <a href="{{ request.url_for('lf_cotizacion_amortizacion_excel', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-success">Excel</a>
+      <a href="{{ request.url_for('lf_cotizacion_amortizacion_pdf', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-danger">PDF</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card eva-card shadow-sm border-0 mb-3">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-3">Datos generales</h2>
+          <dl class="row small mb-0 eva-kv">
+            <dt class="col-sm-4">Cliente</dt>
+            <dd class="col-sm-8">{{ cli_nombre }}<br><small class="text-muted">{{ cli_rut }}</small></dd>
+            <dt class="col-sm-4">Moneda</dt>
+            <dd class="col-sm-8">{{ cotizacion.moneda or 'CLP' }}</dd>
+            <dt class="col-sm-4">Fecha cotización</dt>
+            <dd class="col-sm-8">{{ cotizacion.fecha_cotizacion or '-' }}</dd>
+            <dt class="col-sm-4">Fecha inicio</dt>
+            <dd class="col-sm-8">{{ cotizacion.fecha_inicio or '-' }}</dd>
+            <dt class="col-sm-4">Plazo</dt>
+            <dd class="col-sm-8">{{ cotizacion.plazo or '-' }}{% if cotizacion.plazo %} meses{% endif %}</dd>
+            <dt class="col-sm-4">Estado</dt>
+            <dd class="col-sm-8">
+              {% set est = (cotizacion.estado or 'PENDIENTE') | string | upper %}
+              {% if 'APROB' in est or 'CONTRAT' in est %}
+                <span class="eva-badge eva-badge--ok">{{ cotizacion.estado }}</span>
+              {% elif 'RECHAZ' in est %}
+                <span class="eva-badge eva-badge--bad">{{ cotizacion.estado }}</span>
+              {% else %}
+                <span class="eva-badge eva-badge--warn">{{ cotizacion.estado or 'PENDIENTE' }}</span>
+              {% endif %}
+            </dd>
+          </dl>
+        </div>
+      </div>
+
+      <div class="card eva-card shadow-sm border-0 mb-3">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-3">Parámetros financieros</h2>
+          <dl class="row small mb-0 eva-kv">
+            <dt class="col-sm-4">Valor neto operación</dt>
+            <dd class="col-sm-8">
+              {% if cotizacion.valor_neto is not none %}
+                {{ "{:,.0f}".format(cotizacion.valor_neto).replace(",", ".") }}
+              {% else %}-{% endif %}
+            </dd>
+            <dt class="col-sm-4">Monto financiado</dt>
+            <dd class="col-sm-8">
+              {% set base = cotizacion.monto_financiado or cotizacion.valor_neto or cotizacion.monto %}
+              {% if base is not none %}
+                {{ "{:,.0f}".format(base).replace(",", ".") }}
+              {% else %}-{% endif %}
+            </dd>
+            <dt class="col-sm-4">Tasa nominal anual</dt>
+            <dd class="col-sm-8">
+              {% if cotizacion.tasa is not none %}
+                {{ (cotizacion.tasa * 100) | round(2) }} %
+              {% else %}-{% endif %}
+            </dd>
+            <dt class="col-sm-4">Periodos de gracia</dt>
+            <dd class="col-sm-8">{{ cotizacion.periodos_gracia or 0 }}</dd>
+            <dt class="col-sm-4">Opción de compra</dt>
+            <dd class="col-sm-8">
+              {% if cotizacion.opcion_compra is not none %}
+                {{ "{:,.0f}".format(cotizacion.opcion_compra).replace(",", ".") }}
+              {% else %}-{% endif %}
+            </dd>
+            <dt class="col-sm-4">Pago inicial</dt>
+            <dd class="col-sm-8">
+              {% if cotizacion.pago_inicial_tipo %}
+                {{ cotizacion.pago_inicial_tipo }}:
+                {{ "{:,.0f}".format(cotizacion.pago_inicial_valor or 0).replace(",", ".") }}
+              {% else %}Sin pago inicial{% endif %}
+            </dd>
+            <dt class="col-sm-4">Concesionario</dt>
+            <dd class="col-sm-8">{{ cotizacion.concesionario or '-' }}</dd>
+            <dt class="col-sm-4">Ejecutivo</dt>
+            <dd class="col-sm-8">{{ cotizacion.ejecutivo or '-' }}</dd>
+          </dl>
+        </div>
+      </div>
+
+      <div class="card eva-card shadow-sm border-0">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-3">Proyección contable automática</h2>
+          <p class="small text-muted">
+            Generada al guardar la cotización (cuentas dedicadas 113701, 210701, 410701, cobros vía 110201).
+            Revise <code>fin.config_contable</code> y <code>fin.config_contable_detalle_modulo</code> para el detalle de eventos.
+          </p>
+          {% if cotizacion.proyeccion_lineas %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>#</th>
+                  <th>Etapa</th>
+                  <th>Cuota</th>
+                  <th>Cuenta</th>
+                  <th class="text-end">Debe</th>
+                  <th class="text-end">Haber</th>
+                  <th>Glosa</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for L in cotizacion.proyeccion_lineas %}
+                <tr>
+                  <td>{{ L.secuencia }}</td>
+                  <td>{{ L.etapa }}</td>
+                  <td>{{ L.ref_cuota if L.ref_cuota is not none else '—' }}</td>
+                  <td><code>{{ L.cuenta_codigo }}</code></td>
+                  <td class="text-end">{{ "{:,.0f}".format(L.debe).replace(",", ".") }}</td>
+                  <td class="text-end">{{ "{:,.0f}".format(L.haber).replace(",", ".") }}</td>
+                  <td class="small">{{ L.glosa }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="text-muted small mb-0">Sin líneas (complete monto financiado y plazo para recalcular al editar).</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card eva-card shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="h6 fw-semibold mb-0">Otras cotizaciones del cliente</h2>
+            {% if cli %}
+              <a href="{{ request.url_for('lf_cotizacion_nueva_form') }}?cliente_id={{ cli.id }}" class="btn btn-sm btn-outline-secondary">+ Nueva</a>
+            {% endif %}
+          </div>
+          {% if cotizaciones_cliente %}
+            <ul class="list-group list-group-flush small">
+              {% for c in cotizaciones_cliente %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  <div>
+                    <div class="fw-semibold">#{{ c.id }}</div>
+                    <div class="text-muted">{{ c.fecha_cotizacion or c.fecha_inicio or '' }}</div>
+                    <div class="text-muted">
+                      {% set base2 = c.monto_financiado or c.valor_neto or c.monto %}
+                      {% if base2 is not none %}
+                        {{ "{:,.0f}".format(base2).replace(",", ".") }} {{ c.moneda or '' }}
+                      {% endif %}
+                    </div>
+                  </div>
+                  {% if c.id != cotizacion.id %}
+                    <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}" class="eva-link">Ver</a>
+                  {% else %}
+                    <span class="text-muted small">Actual</span>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-muted mb-0">No hay otras cotizaciones para este cliente.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

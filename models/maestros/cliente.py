@@ -12,6 +12,7 @@ from db.base_class import Base
 
 if TYPE_CHECKING:
     from models.cobranza.cuentas_por_cobrar import CuentaPorCobrar
+    from models.comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion
     from models.comercial.nota_venta import NotaVenta
     from models.comercial.orden_servicio import OrdenServicio
     from models.comercial.vehiculo import Vehiculo
@@ -85,5 +86,10 @@ class Cliente(Base):
     )
     ordenes_servicio: Mapped[list["OrdenServicio"]] = relationship(
         "OrdenServicio",
+        back_populates="cliente",
+    )
+
+    leasing_fin_cotizaciones: Mapped[list["LeasingFinancieroCotizacion"]] = relationship(
+        "LeasingFinancieroCotizacion",
         back_populates="cliente",
     )

@@ -62,6 +62,17 @@ Alta solo en Supabase (SQL Editor), sin ejecutar Python en Render
 2) Edita en el propio editor de Supabase el correo, nombre y la contraseña dentro de crypt('...', gen_salt('bf')).
 3) Run. El hash es compatible con el login de la app (bcrypt vía pgcrypto).
 
+Leasing financiero (área comercial) — producción / Supabase
+------------------------------------------------------------
+Tras tener la tabla public.clientes (bootstrap + app o migraciones), en SQL Editor ejecute
+TODO el archivo (idempotente):
+
+  db/psql/100_comercial_leasing_financiero.sql
+
+Crea comercial_lf_cotizaciones, comercial_lf_proyeccion_linea, cuentas 113701/210701/410701 y
+reglas en fin.config_contable* para LEASING_FIN_*. La app también intenta aplicar este parche
+al arrancar si falta la config COMERCIAL/LEASING_FIN.
+
 Si algo falla
 -------------
 - "password authentication failed": la clave no es la del proyecto en la nube; reset en Database.

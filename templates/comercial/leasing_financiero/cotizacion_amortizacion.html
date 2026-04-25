@@ -1,0 +1,123 @@
+{% extends "layout/base.html" %}
+{% block title %}Amortización Cotización {{ cotizacion.id }}{% endblock %}
+
+{% block head %}
+<style>
+  :root{ --eva-navy:#0B1F3B; --eva-gold:#D4AF37; --eva-border:#E5E7EB; --eva-muted:#6B7280; }
+  .eva-title{ color: var(--eva-navy); }
+  .eva-card{ border:1px solid var(--eva-border) !important; border-radius:14px; background:#fff; }
+  .btn-eva-primary{ background: var(--eva-navy); border-color: var(--eva-navy); color:#fff; }
+  .btn-eva-primary:hover{ background:#07162B; border-color:#07162B; color:#fff; }
+  .eva-kpi{ border:1px solid var(--eva-border); border-radius:14px; padding:.85rem 1rem; background: linear-gradient(180deg,#fff,#fbfbfb); }
+  .eva-kpi .lbl{ font-size:.75rem; color: var(--eva-muted); }
+  .eva-kpi .val{ font-size:1.25rem; font-weight:800; color: var(--eva-navy); line-height:1.2; }
+  .eva-badge{ display:inline-flex; padding:.2rem .55rem; border-radius:999px; font-size:.72rem; font-weight:700; border:1px solid var(--eva-border); background:#F9FAFB; color:#111827; white-space:nowrap; }
+  .eva-badge--cuota{ border-color: rgba(11,31,59,.25); background: rgba(11,31,59,.06); color: var(--eva-navy); }
+  .eva-badge--gracia{ border-color: rgba(107,114,128,.35); background: rgba(107,114,128,.10); color:#374151; }
+  .eva-badge--opcion{ border-color: rgba(212,175,55,.45); background: rgba(212,175,55,.16); color:#6B4F00; }
+  .table thead th{ position: sticky; top: 0; z-index: 2; background: #F3F4F6 !important; white-space: nowrap; }
+</style>
+{% endblock head %}
+
+{% block content %}
+<div class="container py-4">
+  {% set cli = cotizacion.cliente %}
+  {% set cli_nombre = (cli.razon_social if cli else 'Cliente no disponible') %}
+  {% set cli_rut = (cli.rut if cli else '') %}
+  {% set base = cotizacion.monto_financiado or cotizacion.valor_neto or cotizacion.monto or 0 %}
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+      <h1 class="h5 fw-semibold mb-0 eva-title">Tabla de Amortización</h1>
+      <div class="text-muted small">
+        Cotización #{{ cotizacion.id }} · {{ cli_nombre }}{% if cli_rut %} ({{ cli_rut }}){% endif %}
+      </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=cotizacion.id) }}" class="btn btn-outline-secondary btn-sm">← Detalle</a>
+      {% if cli %}
+        <a href="{{ request.url_for('clientes_form_editar', cliente_id=cli.id) }}" class="btn btn-outline-secondary btn-sm">Ficha cliente</a>
+        <a href="{{ request.url_for('lf_cotizacion_nueva_form') }}?cliente_id={{ cli.id }}" class="btn btn-eva-primary btn-sm">+ Nueva cotización</a>
+      {% endif %}
+      <a href="{{ request.url_for('lf_cotizacion_amortizacion_excel', cotizacion_id=cotizacion.id) }}" class="btn btn-outline-success btn-sm">Excel</a>
+      <a href="{{ request.url_for('lf_cotizacion_amortizacion_pdf', cotizacion_id=cotizacion.id) }}" class="btn btn-outline-danger btn-sm">PDF</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-4">
+      <div class="eva-kpi">
+        <div class="lbl">Monto financiado</div>
+        <div class="val">{{ "{:,.0f}".format(base).replace(",", ".") }} {{ cotizacion.moneda or 'CLP' }}</div>
+        <div class="sub small text-muted">Base de amortización.</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="eva-kpi">
+        <div class="lbl">Total intereses</div>
+        <div class="val">{{ "{:,.0f}".format(total_interes or 0).replace(",", ".") }} {{ cotizacion.moneda or 'CLP' }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="eva-kpi">
+        <div class="lbl">Total cuotas</div>
+        <div class="val">{{ "{:,.0f}".format(total_cuotas or 0).replace(",", ".") }} {{ cotizacion.moneda or 'CLP' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card eva-card shadow-sm border-0">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Fecha</th>
+              <th class="text-end">Saldo inicial</th>
+              <th class="text-end">Cuota</th>
+              <th class="text-end">Interés</th>
+              <th class="text-end">Amortización</th>
+              <th class="text-end">Saldo final</th>
+              <th>Tipo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in tabla %}
+            <tr>
+              <td class="text-nowrap">{{ c.numero_cuota }}</td>
+              <td class="text-nowrap">{{ c.fecha_cuota or '-' }}</td>
+              <td class="text-end">{{ "{:,.0f}".format(c.saldo_inicial or 0).replace(",", ".") }}</td>
+              <td class="text-end">{{ "{:,.0f}".format(c.cuota or 0).replace(",", ".") }}</td>
+              <td class="text-end">{{ "{:,.0f}".format(c.interes or 0).replace(",", ".") }}</td>
+              <td class="text-end">{{ "{:,.0f}".format(c.amortizacion or 0).replace(",", ".") }}</td>
+              <td class="text-end">{{ "{:,.0f}".format(c.saldo_final or 0).replace(",", ".") }}</td>
+              <td>
+                {% if c.es_gracia %}
+                  <span class="eva-badge eva-badge--gracia">Gracia</span>
+                {% elif c.es_opcion_compra %}
+                  <span class="eva-badge eva-badge--opcion">Opción</span>
+                {% else %}
+                  <span class="eva-badge eva-badge--cuota">Cuota</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="8" class="text-center py-3 text-muted">No se pudo generar la tabla.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div class="small text-muted">Exporte a Excel para revisar totales.</div>
+      <div class="d-flex flex-wrap gap-2">
+        <a href="{{ request.url_for('lf_cotizacion_amortizacion_excel', cotizacion_id=cotizacion.id) }}" class="btn btn-outline-success btn-sm">Excel</a>
+        <a href="{{ request.url_for('lf_cotizacion_amortizacion_pdf', cotizacion_id=cotizacion.id) }}" class="btn btn-outline-danger btn-sm">PDF</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

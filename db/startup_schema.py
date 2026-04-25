@@ -26,6 +26,7 @@ _PATCH_099 = _ROOT / "db" / "psql" / "099_fondos_rendir_asientos.sql"
 _PATCH_090 = _ROOT / "db" / "psql" / "090_fin_config_contable.sql"
 _PATCH_091 = _ROOT / "db" / "psql" / "091_fin_inventario_recepcion_premium.sql"
 _PATCH_092 = _ROOT / "db" / "psql" / "092_fin_ventas_costo_venta_premium.sql"
+_PATCH_100 = _ROOT / "db" / "psql" / "100_comercial_leasing_financiero.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -316,7 +317,10 @@ def _ensure_plan_cuenta_minima_for_contabilidad_seed(engine: Engine) -> None:
     ('410101', 'VENTAS', 3, NULL, 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', TRUE, TRUE, 'ACTIVO', 'Ingresos por ventas'),
     ('510000', 'COSTOS DE VENTAS', 2, NULL, 'COSTO', 'COSTO_VENTA', 'DEUDORA', FALSE, TRUE, 'ACTIVO', 'Agrupador costos'),
     ('510101', 'COSTO DE VENTAS', 3, NULL, 'COSTO', 'COSTO_VENTA', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Costo mercadería vendida'),
-    ('610104', 'GASTOS GENERALES', 3, NULL, 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Gastos de administración')
+    ('610104', 'GASTOS GENERALES', 3, NULL, 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Gastos de administración'),
+    ('113701', 'CUENTAS POR COBRAR LEASING FINANCIERO', 3, NULL, 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', TRUE, FALSE, 'ACTIVO', 'Principal leasing financiero'),
+    ('210701', 'OBLIGACIONES LEASING FINANCIERO', 3, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'Pasivo leasing financiero'),
+    ('410701', 'INGRESOS FINANCIEROS LEASING', 3, NULL, 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'Intereses leasing financiero')
     ON CONFLICT (codigo) DO UPDATE SET
         nombre = EXCLUDED.nombre,
         nivel = EXCLUDED.nivel,
@@ -343,6 +347,49 @@ def _ensure_plan_cuenta_minima_for_contabilidad_seed(engine: Engine) -> None:
     with engine.connect() as conn:
         conn = conn.execution_options(isolation_level="AUTOCOMMIT")
         conn.exec_driver_sql(sql)
+
+
+def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
+    """
+    Tablas comercial_lf_* + cuentas/config leasing (100) si aún no están aplicadas.
+    Idempotente con el contenido de 100_comercial_leasing_financiero.sql.
+    """
+    if engine.dialect.name != "postgresql" or not _PATCH_100.is_file():
+        return
+    if not _has_table(engine, schema="fin", table="plan_cuenta"):
+        return
+    with engine.connect() as conn:
+        has_cot = conn.execute(
+            text(
+                """
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'comercial_lf_cotizaciones'
+                LIMIT 1
+                """
+            )
+        ).scalar()
+        leasing_cfg = None
+        if _has_table(engine, schema="fin", table="config_contable_detalle_modulo"):
+            leasing_cfg = conn.execute(
+                text(
+                    """
+                    SELECT 1 FROM fin.config_contable_detalle_modulo
+                    WHERE modulo = 'COMERCIAL' AND submodulo = 'LEASING_FIN'
+                    LIMIT 1
+                    """
+                )
+            ).scalar()
+    if has_cot and leasing_cfg:
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_100)
+        logger.info("Parche aplicado: comercial leasing financiero (100).")
+    except Exception as exc:
+        logger.warning(
+            "No se pudo aplicar 100_comercial_leasing_financiero.sql. "
+            "Ejecute manualmente en la base si es necesario. Detalle: %s",
+            exc,
+        )
 
 
 def ensure_fin_config_contable_seed(engine: Engine) -> None:
