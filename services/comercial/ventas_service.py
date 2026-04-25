@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from crud.comercial import nota_venta as crud_nota_venta
 from services.finanzas.integracion_ventas import (
+    contabilizar_anulacion_nota_venta,
     contabilizar_nota_venta,
-    eliminar_movimiento_contable_nota_venta,
 )
 
 from models import NotaVenta, Producto
@@ -115,10 +115,11 @@ def anular_venta_pos(
 
     nota_anulada = crud_nota_venta.anular_nota_venta(db, nota)
 
-    # Regla solicitada por negocio: al anular, quitar movimiento contable de la nota.
-    eliminar_movimiento_contable_nota_venta(
-        db,
+    # Regla contable: al anular no se borra historial, se genera un asiento reverso.
+    contabilizar_anulacion_nota_venta(
+        db=db,
         nota_venta_id=nota_anulada.id,
+        usuario=usuario,
     )
 
     return nota_anulada
