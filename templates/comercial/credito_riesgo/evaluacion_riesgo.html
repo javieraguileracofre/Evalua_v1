@@ -36,13 +36,38 @@
         </div>
       </div>
 
-      <div class="card border-0 shadow-sm">
+      <div class="card border-0 shadow-sm mb-3">
         <div class="card-header bg-white fw-semibold">Motor de scoring</div>
         <div class="card-body">
-          <p class="small text-muted">Ejecuta el motor 0–1000 con ponderaciones oficiales, estrés de tasa y snapshot macro (BCCh / CMF referencia interna).</p>
+          <p class="small text-muted">Ejecuta el motor 0–1000 con ponderaciones oficiales, estrés de tasa y snapshot macro (BCCh / CMF referencia interna). Al calcular, la solicitud pasa a <strong>EN_EVALUACION</strong>; la recomendación del motor es orientativa hasta que registre una decisión manual.</p>
           <form method="post" action="{{ request.url_for('credito_riesgo_evaluar', solicitud_id=sol.id) }}" class="d-inline">
             <button type="submit" class="btn btn-primary">Calcular y guardar evaluación</button>
           </form>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold">Decisión del negocio</div>
+        <div class="card-body">
+          {% set evs = sol.evaluaciones|sort(attribute='id', reverse=true) %}
+          {% set ultimo = evs[0] if evs else none %}
+          {% if ultimo %}
+          <p class="small text-muted mb-2">Última corrida del motor: recomendación <strong>{{ ultimo.recomendacion }}</strong> (categoría {{ ultimo.categoria }}, score {{ "%.0f"|format(ultimo.score_total) }}).</p>
+          {% else %}
+          <p class="small text-muted mb-2">Sin evaluación guardada aún; puede decidir igualmente o correr el motor antes.</p>
+          {% endif %}
+          <div class="d-flex flex-wrap gap-2">
+            <form method="post" action="{{ request.url_for('credito_riesgo_aprobar', solicitud_id=sol.id) }}" class="d-inline">
+              <button type="submit" class="btn btn-success btn-sm">Aprobar</button>
+            </form>
+            <form method="post" action="{{ request.url_for('credito_riesgo_condiciones', solicitud_id=sol.id) }}" class="d-inline">
+              <button type="submit" class="btn btn-outline-primary btn-sm">Aprobar con condiciones</button>
+            </form>
+            <form method="post" action="{{ request.url_for('credito_riesgo_rechazar', solicitud_id=sol.id) }}" class="d-inline" onsubmit="return confirm('¿Registrar rechazo de esta solicitud?');">
+              <button type="submit" class="btn btn-outline-danger btn-sm">Rechazar</button>
+            </form>
+          </div>
+          <p class="small text-secondary mt-2 mb-0">Para comité use el formulario de la derecha; allí el estado pasa a COMITE al abrir el ítem.</p>
         </div>
       </div>
     </div>

@@ -184,6 +184,49 @@ def solicitud_evaluar(request: Request, solicitud_id: int, db: Session = Depends
     )
 
 
+def _redirect_ficha_solicitud(request: Request, solicitud_id: int) -> RedirectResponse:
+    return RedirectResponse(
+        url=str(request.url_for("credito_riesgo_solicitud_detalle", solicitud_id=solicitud_id)),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/solicitudes/{solicitud_id}/aprobar", name="credito_riesgo_aprobar")
+def solicitud_aprobar(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    sol = crud_cr.obtener_solicitud(db, solicitud_id)
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    try:
+        crud_cr.aplicar_decision_manual(db, sol, "APROBADA", evento="DECISION_APROBADA")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _redirect_ficha_solicitud(request, solicitud_id)
+
+
+@router.post("/solicitudes/{solicitud_id}/rechazar", name="credito_riesgo_rechazar")
+def solicitud_rechazar(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    sol = crud_cr.obtener_solicitud(db, solicitud_id)
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    try:
+        crud_cr.aplicar_decision_manual(db, sol, "RECHAZADA", evento="DECISION_RECHAZADA")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _redirect_ficha_solicitud(request, solicitud_id)
+
+
+@router.post("/solicitudes/{solicitud_id}/condiciones", name="credito_riesgo_condiciones")
+def solicitud_condiciones(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    sol = crud_cr.obtener_solicitud(db, solicitud_id)
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    try:
+        crud_cr.aplicar_decision_manual(db, sol, "CONDICIONES", evento="DECISION_CONDICIONES")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _redirect_ficha_solicitud(request, solicitud_id)
+
+
 @router.get("/score/{eval_id}", response_class=HTMLResponse, name="credito_riesgo_score_detalle")
 def detalle_score(request: Request, eval_id: int, db: Session = Depends(get_db)):
     ev = crud_cr.obtener_evaluacion(db, eval_id)

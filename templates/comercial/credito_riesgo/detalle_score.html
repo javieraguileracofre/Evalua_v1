@@ -75,10 +75,29 @@
         </div>
       </div>
 
-      <div class="card border-0 shadow-sm">
+      <div class="card border-0 shadow-sm mb-3">
         <div class="card-header bg-white fw-semibold">Variables macro (referencia)</div>
         <div class="card-body small">
           <pre class="mb-0 bg-light p-2 rounded small">{{ (ev.macro_json or {}) | tojson(indent=2) }}</pre>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm border-primary border-2">
+        <div class="card-header bg-primary-subtle fw-semibold">Decisión manual (solicitud {{ sol.codigo or ('#' ~ sol.id) }})</div>
+        <div class="card-body small">
+          <p class="text-muted mb-2">Estado actual: <strong>{{ sol.estado }}</strong>. La recomendación mostrada arriba es del motor; el estado operativo lo define el analista con los botones siguientes.</p>
+          <div class="d-flex flex-wrap gap-2">
+            <form method="post" action="{{ request.url_for('credito_riesgo_aprobar', solicitud_id=sol.id) }}" class="d-inline">
+              <button type="submit" class="btn btn-success btn-sm">Aprobar</button>
+            </form>
+            <form method="post" action="{{ request.url_for('credito_riesgo_condiciones', solicitud_id=sol.id) }}" class="d-inline">
+              <button type="submit" class="btn btn-outline-primary btn-sm">Aprobar con condiciones</button>
+            </form>
+            <form method="post" action="{{ request.url_for('credito_riesgo_rechazar', solicitud_id=sol.id) }}" class="d-inline" onsubmit="return confirm('¿Registrar rechazo?');">
+              <button type="submit" class="btn btn-outline-danger btn-sm">Rechazar</button>
+            </form>
+          </div>
+          <a class="btn btn-link btn-sm px-0 mt-2" href="{{ request.url_for('credito_riesgo_solicitud_detalle', solicitud_id=sol.id) }}">Volver a ficha completa</a>
         </div>
       </div>
     </div>

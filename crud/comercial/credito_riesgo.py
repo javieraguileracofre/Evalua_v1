@@ -164,28 +164,59 @@ def ejecutar_evaluacion(db: Session, sol: CreditoSolicitud, *, usuario: str = "s
         motor_version=col["motor_version"],
     )
     db.add(ev)
+    # El motor no fija estado operativo: queda en evaluación hasta decisión humana o comité.
     sol.estado = "EN_EVALUACION"
-    if col["recomendacion"] == "COMITE":
-        sol.estado = "COMITE"
-    elif col["recomendacion"] == "RECHAZAR":
-        sol.estado = "RECHAZADA"
-    elif col["recomendacion"] == "CONDICIONES":
-        sol.estado = "CONDICIONES"
-    elif col["recomendacion"] == "APROBAR":
-        sol.estado = "APROBADA"
     db.add(sol)
     db.flush()
     db.add(
         CreditoHistorial(
             solicitud_id=int(sol.id),
             evento="EVALUACION_EJECUTADA",
-            detalle_json={"evaluacion_score": float(col["score_total"]), "categoria": col["categoria"]},
+            detalle_json={
+                "evaluacion_id": int(ev.id),
+                "evaluacion_score": float(col["score_total"]),
+                "categoria": col["categoria"],
+                "recomendacion_motor": col["recomendacion"],
+            },
             usuario=usuario,
         )
     )
     db.commit()
     db.refresh(ev)
     return ev
+
+
+def aplicar_decision_manual(
+    db: Session,
+    sol: CreditoSolicitud,
+    estado_objetivo: str,
+    *,
+    evento: str,
+    usuario: str = "sistema",
+    nota: str | None = None,
+) -> CreditoSolicitud:
+    """Registra decisión de riesgo (no automática por el motor)."""
+    permitidos = {"APROBADA", "RECHAZADA", "CONDICIONES", "EN_EVALUACION"}
+    eo = str(estado_objetivo).strip().upper()
+    if eo not in permitidos:
+        raise ValueError(f"Estado objetivo no permitido: {eo}")
+    sol.estado = eo
+    db.add(sol)
+    db.flush()
+    detalle: dict[str, Any] = {"estado": eo}
+    if nota:
+        detalle["nota"] = nota[:2000]
+    db.add(
+        CreditoHistorial(
+            solicitud_id=int(sol.id),
+            evento=evento,
+            detalle_json=detalle,
+            usuario=usuario,
+        )
+    )
+    db.commit()
+    db.refresh(sol)
+    return sol
 
 
 def obtener_evaluacion(db: Session, eval_id: int) -> CreditoEvaluacion | None:
