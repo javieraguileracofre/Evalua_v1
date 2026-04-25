@@ -49,6 +49,13 @@ Usuario maestro tras bootstrap exitoso
   password: Evalua1234##   (cámbiala en cuanto puedas)
 
 ──────────────────────────────────────────────────────────────────────────────
+Plan de cuentas vacío (fin.plan_cuenta sin filas o error al insertar)
+──────────────────────────────────────────────────────────────────────────────
+En SQL Editor pegue y ejecute TODO el archivo:
+  db/supabase/seed_plan_cuentas_supabase.sql
+(es idempotente; corrige DEFAULT en created_at/updated_at si la tabla la creó la app).
+
+──────────────────────────────────────────────────────────────────────────────
 Alta solo en Supabase (SQL Editor), sin ejecutar Python en Render
 ──────────────────────────────────────────────────────────────────────────────
 1) Abre el archivo local:  db/supabase/seed_auth_admin.sql
