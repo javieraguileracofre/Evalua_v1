@@ -1,0 +1,51 @@
+{% extends "layout/base.html" %}
+{% block title %}Tablero LOP{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/leasing_operativo.css" />
+<div class="container-fluid py-4 lo-page">
+  <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+    <div>
+      <a href="{{ request.url_for('leasing_operativo_list') }}" class="small text-decoration-none">← Simulaciones</a>
+      <h1 class="h5 fw-semibold mt-1 mb-0">Kanban flujo leasing operativo</h1>
+      <p class="text-secondary small mb-0">Cotización → Crédito → Contrato → OC → Entrega → Factura → Activación.</p>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_simulador') }}">Nueva simulación</a>
+  </div>
+
+  <div class="lo-kanban">
+    {% for etapa in etapas %}
+    {% set items = board.get(etapa, []) %}
+    <section class="lo-col">
+      <header class="lo-col-head">
+        <span class="lo-col-title">{{ etapa.replace('_', ' ') }}</span>
+        <span class="badge rounded-pill text-bg-light border">{{ items|length }}</span>
+      </header>
+      <div class="lo-col-body">
+        {% for r in items %}
+        {% set j = r.result_json or {} %}
+        {% set wf = j.get('workflow_v1', {}) %}
+        {% set cred = wf.get('credito', {}) %}
+        <article class="lo-card">
+          <div class="small text-muted font-monospace">{{ r.codigo }}</div>
+          <div class="fw-semibold">{{ r.nombre }}</div>
+          <div class="small text-muted">{{ r.tipo.nombre if r.tipo else '' }} · {{ r.plazo_meses }}m</div>
+          <div class="small">Renta: <strong>{{ "{:,.0f}".format(j.get('renta_sugerida', 0) or 0).replace(",", ".") }}</strong></div>
+          <div class="d-flex gap-1 flex-wrap mt-1">
+            <span class="badge {% if r.decision_codigo == 'APROBAR' %}text-bg-success{% elif r.decision_codigo == 'RECHAZAR' %}text-bg-danger{% elif r.decision_codigo == 'OBSERVAR' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ r.decision_codigo }}</span>
+            {% if cred.get('dictamen') %}
+            <span class="badge text-bg-light border">Crédito: {{ cred.get('dictamen') }}</span>
+            {% endif %}
+          </div>
+          <div class="d-flex gap-1 mt-2">
+            <a class="btn btn-sm btn-outline-primary w-100" href="{{ request.url_for('leasing_operativo_detail', sim_id=r.id) }}">Abrir</a>
+          </div>
+        </article>
+        {% else %}
+        <div class="small text-muted p-2">Sin operaciones.</div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

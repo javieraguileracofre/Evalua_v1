@@ -163,6 +163,38 @@ def lo_list(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/tablero", response_class=HTMLResponse, name="leasing_operativo_tablero")
+def lo_tablero(request: Request, db: Session = Depends(get_db)):
+    rows = lo_crud.listar_simulaciones(db, limit=400)
+    etapas = [
+        "COTIZACION",
+        "CREDITO_APROBADO",
+        "CONTRATO_CONFECCIONADO",
+        "ORDEN_COMPRA",
+        "ENTREGA_RECEPCION",
+        "FACTURA_COMPRA",
+        "ACTIVADO_CONTABLE",
+    ]
+    board: dict[str, list] = {k: [] for k in etapas}
+    board["OTROS"] = []
+    for r in rows:
+        j = r.result_json or {}
+        wf = j.get("workflow_v1") if isinstance(j, dict) else {}
+        etapa = str((wf or {}).get("etapa_actual") or "COTIZACION").upper()
+        if etapa not in board:
+            etapa = "OTROS"
+        board[etapa].append(r)
+    return templates.TemplateResponse(
+        "leasing_operativo/tablero.html",
+        {
+            "request": request,
+            "board": board,
+            "etapas": etapas + ["OTROS"],
+            "active_menu": "leasing_operativo",
+        },
+    )
+
+
 @router.get("/simulador", response_class=HTMLResponse, name="leasing_operativo_simulador")
 def lo_simulador_get(request: Request, db: Session = Depends(get_db)):
     lo_crud.asegurar_parametros_tipo_default(db)
