@@ -467,6 +467,10 @@ def lo_detail(request: Request, sim_id: int, db: Session = Depends(get_db)):
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404, "Simulación no encontrada")
+    try:
+        sim = lo_crud.sincronizar_estado_credito(db, sim, usuario="sistema")
+    except Exception:
+        pass
     res = sim.result_json or {}
     ctr = getattr(sim, "contrato", None)
     workflow = (res.get("workflow_v1") or {}) if isinstance(res, dict) else {}
@@ -530,33 +534,36 @@ def lo_crear_contrato(request: Request, sim_id: int, db: Session = Depends(get_d
     )
 
 
-@router.post("/operacion/{sim_id}/credito", name="leasing_operativo_registrar_credito")
-def lo_registrar_credito(
+@router.post("/operacion/{sim_id}/credito/derivar", name="leasing_operativo_derivar_credito")
+def lo_derivar_credito(
     request: Request,
     sim_id: int,
     db: Session = Depends(get_db),
-    dictamen: str = Form(...),
-    score: str = Form(""),
-    dscr: str = Form(""),
-    dpd_max: str = Form(""),
-    comentario: str = Form(""),
 ):
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
     try:
-        lo_crud.registrar_analisis_credito(
-            db,
-            sim,
-            dictamen=str(dictamen).upper(),
-            score=_dec(score) if str(score or "").strip() else None,
-            dscr=_dec(dscr) if str(dscr or "").strip() else None,
-            dpd_max=_int(dpd_max) if str(dpd_max or "").strip() else None,
-            comentario=comentario or "",
-            usuario="sistema",
-        )
+        _, sol = lo_crud.derivar_a_credito(db, sim, usuario="sistema")
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+    # abrir ficha de crédito/riesgo para evaluación formal
+    return RedirectResponse(
+        str(request.url_for("credito_riesgo_solicitud_detalle", solicitud_id=int(sol.id))),
+        status_code=303,
+    )
+
+
+@router.post("/operacion/{sim_id}/credito/sync", name="leasing_operativo_sync_credito")
+def lo_sync_credito(
+    request: Request,
+    sim_id: int,
+    db: Session = Depends(get_db),
+):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    lo_crud.sincronizar_estado_credito(db, sim, usuario="sistema")
     return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
 
 
@@ -574,6 +581,201 @@ def lo_registrar_hito(
         lo_crud.registrar_hito_operativo(db, sim, hito=hito, usuario="sistema")
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+    return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
+
+
+@router.get("/operacion/{sim_id}/contrato", response_class=HTMLResponse, name="leasing_operativo_contrato_builder")
+def lo_contrato_builder(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    drow = lo_crud.obtener_documento_proceso_actual(db, sim_id, "contrato")
+    doc = (drow.payload_json if drow else {}) or {}
+    return templates.TemplateResponse(
+        "leasing_operativo/contrato_builder.html",
+        {"request": request, "sim": sim, "doc": doc, "active_menu": "leasing_operativo"},
+    )
+
+
+@router.post("/operacion/{sim_id}/contrato", name="leasing_operativo_contrato_builder_save")
+def lo_contrato_builder_save(
+    request: Request,
+    sim_id: int,
+    db: Session = Depends(get_db),
+    nro_contrato: str = Form(""),
+    fecha_contrato: str = Form(""),
+    lugar_firma: str = Form(""),
+    observaciones: str = Form(""),
+):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    lo_crud.guardar_documento_proceso(
+        db,
+        sim,
+        modulo="contrato",
+        data={
+            "nro_contrato": nro_contrato,
+            "fecha_contrato": fecha_contrato,
+            "lugar_firma": lugar_firma,
+            "observaciones": observaciones,
+        },
+        usuario="sistema",
+    )
+    return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
+
+
+@router.get("/operacion/{sim_id}/orden-compra", response_class=HTMLResponse, name="leasing_operativo_oc_builder")
+def lo_oc_builder(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    drow = lo_crud.obtener_documento_proceso_actual(db, sim_id, "orden_compra")
+    doc = (drow.payload_json if drow else {}) or {}
+    tipos = lo_crud.listar_tipos_activo(db)
+    return templates.TemplateResponse(
+        "leasing_operativo/oc_builder.html",
+        {"request": request, "sim": sim, "doc": doc, "tipos": tipos, "active_menu": "leasing_operativo"},
+    )
+
+
+@router.post("/operacion/{sim_id}/orden-compra", name="leasing_operativo_oc_builder_save")
+def lo_oc_builder_save(
+    request: Request,
+    sim_id: int,
+    db: Session = Depends(get_db),
+    proveedor_nombre: str = Form(""),
+    oc_numero: str = Form(""),
+    fecha_oc: str = Form(""),
+    monto_oc: str = Form("0"),
+    crear_activo: str = Form(""),
+    tipo_activo_id: str = Form(""),
+    marca: str = Form(""),
+    modelo: str = Form(""),
+    anio: str = Form("2024"),
+    vin_serie: str = Form(""),
+):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    activo_creado = None
+    if str(crear_activo).lower() in {"on", "1", "true", "si"}:
+        activo_creado = lo_crud.crear_activo_fijo(
+            db,
+            tipo_activo_id=_int(tipo_activo_id) or None,
+            marca=marca,
+            modelo=modelo,
+            anio=_int(anio, 2024),
+            vin_serie=vin_serie,
+            fecha_compra=_date(fecha_oc),
+            costo_compra=_dec(monto_oc),
+            valor_residual_esperado=_dec("0"),
+            vida_util_meses_sii=60,
+        )
+    lo_crud.guardar_documento_proceso(
+        db,
+        sim,
+        modulo="orden_compra",
+        data={
+            "proveedor_nombre": proveedor_nombre,
+            "oc_numero": oc_numero,
+            "fecha_oc": fecha_oc,
+            "monto_oc": float(_dec(monto_oc)),
+            "activo_fijo_id": int(activo_creado.id) if activo_creado else None,
+            "activo_fijo_codigo": getattr(activo_creado, "codigo", None),
+        },
+        usuario="sistema",
+    )
+    return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
+
+
+@router.get("/operacion/{sim_id}/acta-entrega", response_class=HTMLResponse, name="leasing_operativo_acta_builder")
+def lo_acta_builder(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    drow = lo_crud.obtener_documento_proceso_actual(db, sim_id, "acta_entrega")
+    doc = (drow.payload_json if drow else {}) or {}
+    return templates.TemplateResponse(
+        "leasing_operativo/acta_builder.html",
+        {"request": request, "sim": sim, "doc": doc, "active_menu": "leasing_operativo"},
+    )
+
+
+@router.post("/operacion/{sim_id}/acta-entrega", name="leasing_operativo_acta_builder_save")
+def lo_acta_builder_save(
+    request: Request,
+    sim_id: int,
+    db: Session = Depends(get_db),
+    fecha_entrega: str = Form(""),
+    lugar_entrega: str = Form(""),
+    km_horas: str = Form(""),
+    combustible: str = Form(""),
+    checklist_seguridad: str = Form(""),
+    observaciones: str = Form(""),
+):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    lo_crud.guardar_documento_proceso(
+        db,
+        sim,
+        modulo="acta_entrega",
+        data={
+            "fecha_entrega": fecha_entrega,
+            "lugar_entrega": lugar_entrega,
+            "km_horas": km_horas,
+            "combustible": combustible,
+            "checklist_seguridad": checklist_seguridad,
+            "observaciones": observaciones,
+        },
+        usuario="sistema",
+    )
+    return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
+
+
+@router.get("/operacion/{sim_id}/factura-compra", response_class=HTMLResponse, name="leasing_operativo_factura_builder")
+def lo_factura_builder(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    drow = lo_crud.obtener_documento_proceso_actual(db, sim_id, "factura_compra")
+    doc = (drow.payload_json if drow else {}) or {}
+    return templates.TemplateResponse(
+        "leasing_operativo/factura_builder.html",
+        {"request": request, "sim": sim, "doc": doc, "active_menu": "leasing_operativo"},
+    )
+
+
+@router.post("/operacion/{sim_id}/factura-compra", name="leasing_operativo_factura_builder_save")
+def lo_factura_builder_save(
+    request: Request,
+    sim_id: int,
+    db: Session = Depends(get_db),
+    nro_factura: str = Form(""),
+    fecha_factura: str = Form(""),
+    neto: str = Form("0"),
+    iva: str = Form("0"),
+    total: str = Form("0"),
+    asiento_manual_ref: str = Form(""),
+):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    lo_crud.guardar_documento_proceso(
+        db,
+        sim,
+        modulo="factura_compra",
+        data={
+            "nro_factura": nro_factura,
+            "fecha_factura": fecha_factura,
+            "neto": float(_dec(neto)),
+            "iva": float(_dec(iva)),
+            "total": float(_dec(total)),
+            "asiento_manual_ref": asiento_manual_ref,
+        },
+        usuario="sistema",
+    )
     return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
 
 

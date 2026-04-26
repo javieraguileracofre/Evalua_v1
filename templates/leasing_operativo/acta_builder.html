@@ -1,0 +1,21 @@
+{% extends "layout/base.html" %}
+{% block title %}Acta entrega LOP{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <a href="{{ request.url_for('leasing_operativo_detail', sim_id=sim.id) }}" class="small text-decoration-none">← Volver a operación</a>
+  <h1 class="h5 mt-2 mb-3">Acta de entrega y recepción — {{ sim.codigo }}</h1>
+  <div class="card border-0 shadow-sm">
+    <div class="card-body">
+      <form method="post" action="{{ request.url_for('leasing_operativo_acta_builder_save', sim_id=sim.id) }}" class="row g-3">
+        <div class="col-md-4"><label class="form-label">Fecha entrega</label><input type="date" name="fecha_entrega" class="form-control" value="{{ doc.get('fecha_entrega', '') }}" required /></div>
+        <div class="col-md-4"><label class="form-label">Lugar entrega</label><input name="lugar_entrega" class="form-control" value="{{ doc.get('lugar_entrega', '') }}" required /></div>
+        <div class="col-md-4"><label class="form-label">KM/Horas</label><input name="km_horas" class="form-control" value="{{ doc.get('km_horas', '') }}" /></div>
+        <div class="col-md-4"><label class="form-label">Combustible</label><input name="combustible" class="form-control" value="{{ doc.get('combustible', '') }}" /></div>
+        <div class="col-md-8"><label class="form-label">Checklist de seguridad y accesorios</label><input name="checklist_seguridad" class="form-control" value="{{ doc.get('checklist_seguridad', '') }}" /></div>
+        <div class="col-12"><label class="form-label">Observaciones y conformidad</label><textarea name="observaciones" class="form-control" rows="4">{{ doc.get('observaciones', '') }}</textarea></div>
+        <div class="col-12 d-grid"><button class="btn btn-primary" type="submit">Guardar acta</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

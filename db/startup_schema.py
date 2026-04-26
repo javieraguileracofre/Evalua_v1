@@ -32,6 +32,7 @@ _PATCH_102 = _ROOT / "db" / "psql" / "102_leasing_operativo.sql"
 _PATCH_103 = _ROOT / "db" / "psql" / "103_leasing_operativo_contrato_cuota.sql"
 _PATCH_104 = _ROOT / "db" / "psql" / "104_leasing_operativo_activo_fijo.sql"
 _PATCH_105 = _ROOT / "db" / "psql" / "105_leasing_operativo_parametros_tipo.sql"
+_PATCH_106 = _ROOT / "db" / "psql" / "106_leasing_operativo_documentos.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -480,6 +481,15 @@ def ensure_leasing_operativo_schema(engine: Engine) -> None:
         except Exception as exc:
             logger.warning(
                 "No se pudo aplicar 105_leasing_operativo_parametros_tipo.sql. Detalle: %s",
+                exc,
+            )
+    if _PATCH_106.is_file() and not _has_table(engine, schema="public", table="leasing_op_documento_proceso"):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_106)
+            logger.info("Parche aplicado: leasing operativo documentos de proceso (106).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 106_leasing_operativo_documentos.sql. Detalle: %s",
                 exc,
             )
     # Re-seed catálogos si existen tablas pero quedaron vacías por patch parcial/manual.

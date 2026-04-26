@@ -97,6 +97,12 @@ class LeasingOpSimulacion(Base):
     contrato: Mapped["LeasingOpContrato | None"] = relationship(
         "LeasingOpContrato", back_populates="simulacion", uselist=False
     )
+    documentos_proceso: Mapped[list["LeasingOpDocumentoProceso"]] = relationship(
+        "LeasingOpDocumentoProceso",
+        back_populates="simulacion",
+        cascade="all, delete-orphan",
+        order_by="LeasingOpDocumentoProceso.creado_en.desc()",
+    )
 
 
 class LeasingOpContrato(Base):
@@ -188,6 +194,23 @@ class LeasingOpParametroTipo(Base):
     actualizado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
     tipo: Mapped["LeasingOpTipoActivo"] = relationship("LeasingOpTipoActivo")
+
+
+class LeasingOpDocumentoProceso(Base):
+    __tablename__ = "leasing_op_documento_proceso"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    simulacion_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_simulacion.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    modulo: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    version_n: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default="VIGENTE", server_default="VIGENTE")
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    usuario: Mapped[str] = mapped_column(String(200), nullable=False, default="sistema", server_default="sistema")
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    simulacion: Mapped["LeasingOpSimulacion"] = relationship("LeasingOpSimulacion", back_populates="documentos_proceso")
 
 
 class LeasingOpComite(Base):

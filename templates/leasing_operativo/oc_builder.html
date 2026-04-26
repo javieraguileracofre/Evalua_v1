@@ -1,0 +1,25 @@
+{% extends "layout/base.html" %}
+{% block title %}Orden de compra LOP{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <a href="{{ request.url_for('leasing_operativo_detail', sim_id=sim.id) }}" class="small text-decoration-none">← Volver a operación</a>
+  <h1 class="h5 mt-2 mb-3">Orden de compra + ingreso activo fijo — {{ sim.codigo }}</h1>
+  <div class="card border-0 shadow-sm">
+    <div class="card-body">
+      <form method="post" action="{{ request.url_for('leasing_operativo_oc_builder_save', sim_id=sim.id) }}" class="row g-3">
+        <div class="col-md-4"><label class="form-label">Proveedor</label><input name="proveedor_nombre" class="form-control" value="{{ doc.get('proveedor_nombre', '') }}" required /></div>
+        <div class="col-md-4"><label class="form-label">N° orden compra</label><input name="oc_numero" class="form-control" value="{{ doc.get('oc_numero', '') }}" required /></div>
+        <div class="col-md-4"><label class="form-label">Fecha OC</label><input type="date" name="fecha_oc" class="form-control" value="{{ doc.get('fecha_oc', '') }}" required /></div>
+        <div class="col-md-4"><label class="form-label">Monto OC</label><input name="monto_oc" class="form-control" value="{{ doc.get('monto_oc', '') }}" required /></div>
+        <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" name="crear_activo" id="crear_activo" /><label class="form-check-label" for="crear_activo">Registrar ingreso de activo fijo</label></div></div>
+        <div class="col-md-3"><label class="form-label">Tipo activo</label><select name="tipo_activo_id" class="form-select"><option value="">--</option>{% for t in tipos %}<option value="{{ t.id }}">{{ t.nombre }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label">Marca</label><input name="marca" class="form-control" /></div>
+        <div class="col-md-3"><label class="form-label">Modelo</label><input name="modelo" class="form-control" /></div>
+        <div class="col-md-1"><label class="form-label">Año</label><input name="anio" class="form-control" value="2024" /></div>
+        <div class="col-md-2"><label class="form-label">VIN/Serie</label><input name="vin_serie" class="form-control" /></div>
+        <div class="col-12 d-grid"><button class="btn btn-primary" type="submit">Guardar orden compra</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

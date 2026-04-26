@@ -111,39 +111,35 @@
       <div class="row g-3">
         <div class="col-lg-6">
           <div class="border rounded p-2">
-            <div class="fw-semibold mb-2">1) Análisis de crédito</div>
-            <form method="post" action="{{ request.url_for('leasing_operativo_registrar_credito', sim_id=sim.id) }}" class="row g-2">
-              <div class="col-md-4">
-                <label class="form-label">Dictamen</label>
-                <select name="dictamen" class="form-select form-select-sm">
-                  <option value="APROBAR">APROBAR</option>
-                  <option value="OBSERVAR">OBSERVAR</option>
-                  <option value="RECHAZAR">RECHAZAR</option>
-                </select>
-              </div>
-              <div class="col-md-3"><label class="form-label">Score</label><input name="score" class="form-control form-control-sm" value="{{ cred.get('score','') }}" /></div>
-              <div class="col-md-3"><label class="form-label">DSCR</label><input name="dscr" class="form-control form-control-sm" value="{{ cred.get('dscr','') }}" /></div>
-              <div class="col-md-2"><label class="form-label">DPD máx</label><input name="dpd_max" class="form-control form-control-sm" value="{{ cred.get('dpd_max','') }}" /></div>
-              <div class="col-12"><label class="form-label">Comentario</label><input name="comentario" class="form-control form-control-sm" value="{{ cred.get('comentario','') }}" /></div>
-              <div class="col-12 d-grid"><button class="btn btn-sm btn-primary" type="submit">Guardar análisis crédito</button></div>
+            <div class="fw-semibold mb-2">1) Crédito y riesgo (módulo integrado)</div>
+            {% if cred.get('solicitud_id') %}
+            <div class="small mb-2">
+              Solicitud vinculada:
+              <strong>{{ cred.get('solicitud_codigo') or ('#' ~ cred.get('solicitud_id')) }}</strong>
+              · Estado: <span class="badge text-bg-light border">{{ cred.get('estado_credito', 'PENDIENTE') }}</span>
+              · Dictamen LOP: <span class="badge text-bg-light border">{{ cred.get('dictamen', 'PENDIENTE') }}</span>
+            </div>
+            <div class="d-flex gap-2">
+              <a class="btn btn-sm btn-outline-primary w-100" href="{{ request.url_for('credito_riesgo_solicitud_detalle', solicitud_id=cred.get('solicitud_id')) }}">Abrir evaluación de crédito</a>
+              <form method="post" action="{{ request.url_for('leasing_operativo_sync_credito', sim_id=sim.id) }}" class="w-100">
+                <button class="btn btn-sm btn-outline-secondary w-100" type="submit">Sincronizar resultado crédito</button>
+              </form>
+            </div>
+            {% else %}
+            <p class="small text-muted mb-2">La evaluación de riesgo se realiza en el módulo de Crédito/Riesgo, no manualmente en LOP.</p>
+            <form method="post" action="{{ request.url_for('leasing_operativo_derivar_credito', sim_id=sim.id) }}">
+              <button class="btn btn-sm btn-primary w-100" type="submit">Derivar cotización a Crédito y Riesgo</button>
             </form>
+            {% endif %}
           </div>
         </div>
         <div class="col-lg-6">
           <div class="border rounded p-2">
-            <div class="fw-semibold mb-2">2) Ejecución operacional</div>
-            <form method="post" action="{{ request.url_for('leasing_operativo_registrar_hito', sim_id=sim.id) }}" class="d-flex gap-2 mb-2">
-              <input type="hidden" name="hito" value="orden_compra_proveedor" />
-              <button class="btn btn-sm btn-outline-primary w-100" type="submit">Registrar orden compra</button>
-            </form>
-            <form method="post" action="{{ request.url_for('leasing_operativo_registrar_hito', sim_id=sim.id) }}" class="d-flex gap-2 mb-2">
-              <input type="hidden" name="hito" value="acta_entrega_recepcion" />
-              <button class="btn btn-sm btn-outline-primary w-100" type="submit">Registrar acta entrega/recepción</button>
-            </form>
-            <form method="post" action="{{ request.url_for('leasing_operativo_registrar_hito', sim_id=sim.id) }}" class="d-flex gap-2 mb-2">
-              <input type="hidden" name="hito" value="factura_compra_recepcion" />
-              <button class="btn btn-sm btn-outline-primary w-100" type="submit">Registrar recepción factura compra</button>
-            </form>
+            <div class="fw-semibold mb-2">2) Módulos operacionales</div>
+            <a class="btn btn-sm btn-outline-primary w-100 mb-2" href="{{ request.url_for('leasing_operativo_contrato_builder', sim_id=sim.id) }}">Confección de contrato</a>
+            <a class="btn btn-sm btn-outline-primary w-100 mb-2" href="{{ request.url_for('leasing_operativo_oc_builder', sim_id=sim.id) }}">Módulo orden de compra + ingreso activo fijo</a>
+            <a class="btn btn-sm btn-outline-primary w-100 mb-2" href="{{ request.url_for('leasing_operativo_acta_builder', sim_id=sim.id) }}">Módulo acta de entrega y recepción</a>
+            <a class="btn btn-sm btn-outline-primary w-100 mb-2" href="{{ request.url_for('leasing_operativo_factura_builder', sim_id=sim.id) }}">Módulo factura de compra + asiento manual</a>
             <form method="post" action="{{ request.url_for('leasing_operativo_registrar_hito', sim_id=sim.id) }}" class="d-flex gap-2">
               <input type="hidden" name="hito" value="activacion_contable" />
               <button class="btn btn-sm btn-success w-100" type="submit">Activar contrato contablemente</button>

@@ -10,6 +10,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from crud.comercial import credito_riesgo as crud_cr
+from models.comercial.credito_riesgo import CreditoSolicitud
 from models.leasing_operativo.models import (
     LeasingOpActivoDepreciacion,
     LeasingOpActivoFijo,
@@ -17,6 +19,7 @@ from models.leasing_operativo.models import (
     LeasingOpContrato,
     LeasingOpCostoPlantilla,
     LeasingOpCuota,
+    LeasingOpDocumentoProceso,
     LeasingOpHistorial,
     LeasingOpParametroTipo,
     LeasingOpPolitica,
@@ -148,6 +151,17 @@ def _save_workflow(db: Session, sim: LeasingOpSimulacion, wf: dict[str, Any], us
     db.commit()
     db.refresh(sim)
     return sim
+
+
+def _dictamen_from_credito_estado(estado: str | None) -> str:
+    e = str(estado or "").upper()
+    if e == "APROBADA":
+        return "APROBAR"
+    if e == "RECHAZADA":
+        return "RECHAZAR"
+    if e == "CONDICIONES":
+        return "OBSERVAR"
+    return "PENDIENTE"
 
 
 def listar_politica(db: Session) -> list[LeasingOpPolitica]:
@@ -371,6 +385,100 @@ def crear_simulacion_y_calcular(
     return sim
 
 
+def derivar_a_credito(db: Session, sim: LeasingOpSimulacion, *, usuario: str = "sistema") -> tuple[LeasingOpSimulacion, CreditoSolicitud]:
+    wf = _get_workflow(sim)
+    cred = wf.get("credito", {})
+    solicitud_id = cred.get("solicitud_id")
+    if solicitud_id:
+        sol = crud_cr.obtener_solicitud(db, int(solicitud_id))
+        if sol:
+            return sim, sol
+    if not sim.cliente_id:
+        raise ValueError("La operación requiere cliente para derivar a crédito.")
+    res = sim.result_json or {}
+    cuota = Decimal(str(res.get("renta_mensual_neta") or res.get("renta_sugerida") or 0))
+    capex = Decimal(str(res.get("capex_total") or 0))
+    sol = CreditoSolicitud(
+        cliente_id=int(sim.cliente_id),
+        codigo=None,
+        tipo_persona="JURIDICA",
+        producto="LEASING_OP",
+        sector_actividad=str((sim.inputs_json or {}).get("activo", {}).get("sector") or "TRANSPORTE"),
+        moneda=str((sim.inputs_json or {}).get("moneda") or "CLP"),
+        monto_solicitado=capex,
+        plazo_solicitado=max(int(sim.plazo_meses), 1),
+        comercial_lf_cotizacion_id=None,
+        ingreso_mensual=Decimal("0"),
+        gastos_mensual=Decimal("0"),
+        deuda_cuotas_mensual=Decimal("0"),
+        cuota_propuesta=cuota,
+        tipo_contrato="LEASING_OPERATIVO",
+        mora_max_dias_12m=0,
+        protestos=0,
+        castigos=0,
+        reprogramaciones=0,
+        ventas_anual=Decimal("0"),
+        margen_bruto_pct=Decimal("0"),
+        ebitda_anual=Decimal("0"),
+        utilidad_neta_anual=Decimal("0"),
+        flujo_caja_mensual=Decimal("0"),
+        capital_trabajo=Decimal("0"),
+        deuda_total=Decimal("0"),
+        patrimonio=Decimal("0"),
+        liquidez_corriente=None,
+        antiguedad_meses_natural=0,
+        anios_operacion_empresa=0,
+        garantia_tipo="ACTIVO_LEASING",
+        garantia_valor_comercial=Decimal(str((res.get("collateral") or {}).get("valor_mercado_estimado") or 0)),
+        garantia_valor_liquidacion=Decimal(str((res.get("collateral") or {}).get("valor_recupero_neto") or 0)),
+        exposicion_usd_pct=Decimal("0"),
+        estado="BORRADOR",
+        observaciones=f"Derivada desde LOP {sim.codigo or sim.id}",
+    )
+    sol = crud_cr.crear_solicitud(db, sol, usuario=usuario)
+    cred["solicitud_id"] = int(sol.id)
+    cred["solicitud_codigo"] = sol.codigo
+    cred["estado_credito"] = sol.estado
+    cred["dictamen"] = _dictamen_from_credito_estado(sol.estado)
+    wf["credito"] = cred
+    wf["etapa_actual"] = "CREDITO_EN_EVALUACION"
+    wf["hitos"]["analisis_credito"] = True
+    _save_workflow(
+        db,
+        sim,
+        wf,
+        usuario,
+        "CREDITO_DERIVADO",
+        {"solicitud_id": int(sol.id), "solicitud_codigo": sol.codigo},
+    )
+    return sim, sol
+
+
+def sincronizar_estado_credito(db: Session, sim: LeasingOpSimulacion, *, usuario: str = "sistema") -> LeasingOpSimulacion:
+    wf = _get_workflow(sim)
+    cred = wf.get("credito", {})
+    sid = cred.get("solicitud_id")
+    if not sid:
+        return sim
+    sol = crud_cr.obtener_solicitud(db, int(sid))
+    if not sol:
+        return sim
+    dictamen = _dictamen_from_credito_estado(sol.estado)
+    cred["estado_credito"] = sol.estado
+    cred["dictamen"] = dictamen
+    cred["solicitud_codigo"] = sol.codigo
+    wf["credito"] = cred
+    if dictamen in {"APROBAR", "OBSERVAR"}:
+        wf["hitos"]["resultado_credito"] = True
+        wf["checklist_documental"]["aprobacion_credito"] = True
+        wf["etapa_actual"] = "CREDITO_APROBADO"
+    elif dictamen == "RECHAZAR":
+        wf["hitos"]["resultado_credito"] = True
+        wf["checklist_documental"]["aprobacion_credito"] = False
+        wf["etapa_actual"] = "CREDITO_RECHAZADO"
+    return _save_workflow(db, sim, wf, usuario, "CREDITO_ESTADO_SINCRONIZADO", {"estado_credito": sol.estado, "dictamen": dictamen})
+
+
 def registrar_analisis_credito(
     db: Session,
     sim: LeasingOpSimulacion,
@@ -451,6 +559,80 @@ def registrar_hito_operativo(
     else:
         raise ValueError("Hito operativo inválido.")
     return _save_workflow(db, sim, wf, usuario, ev, {"hito": h})
+
+
+def guardar_documento_proceso(
+    db: Session,
+    sim: LeasingOpSimulacion,
+    *,
+    modulo: str,
+    data: dict[str, Any],
+    usuario: str = "sistema",
+) -> LeasingOpSimulacion:
+    wf = _get_workflow(sim)
+    docs = wf.setdefault("documentos", {})
+    m = (modulo or "").strip().lower()
+    if m not in {"contrato", "orden_compra", "acta_entrega", "factura_compra"}:
+        raise ValueError("Módulo documental inválido.")
+    docs[m] = _json_safe(data)
+    wf["documentos"] = docs
+    # Persistencia relacional versionada para reimpresión/auditoría.
+    ultima = db.scalars(
+        select(LeasingOpDocumentoProceso)
+        .where(
+            LeasingOpDocumentoProceso.simulacion_id == sim.id,
+            LeasingOpDocumentoProceso.modulo == m,
+        )
+        .order_by(LeasingOpDocumentoProceso.version_n.desc())
+        .limit(1)
+    ).first()
+    next_v = int(ultima.version_n) + 1 if ultima else 1
+    db.add(
+        LeasingOpDocumentoProceso(
+            simulacion_id=int(sim.id),
+            modulo=m,
+            version_n=next_v,
+            estado="VIGENTE",
+            payload_json=_json_safe(data) or {},
+            usuario=usuario,
+        )
+    )
+    # gatillos de checklist/hitos
+    if m == "contrato":
+        wf["hitos"]["contrato_confeccionado"] = True
+        wf["etapa_actual"] = "CONTRATO_CONFECCIONADO"
+    elif m == "orden_compra":
+        wf["hitos"]["orden_compra_proveedor"] = True
+        wf["checklist_documental"]["orden_compra"] = True
+        wf["etapa_actual"] = "ORDEN_COMPRA"
+    elif m == "acta_entrega":
+        wf["hitos"]["acta_entrega_recepcion"] = True
+        wf["checklist_documental"]["acta_entrega_firmada"] = True
+        wf["etapa_actual"] = "ENTREGA_RECEPCION"
+    elif m == "factura_compra":
+        wf["hitos"]["factura_compra_recepcion"] = True
+        wf["checklist_documental"]["factura_compra"] = True
+        wf["etapa_actual"] = "FACTURA_COMPRA"
+    return _save_workflow(db, sim, wf, usuario, f"DOC_{m.upper()}_GUARDADO", {"modulo": m})
+
+
+def obtener_documento_proceso_actual(
+    db: Session,
+    sim_id: int,
+    modulo: str,
+) -> LeasingOpDocumentoProceso | None:
+    m = (modulo or "").strip().lower()
+    if m not in {"contrato", "orden_compra", "acta_entrega", "factura_compra"}:
+        return None
+    return db.scalars(
+        select(LeasingOpDocumentoProceso)
+        .where(
+            LeasingOpDocumentoProceso.simulacion_id == sim_id,
+            LeasingOpDocumentoProceso.modulo == m,
+        )
+        .order_by(LeasingOpDocumentoProceso.version_n.desc())
+        .limit(1)
+    ).first()
 
 
 def abrir_comite(db: Session, sim: LeasingOpSimulacion, resumen: str, usuario: str = "sistema") -> LeasingOpComite:
