@@ -50,6 +50,23 @@ def _pick_first_existing(columns: set[str], candidates: list[str]) -> str | None
     return None
 
 
+def _detalle_exprs(db: Session) -> tuple[str, str]:
+    """
+    Expresiones SQL seguras para código/nombre de cuenta en asientos_detalle.
+    Compatibiliza esquemas legacy (cuenta_contable) y nuevos (codigo_cuenta).
+    """
+    det_cols = _table_columns(db, "asientos_detalle")
+    code_col = _pick_first_existing(det_cols, ["codigo_cuenta", "cuenta_contable"])
+    if not code_col:
+        raise ValueError("La tabla asientos_detalle no tiene columna de cuenta (codigo_cuenta/cuenta_contable).")
+    code_expr = f"ad.{code_col}"
+    if "nombre_cuenta" in det_cols:
+        name_expr = "ad.nombre_cuenta"
+    else:
+        name_expr = "pc.nombre"
+    return code_expr, name_expr
+
+
 def _insert_header_dynamic(
     db: Session,
     *,
@@ -484,13 +501,14 @@ def obtener_estado_resultados(
 
     extra = f" AND {' AND '.join(where_fecha)}" if where_fecha else ""
 
+    code_expr, name_expr = _detalle_exprs(db)
     query = text(
         f"""
         SELECT
             pc.tipo,
             pc.clasificacion,
-            COALESCE(ad.codigo_cuenta, ad.cuenta_contable) AS codigo_cuenta,
-            COALESCE(ad.nombre_cuenta, pc.nombre) AS nombre_cuenta,
+            {code_expr} AS codigo_cuenta,
+            {name_expr} AS nombre_cuenta,
             SUM(COALESCE(ad.debe, 0)) AS total_debe,
             SUM(COALESCE(ad.haber, 0)) AS total_haber,
             SUM(COALESCE(ad.debe, 0) - COALESCE(ad.haber, 0)) AS saldo
@@ -498,11 +516,11 @@ def obtener_estado_resultados(
         INNER JOIN asientos_contables ac
             ON ac.id = ad.asiento_id
         INNER JOIN fin.plan_cuenta pc
-            ON pc.codigo = COALESCE(ad.codigo_cuenta, ad.cuenta_contable)
+            ON pc.codigo = {code_expr}
         WHERE pc.tipo IN ('INGRESO', 'COSTO', 'GASTO')
         {extra}
-        GROUP BY pc.tipo, pc.clasificacion, COALESCE(ad.codigo_cuenta, ad.cuenta_contable), COALESCE(ad.nombre_cuenta, pc.nombre)
-        ORDER BY COALESCE(ad.codigo_cuenta, ad.cuenta_contable)
+        GROUP BY pc.tipo, pc.clasificacion, {code_expr}, {name_expr}
+        ORDER BY {code_expr}
         """
     )
 
@@ -563,23 +581,24 @@ def obtener_balance_general(
         extra = "AND ac.fecha <= :fecha_hasta"
         params["fecha_hasta"] = fecha_hasta
 
+    code_expr, name_expr = _detalle_exprs(db)
     query = text(
         f"""
         SELECT
             pc.tipo,
             pc.clasificacion,
-            COALESCE(ad.codigo_cuenta, ad.cuenta_contable) AS codigo_cuenta,
-            COALESCE(ad.nombre_cuenta, pc.nombre) AS nombre_cuenta,
+            {code_expr} AS codigo_cuenta,
+            {name_expr} AS nombre_cuenta,
             SUM(COALESCE(ad.debe, 0) - COALESCE(ad.haber, 0)) AS saldo
         FROM asientos_detalle ad
         INNER JOIN asientos_contables ac
             ON ac.id = ad.asiento_id
         INNER JOIN fin.plan_cuenta pc
-            ON pc.codigo = COALESCE(ad.codigo_cuenta, ad.cuenta_contable)
+            ON pc.codigo = {code_expr}
         WHERE pc.tipo IN ('ACTIVO', 'PASIVO', 'PATRIMONIO')
         {extra}
-        GROUP BY pc.tipo, pc.clasificacion, COALESCE(ad.codigo_cuenta, ad.cuenta_contable), COALESCE(ad.nombre_cuenta, pc.nombre)
-        ORDER BY COALESCE(ad.codigo_cuenta, ad.cuenta_contable)
+        GROUP BY pc.tipo, pc.clasificacion, {code_expr}, {name_expr}
+        ORDER BY {code_expr}
         """
     )
 
@@ -596,7 +615,7 @@ def obtener_balance_general(
         INNER JOIN asientos_contables ac
             ON ac.id = ad.asiento_id
         INNER JOIN fin.plan_cuenta pc
-            ON pc.codigo = COALESCE(ad.codigo_cuenta, ad.cuenta_contable)
+            ON pc.codigo = {code_expr}
         WHERE pc.tipo IN ('INGRESO', 'COSTO', 'GASTO')
         {extra}
         """
@@ -668,6 +687,7 @@ def obtener_balance_8_columnas(
     params_ini: dict[str, Any] = {"fecha_desde": fecha_desde}
     params_mov: dict[str, Any] = {"fecha_desde": fecha_desde, "fecha_hasta": fecha_hasta}
 
+    code_expr, _name_expr = _detalle_exprs(db)
     query_saldo_inicial = text(
         """
         SELECT
@@ -676,7 +696,9 @@ def obtener_balance_8_columnas(
             COALESCE(SUM(COALESCE(ad.debe, 0) - COALESCE(ad.haber, 0)), 0) AS saldo
         FROM fin.plan_cuenta pc
         LEFT JOIN asientos_detalle ad
-            ON COALESCE(ad.codigo_cuenta, ad.cuenta_contable) = pc.codigo
+            ON """
+        + code_expr
+        + """ = pc.codigo
         LEFT JOIN asientos_contables ac
             ON ac.id = ad.asiento_id
            AND ac.fecha < :fecha_desde
@@ -695,7 +717,9 @@ def obtener_balance_8_columnas(
             COALESCE(SUM(COALESCE(ad.haber, 0)), 0) AS haber
         FROM fin.plan_cuenta pc
         LEFT JOIN asientos_detalle ad
-            ON COALESCE(ad.codigo_cuenta, ad.cuenta_contable) = pc.codigo
+            ON """
+        + code_expr
+        + """ = pc.codigo
         LEFT JOIN asientos_contables ac
             ON ac.id = ad.asiento_id
            AND ac.fecha >= :fecha_desde
