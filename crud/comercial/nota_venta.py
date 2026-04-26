@@ -199,6 +199,7 @@ def crear_nota_venta_desde_form(
     tipo_pago: str,
     items: list[dict],
     afecta_iva: bool = True,
+    auto_commit: bool = True,
 ) -> NotaVenta:
     if not items:
         raise ValueError("Debe existir al menos un ítem en la nota de venta.")
@@ -361,11 +362,14 @@ def crear_nota_venta_desde_form(
         )
         db.add(pago)
 
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        raise ValueError("No fue posible crear la nota de venta por una restricción de base de datos.")
+    if auto_commit:
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise ValueError("No fue posible crear la nota de venta por una restricción de base de datos.")
+    else:
+        db.flush()
 
     db.refresh(nota)
     return nota

@@ -34,6 +34,7 @@ _PATCH_104 = _ROOT / "db" / "psql" / "104_leasing_operativo_activo_fijo.sql"
 _PATCH_105 = _ROOT / "db" / "psql" / "105_leasing_operativo_parametros_tipo.sql"
 _PATCH_106 = _ROOT / "db" / "psql" / "106_leasing_operativo_documentos.sql"
 _PATCH_107 = _ROOT / "db" / "psql" / "107_leasing_operativo_contabilidad_base.sql"
+_PATCH_109 = _ROOT / "db" / "psql" / "109_leasing_financiero_workflow.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -422,17 +423,25 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
                 """
             )
         ).scalar()
-    if has_cot and has_credit and leasing_cfg and bool(parent_ok):
-        return
-    try:
-        _run_sql_patch_autocommit(engine, _PATCH_100)
-        logger.info("Parche aplicado: comercial leasing financiero (100).")
-    except Exception as exc:
-        logger.warning(
-            "No se pudo aplicar 100_comercial_leasing_financiero.sql. "
-            "Ejecute manualmente en la base si es necesario. Detalle: %s",
-            exc,
-        )
+    if not (has_cot and has_credit and leasing_cfg and bool(parent_ok)):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_100)
+            logger.info("Parche aplicado: comercial leasing financiero (100).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 100_comercial_leasing_financiero.sql. "
+                "Ejecute manualmente en la base si es necesario. Detalle: %s",
+                exc,
+            )
+    if _PATCH_109.is_file() and _has_table(engine, schema="public", table="comercial_lf_cotizaciones"):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_109)
+            logger.info("Parche aplicado: workflow post-cotización leasing financiero (109).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 109_leasing_financiero_workflow.sql. Detalle: %s",
+                exc,
+            )
 
 
 def ensure_credito_riesgo_schema(engine: Engine) -> None:

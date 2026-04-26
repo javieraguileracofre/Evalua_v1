@@ -16,6 +16,19 @@ if TYPE_CHECKING:
     from models.comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion
 
 
+def _decimales_moneda(moneda: str | None) -> int:
+    m = str(moneda or "CLP").upper()
+    if m in {"UF", "USD"}:
+        return 2
+    return 0
+
+
+def _fmt_moneda(value: Decimal | int | float, moneda: str | None) -> str:
+    dec = _decimales_moneda(moneda)
+    fmt = f"{{:,.{dec}f}}"
+    return fmt.format(value)
+
+
 def build_amortizacion_excel(
     cotizacion: "LeasingFinancieroCotizacion",
     tabla: List[AmortizacionCuota],
@@ -172,10 +185,10 @@ def build_amortizacion_pdf(
 
     datos_html = (
         f"<b>Cliente:</b> {cliente}<br/>"
-        f"<b>Monto financiado:</b> {monto_fin:,.0f} {cotizacion.moneda}<br/>"
+        f"<b>Monto financiado:</b> {_fmt_moneda(monto_fin, cotizacion.moneda)} {cotizacion.moneda}<br/>"
         f"<b>Tasa anual:</b> {float(tasa * 100):.2f} %<br/>"
         f"<b>Plazo:</b> {plazo} periodos<br/>"
-        f"<b>Opción compra:</b> {opcion:,.0f} {cotizacion.moneda}<br/>"
+        f"<b>Opción compra:</b> {_fmt_moneda(opcion, cotizacion.moneda)} {cotizacion.moneda}<br/>"
     )
     story.append(Paragraph(datos_html, styles["Normal"]))
     story.append(Spacer(1, 12))
@@ -205,11 +218,11 @@ def build_amortizacion_pdf(
             [
                 c.numero_cuota,
                 str(c.fecha_cuota) if c.fecha_cuota else "-",
-                f"{c.saldo_inicial:,.0f}",
-                f"{c.cuota:,.0f}",
-                f"{c.interes:,.0f}",
-                f"{c.amortizacion:,.0f}",
-                f"{c.saldo_final:,.0f}",
+                _fmt_moneda(c.saldo_inicial, cotizacion.moneda),
+                _fmt_moneda(c.cuota, cotizacion.moneda),
+                _fmt_moneda(c.interes, cotizacion.moneda),
+                _fmt_moneda(c.amortizacion, cotizacion.moneda),
+                _fmt_moneda(c.saldo_final, cotizacion.moneda),
                 tipo,
             ]
         )

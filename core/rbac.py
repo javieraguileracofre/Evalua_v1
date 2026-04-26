@@ -40,6 +40,25 @@ def usuario_puede_mutar_modulos_finanzas(auth: dict[str, Any] | None) -> bool:
     return usuario_es_admin(auth) or usuario_tiene_rol(auth, "FINANZAS")
 
 
+def usuario_puede_consultar_modulos_operacion(auth: dict[str, Any] | None) -> bool:
+    """Consulta de módulos comerciales/operativos."""
+    return (
+        usuario_es_admin(auth)
+        or usuario_tiene_rol(auth, "OPERACIONES")
+        or usuario_tiene_rol(auth, "FINANZAS")
+        or usuario_tiene_rol(auth, "CONSULTA")
+    )
+
+
+def usuario_puede_mutar_modulos_operacion(auth: dict[str, Any] | None) -> bool:
+    """Mutaciones en ventas, inventario y módulos operativos."""
+    return (
+        usuario_es_admin(auth)
+        or usuario_tiene_rol(auth, "OPERACIONES")
+        or usuario_tiene_rol(auth, "FINANZAS")
+    )
+
+
 def guard_finanzas_consulta(
     request: Request,
     *,
@@ -67,6 +86,38 @@ def guard_finanzas_mutacion(
     msg = mensaje or (
         "No tiene permiso para realizar esta acción "
         "(se requiere rol Finanzas o Administrador)."
+    )
+    q = urlencode({"msg": msg, "sev": "danger"})
+    return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def guard_operacion_consulta(
+    request: Request,
+    *,
+    mensaje: str | None = None,
+) -> RedirectResponse | None:
+    auth = getattr(request.state, "auth_user", None)
+    if usuario_puede_consultar_modulos_operacion(auth):
+        return None
+    msg = mensaje or (
+        "No tiene permiso para ver este módulo operativo "
+        "(se requiere rol Operaciones, Finanzas, Administrador o Consulta)."
+    )
+    q = urlencode({"msg": msg, "sev": "danger"})
+    return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def guard_operacion_mutacion(
+    request: Request,
+    *,
+    mensaje: str | None = None,
+) -> RedirectResponse | None:
+    auth = getattr(request.state, "auth_user", None)
+    if usuario_puede_mutar_modulos_operacion(auth):
+        return None
+    msg = mensaje or (
+        "No tiene permiso para realizar esta acción "
+        "(se requiere rol Operaciones, Finanzas o Administrador)."
     )
     q = urlencode({"msg": msg, "sev": "danger"})
     return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)

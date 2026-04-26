@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
+from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
 from db.session import get_db
 from models import Cliente, NotaVenta, Producto
 
@@ -113,9 +114,12 @@ def _parse_items_json(items_json: str) -> list[dict]:
 
 @router.get("/ventas/pos/buscar-producto", name="pos_buscar_producto")
 def pos_buscar_producto(
+    request: Request,
     codigo: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     termino = (codigo or "").strip()
     if not termino:
         return JSONResponse(
@@ -172,6 +176,8 @@ def nota_venta_form(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     clientes = list(
         db.scalars(
             select(Cliente)
@@ -211,6 +217,8 @@ async def nota_venta_create(
     request: Request,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     # No usar Form(...) en la firma: FastAPI valida el cuerpo antes del handler y devuelve 422 JSON
     # si el stream llega vacío (middleware/proxy). Aquí leemos el formulario en el handler.
     try:
@@ -318,6 +326,8 @@ def nota_venta_lista(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     try:
         d_desde = _parse_date(desde, "La fecha desde")
         d_hasta = _parse_date(hasta, "La fecha hasta")
@@ -371,6 +381,8 @@ def nota_venta_detalle(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     nota = crud_nota_venta.get_nota_venta(db, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota de venta no encontrada.")
@@ -401,6 +413,8 @@ def nota_venta_ticket(
     volver_a: str | None = Query("detalle"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     nota = crud_nota_venta.get_nota_venta(db, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota de venta no encontrada.")
@@ -428,6 +442,8 @@ def nota_venta_anular(
     nota_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     nota = crud_nota_venta.get_nota_venta(db, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota de venta no encontrada.")
@@ -471,6 +487,8 @@ def nota_venta_eliminar(
     nota_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     nota = crud_nota_venta.get_nota_venta(db, nota_id)
     if not nota:
         raise HTTPException(status_code=404, detail="Nota de venta no encontrada.")

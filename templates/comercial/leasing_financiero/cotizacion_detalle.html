@@ -169,6 +169,75 @@
     </div>
 
     <div class="col-lg-4">
+      <div class="card eva-card shadow-sm border-0 mb-3">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-2">Flujo post-cotización (alineado a leasing operativo)</h2>
+          {% set h = workflow.hitos if workflow and workflow.hitos else {} %}
+          <div class="small text-muted mb-2">Etapa actual: <strong>{{ workflow.etapa_actual if workflow else 'ANALISIS_CREDITO' }}</strong></div>
+          <ul class="list-group list-group-flush small mb-3">
+            <li class="list-group-item d-flex justify-content-between"><span>Análisis de crédito aprobado</span><span>{% if h.get('analisis_credito') %}✅{% else %}⏳{% endif %}</span></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Orden de compra</span><span>{% if h.get('orden_compra') %}✅{% else %}⏳{% endif %}</span></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Contrato firmado</span><span>{% if h.get('contrato_firmado') %}✅{% else %}⏳{% endif %}</span></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Acta recepción</span><span>{% if h.get('acta_recepcion') %}✅{% else %}⏳{% endif %}</span></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Activación contable</span><span>{% if h.get('activacion_contable') %}✅{% else %}⏳{% endif %}</span></li>
+          </ul>
+
+          <form method="post" action="{{ request.url_for('lf_cotizacion_workflow_sync_credito', cotizacion_id=cotizacion.id) }}" class="mb-2">
+            <button class="btn btn-sm btn-outline-primary w-100" type="submit">Sincronizar aprobación crédito</button>
+          </form>
+          <form method="post" action="{{ request.url_for('lf_cotizacion_workflow_activar', cotizacion_id=cotizacion.id) }}">
+            <button class="btn btn-sm btn-eva-primary w-100" type="submit">Activar y contabilizar</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card eva-card shadow-sm border-0 mb-3">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-2">Registro orden de compra</h2>
+          <form method="post" action="{{ request.url_for('lf_cotizacion_workflow_documento', cotizacion_id=cotizacion.id, modulo='orden_compra') }}">
+            <input class="form-control form-control-sm mb-2" name="numero_documento" placeholder="N° orden">
+            <input class="form-control form-control-sm mb-2" type="date" name="fecha_documento">
+            <textarea class="form-control form-control-sm mb-2" name="observacion" rows="2" placeholder="Observación"></textarea>
+            <button class="btn btn-sm btn-outline-secondary w-100" type="submit">Guardar orden de compra</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card eva-card shadow-sm border-0 mb-3">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-2">Registro contrato firmado</h2>
+          <form method="post" action="{{ request.url_for('lf_cotizacion_workflow_documento', cotizacion_id=cotizacion.id, modulo='contrato') }}">
+            <input class="form-control form-control-sm mb-2" name="numero_documento" placeholder="N° contrato">
+            <input class="form-control form-control-sm mb-2" type="date" name="fecha_documento">
+            <textarea class="form-control form-control-sm mb-2" name="observacion" rows="2" placeholder="Observación"></textarea>
+            <button class="btn btn-sm btn-outline-secondary w-100" type="submit">Guardar contrato</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card eva-card shadow-sm border-0">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-2">Registro acta de recepción</h2>
+          <form method="post" action="{{ request.url_for('lf_cotizacion_workflow_documento', cotizacion_id=cotizacion.id, modulo='acta_recepcion') }}">
+            <input class="form-control form-control-sm mb-2" name="numero_documento" placeholder="N° acta">
+            <input class="form-control form-control-sm mb-2" type="date" name="fecha_documento">
+            <textarea class="form-control form-control-sm mb-2" name="observacion" rows="2" placeholder="Observación"></textarea>
+            <button class="btn btn-sm btn-outline-secondary w-100" type="submit">Guardar acta recepción</button>
+          </form>
+          {% if documentos_proceso %}
+          <hr>
+          <div class="small text-muted mb-1">Documentos registrados</div>
+          <ul class="list-group list-group-flush small">
+            {% for d in documentos_proceso[:6] %}
+            <li class="list-group-item px-0">
+              <strong>{{ d.modulo }}</strong> v{{ d.version_n }} · {{ d.created_at }}
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
+      </div>
+
       <div class="card eva-card shadow-sm border-0">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center mb-3">

@@ -14,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     Numeric,
     String,
     UniqueConstraint,
@@ -92,6 +93,7 @@ class LeasingFinancieroCotizacion(Base):
     )
 
     contrato_activo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    workflow_json: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'::jsonb"))
 
     proyeccion_lineas: Mapped[list["LeasingFinancieroProyeccionLinea"]] = relationship(
         "LeasingFinancieroProyeccionLinea",
@@ -146,6 +148,29 @@ class LeasingFinancieroProyeccionLinea(Base):
     debe: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"), server_default="0")
     haber: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"), server_default="0")
 
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+
+class LeasingFinancieroDocumentoProceso(Base):
+    __tablename__ = "comercial_lf_documento_proceso"
+    __table_args__ = (UniqueConstraint("cotizacion_id", "modulo", "version_n", name="uq_lf_doc_proceso_version"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cotizacion_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("comercial_lf_cotizaciones.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    modulo: Mapped[str] = mapped_column(String(40), nullable=False)
+    version_n: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default="VIGENTE", server_default="VIGENTE")
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    usuario: Mapped[str] = mapped_column(String(200), nullable=False, default="sistema", server_default="sistema")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=datetime.utcnow,

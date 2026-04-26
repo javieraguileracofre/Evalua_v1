@@ -22,6 +22,7 @@
   }
   .form-label.small{ color:var(--eva-muted); font-weight:600; }
   .hint{ font-size:.75rem; color:var(--eva-muted); }
+  .hint.err{ color:#B91C1C; font-weight:600; }
   .alert-eva{ border:1px solid rgba(212,175,55,.35); background:rgba(212,175,55,.10); color:#6B4E00; border-radius:12px; }
 </style>
 {% endblock head %}
@@ -103,6 +104,7 @@
             <option value="USD">USD</option>
           </select>
           <div id="rates_info" class="hint mt-1">UF/USD diario sin cargar.</div>
+          <div id="moneda_help" class="hint mt-1"></div>
         </div>
         <div class="col-md-3 d-flex align-items-end">
           <button type="button" id="btn_rates" class="btn btn-outline-secondary btn-sm w-100" {% if not has_clientes %}disabled{% endif %}>
@@ -170,10 +172,12 @@
         <div class="col-md-3">
           <label class="form-label small">Valor UF</label>
           <input type="text" id="uf_valor" name="uf_valor" class="form-control js-rate" {% if not has_clientes %}disabled{% endif %}>
+          <div id="uf_help" class="hint"></div>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Valor dólar</label>
           <input type="text" id="dolar_valor" name="dolar_valor" class="form-control js-rate" {% if not has_clientes %}disabled{% endif %}>
+          <div id="usd_help" class="hint"></div>
         </div>
         <div class="col-md-3">
           <label class="form-label small">Concesionario</label>
@@ -214,6 +218,11 @@
   if (monedaSelect && monedaDefault) monedaSelect.value = monedaDefault;
   const moneyInputs = form.querySelectorAll(".js-money");
   const rateInputs = form.querySelectorAll(".js-rate");
+  const ufInput = document.getElementById("uf_valor");
+  const usdInput = document.getElementById("dolar_valor");
+  const monedaHelp = document.getElementById("moneda_help");
+  const ufHelp = document.getElementById("uf_help");
+  const usdHelp = document.getElementById("usd_help");
   function normalizeNumericString(v) {
     let s = (v || "").toString().trim();
     if (!s) return "";
@@ -229,6 +238,27 @@
     const [intPart, decPart] = raw.split(".");
     const intFmt = Number(intPart).toLocaleString("es-CL");
     return decPart != null ? `${intFmt},${decPart}` : intFmt;
+  }
+  function parseNum(v){
+    const raw = normalizeNumericString(v);
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+  function setFxUx() {
+    if (!monedaSelect) return;
+    const m = (monedaSelect.value || "CLP").toUpperCase();
+    const ufReq = m === "UF";
+    const usdReq = m === "USD";
+    if (ufInput) ufInput.required = ufReq;
+    if (usdInput) usdInput.required = usdReq;
+    if (ufHelp) ufHelp.textContent = ufReq ? "Obligatorio para moneda UF." : "";
+    if (usdHelp) usdHelp.textContent = usdReq ? "Obligatorio para moneda USD." : "";
+    if (monedaHelp) {
+      monedaHelp.textContent =
+        m === "CLP"
+          ? "CLP no requiere tipo de cambio."
+          : (m === "UF" ? "UF requiere Valor UF vigente." : "USD requiere Valor dólar vigente.");
+    }
   }
   function onBlurFormat(e) {
     const val = e.target.value;
@@ -268,6 +298,7 @@
     }
   }
   if (btnRates) btnRates.addEventListener("click", cargarIndicadores);
+  if (monedaSelect) monedaSelect.addEventListener("change", setFxUx);
 
 
   {% if cliente is defined and cliente %}
@@ -339,8 +370,14 @@
   } else {
     form.addEventListener("submit", function (e) {
       if (!validar()) { e.preventDefault(); alert("Selecciona un cliente válido."); }
+      const m = ((monedaSelect && monedaSelect.value) || "CLP").toUpperCase();
+      const ufVal = ufInput ? parseNum(ufInput.value) : null;
+      const usdVal = usdInput ? parseNum(usdInput.value) : null;
+      if (m === "UF" && !(ufVal > 0)) { e.preventDefault(); alert("Debes informar Valor UF mayor a 0 para cotizar en UF."); return; }
+      if (m === "USD" && !(usdVal > 0)) { e.preventDefault(); alert("Debes informar Valor dólar mayor a 0 para cotizar en USD."); return; }
     });
   }
+  setFxUx();
   validar();
   moneyInputs.forEach((el) => { if (el.value) el.value = formatThousands(el.value); });
   rateInputs.forEach((el) => { if (el.value) el.value = formatThousands(el.value); });

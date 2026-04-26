@@ -33,7 +33,15 @@ def _parse_decimal(value: str) -> Optional[Decimal]:
     value = (value or "").strip()
     if not value:
         return None
-    if "," in value:
+    # Soporta formatos: 1234.56, 1,234.56, 1.234,56, 1234,56
+    if "," in value and "." in value:
+        if value.rfind(",") > value.rfind("."):
+            # 1.234,56 -> 1234.56
+            value = value.replace(".", "").replace(",", ".")
+        else:
+            # 1,234.56 -> 1234.56
+            value = value.replace(",", "")
+    elif "," in value:
         value = value.replace(".", "").replace(",", ".")
     try:
         return Decimal(value)
@@ -90,6 +98,18 @@ def _normalizar_estado(value: str | None) -> str:
         "ANULADA",
     }
     return v if v in validos else "PENDIENTE"
+
+
+def _normalizar_moneda(value: str | None) -> str:
+    v = str(value or "CLP").strip().upper()
+    return v if v in {"CLP", "USD", "UF"} else "CLP"
+
+
+def _validar_fx_moneda(moneda: str, uf_valor: Optional[Decimal], dolar_valor: Optional[Decimal]) -> None:
+    if moneda == "USD" and (dolar_valor is None or dolar_valor <= 0):
+        raise ValueError("Para cotizar en USD debe informar Valor dólar mayor a 0.")
+    if moneda == "UF" and (uf_valor is None or uf_valor <= 0):
+        raise ValueError("Para cotizar en UF debe informar Valor UF mayor a 0.")
 
 
 @router.get("/api/rates/today")
@@ -171,10 +191,15 @@ def lf_cotizacion_nueva_post(
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
+    moneda_norm = _normalizar_moneda(moneda)
+    uf_val = _parse_decimal(uf_valor)
+    usd_val = _parse_decimal(dolar_valor)
+    _validar_fx_moneda(moneda_norm, uf_val, usd_val)
+
     obj_in = LeasingCotizacionCreate(
         cliente_id=int(cliente.id),
         monto=_parse_decimal(monto),
-        moneda=(moneda or "CLP"),
+        moneda=moneda_norm,
         tasa=_parse_decimal(tasa),
         plazo=_parse_int(plazo),
         opcion_compra=_parse_decimal(opcion_compra),
@@ -189,14 +214,17 @@ def lf_cotizacion_nueva_post(
         concesionario=(concesionario or None),
         ejecutivo=(ejecutivo or None),
         fecha_cotizacion=_parse_date(fecha_cotizacion),
-        uf_valor=_parse_decimal(uf_valor),
+        uf_valor=uf_val,
         monto_financiado=_parse_decimal(monto_financiado),
-        dolar_valor=_parse_decimal(dolar_valor),
+        dolar_valor=usd_val,
         estado=_normalizar_estado("PENDIENTE"),
         contrato_activo=False,
     )
 
-    cotizacion = crud_lf.crear_cotizacion(db, obj_in=obj_in)
+    try:
+        cotizacion = crud_lf.crear_cotizacion(db, obj_in=obj_in)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return RedirectResponse(
         url=str(request.url_for("lf_cotizacion_detalle", cotizacion_id=cotizacion.id)),
@@ -299,7 +327,10 @@ def api_lf_cotizacion_crear(
     obj_in: LeasingCotizacionCreate,
     db: Session = Depends(get_db),
 ):
-    cotizacion = crud_lf.crear_cotizacion(db, obj_in=obj_in)
+    try:
+        cotizacion = crud_lf.crear_cotizacion(db, obj_in=obj_in)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return LeasingCotizacionRead.model_validate(cotizacion)
 
 
@@ -313,7 +344,10 @@ def api_lf_cotizacion_actualizar(
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
 
-    cotizacion = crud_lf.actualizar_cotizacion(db, cotizacion=cotizacion, obj_in=obj_in)
+    try:
+        cotizacion = crud_lf.actualizar_cotizacion(db, cotizacion=cotizacion, obj_in=obj_in)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return LeasingCotizacionRead.model_validate(cotizacion)
 
 
@@ -340,6 +374,8 @@ def lf_cotizacion_detalle(
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
 
     cotizaciones_cliente = crud_lf.listar_cotizaciones_por_cliente(db, cotizacion.cliente_id)
+    workflow = crud_lf.obtener_workflow(cotizacion)
+    documentos = crud_lf.listar_documentos_proceso(db, int(cotizacion.id))
 
     return templates.TemplateResponse(
         "comercial/leasing_financiero/cotizacion_detalle.html",
@@ -347,8 +383,82 @@ def lf_cotizacion_detalle(
             "request": request,
             "cotizacion": cotizacion,
             "cotizaciones_cliente": cotizaciones_cliente,
+            "workflow": workflow,
+            "documentos_proceso": documentos,
             "active_menu": "comercial",
         },
+    )
+
+
+@router.post("/{cotizacion_id}/workflow/sync-credito", name="lf_cotizacion_workflow_sync_credito")
+def lf_cotizacion_workflow_sync_credito(
+    request: Request,
+    cotizacion_id: int,
+    db: Session = Depends(get_db),
+):
+    cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
+    if not cotizacion:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    try:
+        crud_lf.sincronizar_hito_credito(db, cotizacion=cotizacion)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(
+        url=str(request.url_for("lf_cotizacion_detalle", cotizacion_id=cotizacion_id)),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/{cotizacion_id}/workflow/documento/{modulo}", name="lf_cotizacion_workflow_documento")
+def lf_cotizacion_workflow_documento(
+    request: Request,
+    cotizacion_id: int,
+    modulo: str,
+    numero_documento: str = Form(""),
+    fecha_documento: str = Form(""),
+    observacion: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
+    if not cotizacion:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    payload = {
+        "numero_documento": (numero_documento or "").strip(),
+        "fecha_documento": (fecha_documento or "").strip(),
+        "observacion": (observacion or "").strip(),
+    }
+    try:
+        crud_lf.guardar_documento_proceso(
+            db,
+            cotizacion=cotizacion,
+            modulo=modulo,
+            payload=payload,
+            usuario="ui",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(
+        url=str(request.url_for("lf_cotizacion_detalle", cotizacion_id=cotizacion_id)),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/{cotizacion_id}/workflow/activar", name="lf_cotizacion_workflow_activar")
+def lf_cotizacion_workflow_activar(
+    request: Request,
+    cotizacion_id: int,
+    db: Session = Depends(get_db),
+):
+    cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
+    if not cotizacion:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    try:
+        crud_lf.activar_flujo_contable(db, cotizacion=cotizacion, usuario="ui")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(
+        url=str(request.url_for("lf_cotizacion_detalle", cotizacion_id=cotizacion_id)),
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 

@@ -3,12 +3,15 @@
 """Proyección contable automática alineada a cuentas LEASING (113701, 210701, 410701, 110201)."""
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
+from sqlalchemy import text
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from crud.finanzas.config_contable import obtener_configuracion_evento_modulo
+from crud.finanzas.contabilidad_asientos import crear_asiento
 from models.comercial.leasing_financiero_cotizacion import (
     LeasingFinancieroCotizacion,
     LeasingFinancieroProyeccionLinea,
@@ -23,6 +26,31 @@ CUENTA_BANCO = "110201"
 
 def _q2(v: Decimal | float | int) -> Decimal:
     return Decimal(str(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _factor_moneda_a_clp(cotizacion: "LeasingFinancieroCotizacion") -> Decimal:
+    moneda = str(getattr(cotizacion, "moneda", "CLP") or "CLP").strip().upper()
+    if moneda == "CLP":
+        return Decimal("1")
+    if moneda == "USD":
+        fx = getattr(cotizacion, "dolar_valor", None)
+        if fx is None or Decimal(str(fx)) <= 0:
+            raise ValueError(
+                "La cotización en USD requiere 'dolar_valor' > 0 para generar proyección contable en CLP."
+            )
+        return Decimal(str(fx))
+    if moneda == "UF":
+        fx = getattr(cotizacion, "uf_valor", None)
+        if fx is None or Decimal(str(fx)) <= 0:
+            raise ValueError(
+                "La cotización en UF requiere 'uf_valor' > 0 para generar proyección contable en CLP."
+            )
+        return Decimal(str(fx))
+    raise ValueError(f"Moneda no soportada para proyección contable: {moneda}.")
+
+
+def _a_clp(monto: Decimal, factor: Decimal) -> Decimal:
+    return _q2(monto * factor)
 
 
 def _cuenta_desde_config(
@@ -65,7 +93,8 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
         db.flush()
         return
 
-    principal = _q2(monto_base)
+    factor_clp = _factor_moneda_a_clp(cotizacion)
+    principal = _a_clp(_q2(monto_base), factor_clp)
     seq = 0
     cuenta_cxc = _cuenta_desde_config(
         db,
@@ -169,6 +198,9 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
         total = _q2(cuota.cuota)
         cap = _q2(cuota.amortizacion)
         inter = _q2(cuota.interes)
+        total_clp = _a_clp(total, factor_clp)
+        cap_clp = _a_clp(cap, factor_clp)
+        inter_clp = _a_clp(inter, factor_clp)
 
         if cuota.es_opcion_compra:
             add_line(
@@ -176,7 +208,7 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
                 ref_cuota=cuota.numero_cuota,
                 glosa=f"Opción de compra cuota #{cuota.numero_cuota}",
                 cuenta=cuenta_banco,
-                debe=total,
+                debe=total_clp,
                 haber=Decimal("0"),
             )
             add_line(
@@ -185,7 +217,7 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
                 glosa=f"Baja CxC por opción de compra #{cuota.numero_cuota}",
                 cuenta=cuenta_cxc_cobro,
                 debe=Decimal("0"),
-                haber=total,
+                haber=total_clp,
             )
             continue
 
@@ -194,26 +226,88 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
             ref_cuota=cuota.numero_cuota,
             glosa=f"Cobro proyectado cuota #{cuota.numero_cuota} (tesorería)",
             cuenta=cuenta_banco,
-            debe=total,
+            debe=total_clp,
             haber=Decimal("0"),
         )
-        if cap > 0:
+        if cap_clp > 0:
             add_line(
                 etapa="COBRO_CUOTA",
                 ref_cuota=cuota.numero_cuota,
                 glosa=f"Amortización capital cuota #{cuota.numero_cuota}",
                 cuenta=cuenta_cxc_cobro,
                 debe=Decimal("0"),
-                haber=cap,
+                haber=cap_clp,
             )
-        if inter > 0:
+        if inter_clp > 0:
             add_line(
                 etapa="COBRO_CUOTA",
                 ref_cuota=cuota.numero_cuota,
                 glosa=f"Ingreso financiero intereses cuota #{cuota.numero_cuota}",
                 cuenta=cuenta_interes,
                 debe=Decimal("0"),
-                haber=inter,
+                haber=inter_clp,
             )
 
     db.flush()
+
+
+def activar_contabilidad_leasing_financiero(
+    db: Session,
+    cotizacion: LeasingFinancieroCotizacion,
+    *,
+    usuario: str | None = None,
+) -> int:
+    row = db.execute(
+        text(
+            """
+            SELECT id
+            FROM asientos_contables
+            WHERE origen_tipo = 'LEASING_FIN_ACTIVACION'
+              AND origen_id = :oid
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ),
+        {"oid": int(cotizacion.id)},
+    ).first()
+    if row:
+        return int(row[0])
+
+    monto_base = cotizacion.monto_financiado or cotizacion.valor_neto or cotizacion.monto
+    if not monto_base or monto_base <= 0:
+        raise ValueError("La cotización no tiene monto financiado válido para activar contabilidad.")
+    principal_clp = _a_clp(_q2(monto_base), _factor_moneda_a_clp(cotizacion))
+
+    debe = _cuenta_desde_config(
+        db,
+        submodulo="LEASING_FIN",
+        tipo_documento="ORIGINACION",
+        codigo_evento="LEASING_FIN_ORIGINACION",
+        lado="DEBE",
+        orden=1,
+        fallback=CUENTA_CXC,
+    )
+    haber = _cuenta_desde_config(
+        db,
+        submodulo="LEASING_FIN",
+        tipo_documento="ORIGINACION",
+        codigo_evento="LEASING_FIN_ORIGINACION",
+        lado="HABER",
+        orden=1,
+        fallback=CUENTA_PASIVO,
+    )
+    detalles = [
+        {"codigo_cuenta": debe, "descripcion": f"Activación LF cotización {cotizacion.id}", "debe": principal_clp, "haber": Decimal("0")},
+        {"codigo_cuenta": haber, "descripcion": f"Activación LF cotización {cotizacion.id}", "debe": Decimal("0"), "haber": principal_clp},
+    ]
+    return crear_asiento(
+        db,
+        fecha=cotizacion.fecha_inicio or cotizacion.fecha_cotizacion or date.today(),
+        origen_tipo="LEASING_FIN_ACTIVACION",
+        origen_id=int(cotizacion.id),
+        glosa=f"Activación leasing financiero cotización {cotizacion.id}",
+        detalles=detalles,
+        usuario=usuario,
+        moneda="CLP",
+        do_commit=False,
+    )

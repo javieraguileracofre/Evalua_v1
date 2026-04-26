@@ -43,6 +43,7 @@ class LeasingCotizacionCreate(LeasingCotizacionBase):
 
 class LeasingCotizacionUpdate(BaseModel):
     monto: Optional[Decimal] = None
+    moneda: Optional[str] = None
     tasa: Optional[Decimal] = None
     plazo: Optional[int] = None
     opcion_compra: Optional[Decimal] = None

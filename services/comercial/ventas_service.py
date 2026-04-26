@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from crud.comercial import nota_venta as crud_nota_venta
 from services.finanzas.integracion_ventas import (
+    ContabilizacionVentaError,
     contabilizar_anulacion_nota_venta,
     contabilizar_nota_venta,
 )
@@ -93,13 +94,22 @@ def crear_venta_pos(
         tipo_pago=tipo_pago,
         items=items,
         afecta_iva=afecta_iva,
+        auto_commit=False,
     )
 
-    contabilizar_nota_venta(
-        db,
-        nota_venta_id=nota.id,
-        usuario=usuario,
-    )
+    try:
+        contabilizar_nota_venta(
+            db,
+            nota_venta_id=nota.id,
+            usuario=usuario,
+        )
+        db.commit()
+    except ContabilizacionVentaError:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
 
     return nota
 
