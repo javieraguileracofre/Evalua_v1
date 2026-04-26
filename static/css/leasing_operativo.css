@@ -37,3 +37,5 @@
 .lo-table-wrap { border-radius: 0.75rem; overflow: hidden; border: 1px solid #e2e8f0; }
 .lo-nav-pills .nav-link { border-radius: 0.5rem; font-size: 0.85rem; }
 .lo-nav-pills .nav-link.active { background: var(--lo-accent); }
+.lo-progress { height: 0.8rem; border-radius: 999px; background-color: #e9eef7; }
+.lo-progress .progress-bar { font-size: 0.62rem; line-height: 0.8rem; font-weight: 600; }

@@ -17,6 +17,14 @@
       <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('comercial_hub') }}">Hub comercial</a>
     </div>
   </div>
+  <div class="lo-kpi-grid mb-3">
+    <div class="lo-kpi"><div class="label">Total operaciones</div><div class="value">{{ resumen.total }}</div></div>
+    <div class="lo-kpi"><div class="label">Cotizadas</div><div class="value">{{ resumen.cotizado }}</div></div>
+    <div class="lo-kpi"><div class="label">Crédito OK</div><div class="value">{{ resumen.credito_ok }}</div></div>
+    <div class="lo-kpi"><div class="label">Contratos</div><div class="value">{{ resumen.contrato }}</div></div>
+    <div class="lo-kpi"><div class="label">Activadas contable</div><div class="value">{{ resumen.activo_contable }}</div></div>
+    <div class="lo-kpi"><div class="label">Aprobadas / Rechazadas</div><div class="value">{{ resumen.aprobadas }} / {{ resumen.rechazadas }}</div></div>
+  </div>
   <div class="card border-0 shadow-sm">
     <div class="table-responsive">
       <table class="table table-hover mb-0 align-middle">
@@ -29,12 +37,19 @@
             <th>Escenario</th>
             <th>Renta sugerida</th>
             <th>Decisión</th>
+            <th>Etapa</th>
+            <th>Progreso</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {% for r in rows %}
           {% set j = r.result_json or {} %}
+          {% set wf = j.get('workflow_v1', {}) %}
+          {% set hitos = wf.get('hitos', {}) %}
+          {% set checklist = wf.get('checklist_documental', {}) %}
+          {% set done = (1 if checklist.get('cotizacion') else 0) + (1 if checklist.get('aprobacion_credito') else 0) + (1 if checklist.get('orden_compra') else 0) + (1 if checklist.get('acta_entrega_firmada') else 0) + (1 if checklist.get('factura_compra') else 0) + (1 if checklist.get('activacion_contable') else 0) %}
+          {% set pct = (done * 100 // 6) %}
           <tr>
             <td class="font-monospace small">{{ r.codigo }}</td>
             <td>{{ r.nombre }}</td>
@@ -43,10 +58,28 @@
             <td><span class="badge bg-secondary-subtle text-secondary-emphasis">{{ r.escenario }}</span></td>
             <td>{{ "{:,.0f}".format(j.get('renta_sugerida', 0) or 0).replace(",", ".") }}</td>
             <td><span class="badge {% if r.decision_codigo == 'APROBAR' %}text-bg-success{% elif r.decision_codigo == 'RECHAZAR' %}text-bg-danger{% elif r.decision_codigo == 'OBSERVAR' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ r.decision_codigo }}</span></td>
-            <td><a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('leasing_operativo_detail', sim_id=r.id) }}">Ver</a></td>
+            <td>
+              <span class="badge text-bg-light border">{{ wf.get('etapa_actual', 'COTIZACION') }}</span>
+            </td>
+            <td style="min-width:170px;">
+              <div class="progress lo-progress" role="progressbar" aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar {% if pct >= 80 %}bg-success{% elif pct >= 40 %}bg-warning{% else %}bg-secondary{% endif %}" style="width: {{ pct }}%">{{ pct }}%</div>
+              </div>
+              <div class="small text-muted mt-1">{{ done }}/6 docs</div>
+            </td>
+            <td class="d-flex gap-1">
+              <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('leasing_operativo_detail', sim_id=r.id) }}">Ver</a>
+              {% if not hitos.get('resultado_credito') %}
+              <span class="badge text-bg-warning align-self-center">Pend. crédito</span>
+              {% elif hitos.get('resultado_credito') and not hitos.get('contrato_confeccionado') %}
+              <span class="badge text-bg-info align-self-center">Pend. contrato</span>
+              {% elif hitos.get('contrato_confeccionado') and not hitos.get('activacion_contable') %}
+              <span class="badge text-bg-secondary align-self-center">Pend. activación</span>
+              {% endif %}
+            </td>
           </tr>
           {% else %}
-          <tr><td colspan="8" class="text-center text-muted py-4">Sin simulaciones. Cree la primera desde el simulador.</td></tr>
+          <tr><td colspan="10" class="text-center text-muted py-4">Sin simulaciones. Cree la primera desde el simulador.</td></tr>
           {% endfor %}
         </tbody>
       </table>

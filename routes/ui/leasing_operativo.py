@@ -131,9 +131,35 @@ def lo_root():
 @router.get("/simulaciones", response_class=HTMLResponse, name="leasing_operativo_list")
 def lo_list(request: Request, db: Session = Depends(get_db)):
     rows = lo_crud.listar_simulaciones(db, limit=300)
+    resumen = {
+        "total": len(rows),
+        "cotizado": 0,
+        "credito_ok": 0,
+        "contrato": 0,
+        "activo_contable": 0,
+        "aprobadas": 0,
+        "rechazadas": 0,
+    }
+    for r in rows:
+        j = r.result_json or {}
+        wf = j.get("workflow_v1") if isinstance(j, dict) else {}
+        h = wf.get("hitos", {}) if isinstance(wf, dict) else {}
+        cred = wf.get("credito", {}) if isinstance(wf, dict) else {}
+        if r.estado in {"COTIZADO", "COMITE", "APROBADO", "CONTRATO"}:
+            resumen["cotizado"] += 1
+        if str(cred.get("dictamen") or "").upper() in {"APROBAR", "OBSERVAR"}:
+            resumen["credito_ok"] += 1
+        if bool(h.get("contrato_confeccionado")):
+            resumen["contrato"] += 1
+        if bool(h.get("activacion_contable")):
+            resumen["activo_contable"] += 1
+        if r.decision_codigo == "APROBAR":
+            resumen["aprobadas"] += 1
+        if r.decision_codigo == "RECHAZAR":
+            resumen["rechazadas"] += 1
     return templates.TemplateResponse(
         "leasing_operativo/listado.html",
-        {"request": request, "rows": rows, "active_menu": "leasing_operativo"},
+        {"request": request, "rows": rows, "resumen": resumen, "active_menu": "leasing_operativo"},
     )
 
 
