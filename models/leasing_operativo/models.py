@@ -171,6 +171,25 @@ class LeasingOpActivoDepreciacion(Base):
     activo: Mapped["LeasingOpActivoFijo"] = relationship("LeasingOpActivoFijo", back_populates="depreciaciones")
 
 
+class LeasingOpParametroTipo(Base):
+    __tablename__ = "leasing_op_param_tipo"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tipo_activo_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_tipo_activo.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+    moneda: Mapped[str] = mapped_column(String(8), nullable=False, default="CLP", server_default="CLP")
+    iva_pct: Mapped[Decimal] = mapped_column(Numeric(7, 4), nullable=False, default=Decimal("19"), server_default="19")
+    plazo_default: Mapped[int] = mapped_column(Integer, nullable=False, default=36, server_default="36")
+    spread_default_pct: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False, default=Decimal("8"), server_default="8")
+    margen_default_pct: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False, default=Decimal("12"), server_default="12")
+    tir_default_pct: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False, default=Decimal("14"), server_default="14")
+    perfil_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    actualizado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    tipo: Mapped["LeasingOpTipoActivo"] = relationship("LeasingOpTipoActivo")
+
+
 class LeasingOpComite(Base):
     __tablename__ = "leasing_op_comite"
 

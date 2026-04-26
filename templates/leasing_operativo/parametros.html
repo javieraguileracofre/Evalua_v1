@@ -1,0 +1,69 @@
+{% extends "layout/base.html" %}
+{% block title %}Parámetros LOP{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/leasing_operativo.css" />
+<div class="container py-4 lo-page">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <a href="{{ request.url_for('leasing_operativo_list') }}" class="small text-decoration-none">← Simulaciones</a>
+      <h1 class="h5 fw-semibold mt-1 mb-0">Parámetros comerciales LOP</h1>
+      <p class="text-secondary small mb-0">Administración manual por jefe comercial/admin.</p>
+    </div>
+  </div>
+  {% for t in tipos %}
+  {% set p = by_tipo.get(t.id) %}
+  {% set j = p.perfil_json if p else {} %}
+  <form method="post" action="{{ request.url_for('leasing_operativo_parametros_save', tipo_id=t.id) }}" class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold">{{ t.nombre }}</div>
+    <div class="card-body row g-2 small">
+      <div class="col-md-2">
+        <label class="form-label">Moneda</label>
+        <select name="moneda" class="form-select form-select-sm">
+          <option value="CLP" {% if not p or p.moneda=='CLP' %}selected{% endif %}>CLP</option>
+          <option value="UF" {% if p and p.moneda=='UF' %}selected{% endif %}>UF</option>
+          <option value="USD" {% if p and p.moneda=='USD' %}selected{% endif %}>USD</option>
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label">IVA %</label><input name="iva_pct" class="form-control form-control-sm" value="{{ p.iva_pct if p else 19 }}" /></div>
+      <div class="col-md-2"><label class="form-label">Plazo default</label><input name="plazo_default" class="form-control form-control-sm" value="{{ p.plazo_default if p else 36 }}" /></div>
+      <div class="col-md-2"><label class="form-label">Spread %</label><input name="spread_default_pct" class="form-control form-control-sm" value="{{ p.spread_default_pct if p else 8 }}" /></div>
+      <div class="col-md-2"><label class="form-label">Margen %</label><input name="margen_default_pct" class="form-control form-control-sm" value="{{ p.margen_default_pct if p else 12 }}" /></div>
+      <div class="col-md-2"><label class="form-label">TIR %</label><input name="tir_default_pct" class="form-control form-control-sm" value="{{ p.tir_default_pct if p else 14 }}" /></div>
+
+      <div class="col-12 lo-section-title">Uso / Activo</div>
+      <div class="col-md-2"><label class="form-label">Km anual</label><input name="km_anual" class="form-control form-control-sm" value="{{ (j.get('uso',{})).get('km_anual', 80000) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Horas anual</label><input name="horas_anual" class="form-control form-control-sm" value="{{ (j.get('uso',{})).get('horas_anual', 0) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Factor marca</label><input name="marca_modelo_factor" class="form-control form-control-sm" value="{{ (j.get('activo',{})).get('marca_modelo_factor', 1) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Mult sector</label><input name="sector_economico_mult" class="form-control form-control-sm" value="{{ (j.get('activo',{})).get('sector_economico_mult', 1) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Inflación %</label><input name="inflacion_activo_pct_anual" class="form-control form-control-sm" value="{{ (j.get('activo',{})).get('inflacion_activo_pct_anual', 3) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Condición</label><input name="condicion_factor" class="form-control form-control-sm" value="{{ (j.get('activo',{})).get('condicion_factor', 1) }}" /></div>
+
+      <div class="col-12 lo-section-title">Collateral / Recupero</div>
+      <div class="col-md-2"><label class="form-label">Repossession</label><input name="col_costo_repossession" class="form-control form-control-sm" value="{{ (j.get('collateral',{})).get('costo_repossession', 0) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Legal</label><input name="col_costo_legal" class="form-control form-control-sm" value="{{ (j.get('collateral',{})).get('costo_legal', 0) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Transporte</label><input name="col_transporte" class="form-control form-control-sm" value="{{ (j.get('collateral',{})).get('transporte', 0) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Reacond.</label><input name="col_reacondicionamiento" class="form-control form-control-sm" value="{{ (j.get('collateral',{})).get('reacondicionamiento', 0) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Desc. forz. %</label><input name="col_descuento_venta_forzada_pct" class="form-control form-control-sm" value="{{ (j.get('collateral',{})).get('descuento_venta_forzada_pct', 12) }}" /></div>
+      <div class="col-md-1"><label class="form-label">Meses liq.</label><input name="col_meses_liquidacion" class="form-control form-control-sm" value="{{ (j.get('collateral',{})).get('meses_liquidacion', 4) }}" /></div>
+      <div class="col-md-1"><label class="form-label">Tasa liq.</label><input name="col_tasa_fin_liquidacion_mensual" class="form-control form-control-sm" value="{{ (j.get('collateral',{})).get('tasa_fin_liquidacion_mensual', 0.008) }}" /></div>
+
+      <div class="col-12 lo-section-title">Riesgo / Comercial</div>
+      <div class="col-md-2"><label class="form-label">Segmento</label><input name="riesgo_segmento_cliente" class="form-control form-control-sm" value="{{ (j.get('riesgo',{})).get('segmento_cliente', 'MEDIO') }}" /></div>
+      <div class="col-md-1"><label class="form-label">R. sector</label><input name="riesgo_sector_mult" class="form-control form-control-sm" value="{{ (j.get('riesgo',{})).get('sector_mult', 1) }}" /></div>
+      <div class="col-md-1"><label class="form-label">R. activo</label><input name="riesgo_activo_mult" class="form-control form-control-sm" value="{{ (j.get('riesgo',{})).get('activo_mult', 1) }}" /></div>
+      <div class="col-md-1"><label class="form-label">R. uso</label><input name="riesgo_uso_intensivo_mult" class="form-control form-control-sm" value="{{ (j.get('riesgo',{})).get('uso_intensivo_mult', 1) }}" /></div>
+      <div class="col-md-1"><label class="form-label">R. liquidez</label><input name="riesgo_liquidez_mult" class="form-control form-control-sm" value="{{ (j.get('riesgo',{})).get('liquidez_mult', 1) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Com. vendedor</label><input name="comision_vendedor" class="form-control form-control-sm" value="{{ (j.get('comercial',{})).get('comision_vendedor', 0) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Com. canal</label><input name="comision_canal" class="form-control form-control-sm" value="{{ (j.get('comercial',{})).get('comision_canal', 0) }}" /></div>
+      <div class="col-md-2"><label class="form-label">Costo adq.</label><input name="costo_adquisicion" class="form-control form-control-sm" value="{{ (j.get('comercial',{})).get('costo_adquisicion', 0) }}" /></div>
+      <div class="col-md-1"><label class="form-label">Eval.</label><input name="evaluacion" class="form-control form-control-sm" value="{{ (j.get('comercial',{})).get('evaluacion', 0) }}" /></div>
+      <div class="col-md-1"><label class="form-label">Legal</label><input name="legal" class="form-control form-control-sm" value="{{ (j.get('comercial',{})).get('legal', 0) }}" /></div>
+      <div class="col-md-1"><label class="form-label">Onb.</label><input name="onboarding" class="form-control form-control-sm" value="{{ (j.get('comercial',{})).get('onboarding', 0) }}" /></div>
+    </div>
+    <div class="card-footer bg-white d-flex justify-content-end">
+      <button type="submit" class="btn btn-primary btn-sm">Guardar parámetros {{ t.codigo }}</button>
+    </div>
+  </form>
+  {% endfor %}
+</div>
+{% endblock %}

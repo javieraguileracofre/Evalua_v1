@@ -5,6 +5,7 @@
 <div class="container py-4 lo-page" style="max-width: 1100px;">
   <div class="mb-3">
     <a href="{{ request.url_for('leasing_operativo_list') }}" class="small text-decoration-none">← Listado</a>
+    <a href="{{ request.url_for('leasing_operativo_parametros') }}" class="small text-decoration-none ms-3">Parámetros (jefe comercial)</a>
     <h1 class="h5 fw-semibold mt-2">Simulador</h1>
     <p class="text-secondary small">¿Cuánto cobrar para cubrir costos, riesgo, capital y rentabilidad?</p>
   </div>
@@ -152,4 +153,67 @@
     </div>
   </form>
 </div>
+<script>
+  (function () {
+    const perfilPorTipo = {
+      {% for t in tipos %}
+      "{{ t.id }}": {
+        {% set p = params_by_tipo.get(t.id) %}
+        "moneda": "{{ (p.moneda if p else 'CLP') }}",
+        "iva_pct": "{{ (p.iva_pct if p else 19) }}",
+        "plazo_default": "{{ (p.plazo_default if p else 36) }}",
+        "spread_default_pct": "{{ (p.spread_default_pct if p else 8) }}",
+        "margen_default_pct": "{{ (p.margen_default_pct if p else 12) }}",
+        "tir_default_pct": "{{ (p.tir_default_pct if p else 14) }}",
+        "perfil": {{ (p.perfil_json if p else {}) | tojson }}
+      },
+      {% endfor %}
+    };
+    const form = document.querySelector("form");
+    if (!form) return;
+    const tipoSel = form.querySelector('select[name="tipo_activo_id"]');
+    const setVal = (name, value) => {
+      const el = form.querySelector(`[name="${name}"]`);
+      if (!el || value === undefined || value === null) return;
+      el.value = String(value);
+    };
+    const applyDefaults = () => {
+      const p = perfilPorTipo[tipoSel.value];
+      if (!p) return;
+      setVal("moneda", p.moneda);
+      setVal("iva_pct", p.iva_pct);
+      setVal("plazo_meses", p.plazo_default);
+      setVal("spread_pct", p.spread_default_pct);
+      setVal("margen_pct", p.margen_default_pct);
+      setVal("tir_objetivo_anual", p.tir_default_pct);
+      const x = p.perfil || {};
+      setVal("km_anual", x.uso?.km_anual);
+      setVal("horas_anual", x.uso?.horas_anual);
+      setVal("marca_modelo_factor", x.activo?.marca_modelo_factor);
+      setVal("sector_economico_mult", x.activo?.sector_economico_mult);
+      setVal("inflacion_activo_pct_anual", x.activo?.inflacion_activo_pct_anual);
+      setVal("condicion_factor", x.activo?.condicion_factor);
+      setVal("col_repossession", x.collateral?.costo_repossession);
+      setVal("col_legal", x.collateral?.costo_legal);
+      setVal("col_transporte", x.collateral?.transporte);
+      setVal("col_reacond", x.collateral?.reacondicionamiento);
+      setVal("col_desc_forzada_pct", x.collateral?.descuento_venta_forzada_pct);
+      setVal("col_meses_liq", x.collateral?.meses_liquidacion);
+      setVal("col_tasa_fin_m", x.collateral?.tasa_fin_liquidacion_mensual);
+      setVal("com_vendedor", x.comercial?.comision_vendedor);
+      setVal("com_canal", x.comercial?.comision_canal);
+      setVal("com_adq", x.comercial?.costo_adquisicion);
+      setVal("com_eval", x.comercial?.evaluacion);
+      setVal("com_legal", x.comercial?.legal);
+      setVal("com_onb", x.comercial?.onboarding);
+      setVal("riesgo_segmento", x.riesgo?.segmento_cliente);
+      setVal("riesgo_sector_mult", x.riesgo?.sector_mult);
+      setVal("riesgo_activo_mult", x.riesgo?.activo_mult);
+      setVal("riesgo_uso_mult", x.riesgo?.uso_intensivo_mult);
+      setVal("riesgo_liq_mult", x.riesgo?.liquidez_mult);
+    };
+    tipoSel?.addEventListener("change", applyDefaults);
+    applyDefaults();
+  })();
+</script>
 {% endblock %}

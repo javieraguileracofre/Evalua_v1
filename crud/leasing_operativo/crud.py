@@ -18,6 +18,7 @@ from models.leasing_operativo.models import (
     LeasingOpCostoPlantilla,
     LeasingOpCuota,
     LeasingOpHistorial,
+    LeasingOpParametroTipo,
     LeasingOpPolitica,
     LeasingOpSimulacion,
     LeasingOpTipoActivo,
@@ -43,6 +44,16 @@ def listar_tipos_activo(db: Session) -> list[LeasingOpTipoActivo]:
     )
 
 
+def listar_parametros_tipo(db: Session) -> list[LeasingOpParametroTipo]:
+    stmt = select(LeasingOpParametroTipo).order_by(LeasingOpParametroTipo.tipo_activo_id)
+    return list(db.scalars(stmt).all())
+
+
+def obtener_parametro_tipo(db: Session, tipo_id: int) -> LeasingOpParametroTipo | None:
+    stmt = select(LeasingOpParametroTipo).where(LeasingOpParametroTipo.tipo_activo_id == tipo_id)
+    return db.scalars(stmt).first()
+
+
 def obtener_tipo(db: Session, tipo_id: int) -> LeasingOpTipoActivo | None:
     return db.get(LeasingOpTipoActivo, tipo_id)
 
@@ -64,6 +75,35 @@ def plantillas_por_tipo(db: Session, tipo_id: int) -> list[dict[str, Any]]:
         }
         for r in rows
     ]
+
+
+def upsert_parametro_tipo(
+    db: Session,
+    *,
+    tipo_activo_id: int,
+    moneda: str,
+    iva_pct: Decimal,
+    plazo_default: int,
+    spread_default_pct: Decimal,
+    margen_default_pct: Decimal,
+    tir_default_pct: Decimal,
+    perfil_json: dict[str, Any],
+) -> LeasingOpParametroTipo:
+    row = obtener_parametro_tipo(db, tipo_activo_id)
+    if not row:
+        row = LeasingOpParametroTipo(tipo_activo_id=tipo_activo_id, perfil_json={})
+    row.moneda = (moneda or "CLP").upper()
+    row.iva_pct = iva_pct
+    row.plazo_default = max(int(plazo_default or 36), 1)
+    row.spread_default_pct = spread_default_pct
+    row.margen_default_pct = margen_default_pct
+    row.tir_default_pct = tir_default_pct
+    row.perfil_json = perfil_json or {}
+    row.actualizado_en = datetime.now(timezone.utc)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 def obtener_simulacion(db: Session, sid: int) -> LeasingOpSimulacion | None:
@@ -115,9 +155,21 @@ def crear_simulacion_y_calcular(
     plantillas = plantillas_por_tipo(db, tipo_activo_id)
 
     inp = dict(inputs)
+    param_tipo = obtener_parametro_tipo(db, tipo_activo_id)
     inp["plazo_meses"] = plazo_meses
     inp["escenario"] = escenario
     inp["metodo_pricing"] = metodo_pricing
+    if param_tipo:
+        inp.setdefault("moneda", param_tipo.moneda)
+        inp.setdefault("iva_pct", float(param_tipo.iva_pct))
+        base_perfil = param_tipo.perfil_json or {}
+        for k in ("uso", "activo", "collateral", "comercial", "riesgo"):
+            if not isinstance(inp.get(k), dict):
+                inp[k] = {}
+            src = base_perfil.get(k) if isinstance(base_perfil.get(k), dict) else {}
+            for ck, cv in src.items():
+                if inp[k].get(ck) in (None, "", 0, "0"):
+                    inp[k][ck] = cv
     if margen_pct is not None:
         inp["margen_pct"] = margen_pct
     if spread_pct is not None:

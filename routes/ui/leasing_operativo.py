@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
 from sqlalchemy.orm import Session
 
+from core.rbac import usuario_es_admin
 from core.paths import TEMPLATES_DIR
 from crud.leasing_operativo import crud as lo_crud
 from crud.maestros.cliente import listar_clientes
@@ -20,6 +21,15 @@ from services.leasing_operativo.market_data import fetch_cl_market_indicators
 
 router = APIRouter(prefix="/comercial/leasing-operativo", tags=["Comercial · Leasing operativo"])
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+def _guard_param_admin(request: Request) -> RedirectResponse | None:
+    if usuario_es_admin(getattr(request.state, "auth_user", None)):
+        return None
+    return RedirectResponse(
+        url="/?msg=Solo+jefe+comercial%2Fadmin+puede+modificar+parametros+LOP&sev=danger",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 def _dec(raw: str | None, default: str = "0") -> Decimal:
@@ -126,6 +136,8 @@ def lo_list(request: Request, db: Session = Depends(get_db)):
 @router.get("/simulador", response_class=HTMLResponse, name="leasing_operativo_simulador")
 def lo_simulador_get(request: Request, db: Session = Depends(get_db)):
     tipos = lo_crud.listar_tipos_activo(db)
+    params = lo_crud.listar_parametros_tipo(db)
+    params_by_tipo = {int(p.tipo_activo_id): p for p in params}
     clientes, _ = listar_clientes(db, activos_solo=True, limit=400)
     mkt = fetch_cl_market_indicators()
     marcas = [
@@ -140,6 +152,7 @@ def lo_simulador_get(request: Request, db: Session = Depends(get_db)):
         {
             "request": request,
             "tipos": tipos,
+            "params_by_tipo": params_by_tipo,
             "clientes": clientes,
             "market": mkt,
             "marcas": marcas,
@@ -148,6 +161,104 @@ def lo_simulador_get(request: Request, db: Session = Depends(get_db)):
             "active_menu": "leasing_operativo",
         },
     )
+
+
+@router.get("/parametros", response_class=HTMLResponse, name="leasing_operativo_parametros")
+def lo_parametros_get(request: Request, db: Session = Depends(get_db)):
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    tipos = lo_crud.listar_tipos_activo(db)
+    rows = lo_crud.listar_parametros_tipo(db)
+    by_tipo = {int(r.tipo_activo_id): r for r in rows}
+    return templates.TemplateResponse(
+        "leasing_operativo/parametros.html",
+        {"request": request, "tipos": tipos, "by_tipo": by_tipo, "active_menu": "leasing_operativo"},
+    )
+
+
+@router.post("/parametros/{tipo_id}", name="leasing_operativo_parametros_save")
+def lo_parametros_save(
+    request: Request,
+    tipo_id: int,
+    db: Session = Depends(get_db),
+    moneda: str = Form("CLP"),
+    iva_pct: str = Form("19"),
+    plazo_default: str = Form("36"),
+    spread_default_pct: str = Form("8"),
+    margen_default_pct: str = Form("12"),
+    tir_default_pct: str = Form("14"),
+    km_anual: str = Form("80000"),
+    horas_anual: str = Form("0"),
+    marca_modelo_factor: str = Form("1"),
+    sector_economico_mult: str = Form("1"),
+    inflacion_activo_pct_anual: str = Form("3"),
+    condicion_factor: str = Form("1"),
+    col_costo_repossession: str = Form("0"),
+    col_costo_legal: str = Form("0"),
+    col_transporte: str = Form("0"),
+    col_reacondicionamiento: str = Form("0"),
+    col_descuento_venta_forzada_pct: str = Form("12"),
+    col_meses_liquidacion: str = Form("4"),
+    col_tasa_fin_liquidacion_mensual: str = Form("0.008"),
+    riesgo_segmento_cliente: str = Form("MEDIO"),
+    riesgo_sector_mult: str = Form("1"),
+    riesgo_activo_mult: str = Form("1"),
+    riesgo_uso_intensivo_mult: str = Form("1"),
+    riesgo_liquidez_mult: str = Form("1"),
+    comision_vendedor: str = Form("0"),
+    comision_canal: str = Form("0"),
+    costo_adquisicion: str = Form("0"),
+    evaluacion: str = Form("0"),
+    legal: str = Form("0"),
+    onboarding: str = Form("0"),
+):
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    perfil = {
+        "uso": {"km_anual": _dec(km_anual), "horas_anual": _dec(horas_anual)},
+        "activo": {
+            "marca_modelo_factor": _dec(marca_modelo_factor),
+            "sector_economico_mult": _dec(sector_economico_mult),
+            "inflacion_activo_pct_anual": _dec(inflacion_activo_pct_anual),
+            "condicion_factor": _dec(condicion_factor),
+        },
+        "collateral": {
+            "costo_repossession": _dec(col_costo_repossession),
+            "costo_legal": _dec(col_costo_legal),
+            "transporte": _dec(col_transporte),
+            "reacondicionamiento": _dec(col_reacondicionamiento),
+            "descuento_venta_forzada_pct": _dec(col_descuento_venta_forzada_pct),
+            "meses_liquidacion": _int(col_meses_liquidacion, 4),
+            "tasa_fin_liquidacion_mensual": _dec(col_tasa_fin_liquidacion_mensual),
+        },
+        "riesgo": {
+            "segmento_cliente": (riesgo_segmento_cliente or "MEDIO").upper(),
+            "sector_mult": _dec(riesgo_sector_mult),
+            "activo_mult": _dec(riesgo_activo_mult),
+            "uso_intensivo_mult": _dec(riesgo_uso_intensivo_mult),
+            "liquidez_mult": _dec(riesgo_liquidez_mult),
+        },
+        "comercial": {
+            "comision_vendedor": _dec(comision_vendedor),
+            "comision_canal": _dec(comision_canal),
+            "costo_adquisicion": _dec(costo_adquisicion),
+            "evaluacion": _dec(evaluacion),
+            "legal": _dec(legal),
+            "onboarding": _dec(onboarding),
+        },
+    }
+    lo_crud.upsert_parametro_tipo(
+        db,
+        tipo_activo_id=tipo_id,
+        moneda=(moneda or "CLP").upper(),
+        iva_pct=_dec(iva_pct, "19"),
+        plazo_default=_int(plazo_default, 36),
+        spread_default_pct=_dec(spread_default_pct, "8"),
+        margen_default_pct=_dec(margen_default_pct, "12"),
+        tir_default_pct=_dec(tir_default_pct, "14"),
+        perfil_json=perfil,
+    )
+    return RedirectResponse(str(request.url_for("leasing_operativo_parametros")), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/simulador", name="leasing_operativo_simulador_post")
