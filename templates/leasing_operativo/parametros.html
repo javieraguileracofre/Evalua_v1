@@ -10,6 +10,11 @@
       <p class="text-secondary small mb-0">Administración manual por jefe comercial/admin.</p>
     </div>
   </div>
+  {% if not tipos %}
+  <div class="alert alert-warning">
+    No hay tipos de activo LOP cargados. Ejecute el parche `102_leasing_operativo.sql` y recargue.
+  </div>
+  {% endif %}
   {% for t in tipos %}
   {% set p = by_tipo.get(t.id) %}
   {% set j = p.perfil_json if p else {} %}

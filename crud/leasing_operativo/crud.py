@@ -34,6 +34,42 @@ def _add_months(d: date, months: int) -> date:
     return date(y, m, min(d.day, last))
 
 
+def _default_perfil_param() -> dict[str, Any]:
+    return {
+        "uso": {"km_anual": 80000, "horas_anual": 0},
+        "activo": {
+            "marca_modelo_factor": 1,
+            "sector_economico_mult": 1,
+            "inflacion_activo_pct_anual": 3,
+            "condicion_factor": 1,
+        },
+        "collateral": {
+            "descuento_venta_forzada_pct": 12,
+            "meses_liquidacion": 4,
+            "tasa_fin_liquidacion_mensual": 0.008,
+            "costo_repossession": 0,
+            "costo_legal": 0,
+            "transporte": 0,
+            "reacondicionamiento": 0,
+        },
+        "riesgo": {
+            "segmento_cliente": "MEDIO",
+            "sector_mult": 1,
+            "activo_mult": 1,
+            "uso_intensivo_mult": 1,
+            "liquidez_mult": 1,
+        },
+        "comercial": {
+            "comision_vendedor": 0,
+            "comision_canal": 0,
+            "costo_adquisicion": 0,
+            "evaluacion": 0,
+            "legal": 0,
+            "onboarding": 0,
+        },
+    }
+
+
 def listar_politica(db: Session) -> list[LeasingOpPolitica]:
     return list(db.scalars(select(LeasingOpPolitica).where(LeasingOpPolitica.activo.is_(True))).all())
 
@@ -47,6 +83,33 @@ def listar_tipos_activo(db: Session) -> list[LeasingOpTipoActivo]:
 def listar_parametros_tipo(db: Session) -> list[LeasingOpParametroTipo]:
     stmt = select(LeasingOpParametroTipo).order_by(LeasingOpParametroTipo.tipo_activo_id)
     return list(db.scalars(stmt).all())
+
+
+def asegurar_parametros_tipo_default(db: Session) -> int:
+    """Crea filas default faltantes para cada tipo de activo."""
+    tipos = listar_tipos_activo(db)
+    existentes = {int(x.tipo_activo_id) for x in listar_parametros_tipo(db)}
+    created = 0
+    for t in tipos:
+        tid = int(t.id)
+        if tid in existentes:
+            continue
+        db.add(
+            LeasingOpParametroTipo(
+                tipo_activo_id=tid,
+                moneda="CLP",
+                iva_pct=Decimal("19"),
+                plazo_default=36,
+                spread_default_pct=Decimal("8"),
+                margen_default_pct=Decimal("12"),
+                tir_default_pct=Decimal("14"),
+                perfil_json=_default_perfil_param(),
+            )
+        )
+        created += 1
+    if created > 0:
+        db.commit()
+    return created
 
 
 def obtener_parametro_tipo(db: Session, tipo_id: int) -> LeasingOpParametroTipo | None:

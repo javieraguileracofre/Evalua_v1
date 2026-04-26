@@ -135,6 +135,7 @@ def lo_list(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/simulador", response_class=HTMLResponse, name="leasing_operativo_simulador")
 def lo_simulador_get(request: Request, db: Session = Depends(get_db)):
+    lo_crud.asegurar_parametros_tipo_default(db)
     tipos = lo_crud.listar_tipos_activo(db)
     params = lo_crud.listar_parametros_tipo(db)
     params_by_tipo = {int(p.tipo_activo_id): p for p in params}
@@ -167,6 +168,7 @@ def lo_simulador_get(request: Request, db: Session = Depends(get_db)):
 def lo_parametros_get(request: Request, db: Session = Depends(get_db)):
     if (redir := _guard_param_admin(request)) is not None:
         return redir
+    lo_crud.asegurar_parametros_tipo_default(db)
     tipos = lo_crud.listar_tipos_activo(db)
     rows = lo_crud.listar_parametros_tipo(db)
     by_tipo = {int(r.tipo_activo_id): r for r in rows}
