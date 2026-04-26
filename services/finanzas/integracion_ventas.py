@@ -15,11 +15,15 @@ from crud.finanzas.contabilidad_asientos import (
     eliminar_asiento_contable,
     obtener_asiento_detalle,
 )
-from models import InventarioMovimiento
+from models import InventarioMovimiento, Producto
 from models.comercial.nota_venta import NotaVenta
 
 
 logger = logging.getLogger(__name__)
+
+
+class ContabilizacionVentaError(Exception):
+    """Error de negocio cuando falla la contabilización de ventas."""
 
 
 def _d(value: object, default: str = "0") -> Decimal:
@@ -90,30 +94,12 @@ def _resolver_monto_regla_venta(
     total: Decimal,
 ) -> Decimal:
     lado = str(regla.get("lado") or "").strip().upper()
-    tipo = str(regla.get("tipo") or "").strip().upper()
-    clasificacion = str(regla.get("clasificacion") or "").strip().upper()
-    texto = _descripcion_regla(regla)
-
-    if "IVA" in texto:
-        return iva
-
+    orden = int(regla.get("orden") or 1)
     if lado == "DEBE":
-        if tipo == "ACTIVO":
-            return total
-        if clasificacion.startswith("ACTIVO"):
-            return total
-        if any(token in texto for token in ["CAJA", "BANCO", "CLIENTE", "COBRAR", "CUENTA POR COBRAR"]):
-            return total
-
+        return total
     if lado == "HABER":
-        if tipo == "INGRESO":
-            return neto
-        if tipo == "PASIVO":
-            return iva
-        if clasificacion.startswith("PASIVO"):
-            return iva
-
-    return Decimal("0.00")
+        return iva if orden == 2 else neto
+    return Decimal("0")
 
 
 def _resolver_monto_regla_costo(
@@ -122,25 +108,9 @@ def _resolver_monto_regla_costo(
     costo_total: Decimal,
 ) -> Decimal:
     lado = str(regla.get("lado") or "").strip().upper()
-    tipo = str(regla.get("tipo") or "").strip().upper()
-    clasificacion = str(regla.get("clasificacion") or "").strip().upper()
-    texto = _descripcion_regla(regla)
-
-    if lado == "DEBE":
-        if tipo in {"COSTO", "GASTO"}:
-            return costo_total
-        if "COSTO" in texto:
-            return costo_total
-
-    if lado == "HABER":
-        if tipo == "ACTIVO":
-            return costo_total
-        if clasificacion.startswith("ACTIVO"):
-            return costo_total
-        if "INVENTARIO" in texto:
-            return costo_total
-
-    return Decimal("0.00")
+    if lado in {"DEBE", "HABER"}:
+        return costo_total
+    return Decimal("0")
 
 
 def _construir_detalles_desde_reglas(
@@ -192,7 +162,16 @@ def _obtener_costo_total_nota(db: Session, *, nota: NotaVenta) -> Decimal:
 
     total_fallback = Decimal("0.00")
     for det in nota.detalles:
-        total_fallback += (_d(det.cantidad) * Decimal("0.00")).quantize(Decimal("0.01"))
+        producto: Producto | None = db.get(Producto, det.producto_id)
+        if not producto:
+            continue
+        controla_stock = bool(getattr(producto, "controla_stock", True)) and not bool(
+            getattr(producto, "es_servicio", False)
+        )
+        if not controla_stock:
+            continue
+        costo_unitario = _d(getattr(producto, "precio_compra", 0))
+        total_fallback += (_d(det.cantidad) * costo_unitario).quantize(Decimal("0.01"))
 
     return total_fallback.quantize(Decimal("0.01"))
 
@@ -347,7 +326,9 @@ def contabilizar_nota_venta(
             nota.id,
             exc,
         )
-        db.rollback()
+        raise ContabilizacionVentaError(
+            f"No fue posible contabilizar la nota de venta {nota.numero}."
+        ) from exc
 
     except Exception as exc:
         logger.exception(
@@ -356,7 +337,9 @@ def contabilizar_nota_venta(
             nota.id,
             exc,
         )
-        db.rollback()
+        raise ContabilizacionVentaError(
+            f"Ocurrió un error al contabilizar la nota de venta {nota.numero}."
+        ) from exc
 
 
 def contabilizar_anulacion_nota_venta(

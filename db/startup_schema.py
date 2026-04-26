@@ -395,7 +395,34 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
                     """
                 )
             ).scalar()
-    if has_cot and has_credit and leasing_cfg:
+        parent_ok = conn.execute(
+            text(
+                """
+                SELECT CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM fin.plan_cuenta h
+                        JOIN fin.plan_cuenta p ON p.id = h.cuenta_padre_id
+                        WHERE h.codigo = '113701' AND p.codigo = '1.1'
+                    )
+                    AND EXISTS (
+                        SELECT 1
+                        FROM fin.plan_cuenta h
+                        JOIN fin.plan_cuenta p ON p.id = h.cuenta_padre_id
+                        WHERE h.codigo = '210701' AND p.codigo = '2.1'
+                    )
+                    AND EXISTS (
+                        SELECT 1
+                        FROM fin.plan_cuenta h
+                        JOIN fin.plan_cuenta p ON p.id = h.cuenta_padre_id
+                        WHERE h.codigo = '410701' AND p.codigo = '4.1'
+                    )
+                    THEN 1 ELSE 0
+                END
+                """
+            )
+        ).scalar()
+    if has_cot and has_credit and leasing_cfg and bool(parent_ok):
         return
     try:
         _run_sql_patch_autocommit(engine, _PATCH_100)
@@ -494,24 +521,11 @@ def ensure_leasing_operativo_schema(engine: Engine) -> None:
                 exc,
             )
     # Config contable base LOP (usa tablas fin.config_* existentes).
+    # Se aplica siempre porque el patch es idempotente y también corrige mapeos históricos.
     if _PATCH_107.is_file() and _has_table(engine, schema="fin", table="config_contable_detalle_modulo"):
         try:
-            with engine.connect() as conn:
-                lop_cfg = conn.execute(
-                    text(
-                        """
-                        SELECT 1
-                        FROM fin.config_contable_detalle_modulo
-                        WHERE modulo = 'LEASING_OP'
-                          AND codigo_evento IN ('LOP_ACTIVACION', 'LOP_FACTURACION', 'LOP_DEPRECIACION')
-                          AND estado = 'ACTIVO'
-                        LIMIT 1
-                        """
-                    )
-                ).scalar()
-            if not lop_cfg:
-                _run_sql_patch_autocommit(engine, _PATCH_107)
-                logger.info("Parche aplicado: configuración contable base leasing operativo (107).")
+            _run_sql_patch_autocommit(engine, _PATCH_107)
+            logger.info("Parche aplicado: configuración contable base leasing operativo (107).")
         except Exception as exc:
             logger.warning(
                 "No se pudo aplicar 107_leasing_operativo_contabilidad_base.sql. Detalle: %s",

@@ -15,14 +15,14 @@ SELECT
     v.codigo, v.nombre, 3, p.id, v.tipo, v.clasificacion, v.naturaleza,
     TRUE, FALSE, 'ACTIVO', v.descripcion
 FROM (VALUES
-    ('113701', 'CUENTAS POR COBRAR LEASING FINANCIERO', 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA',
+    ('113701', 'CUENTAS POR COBRAR LEASING FINANCIERO', 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', '1.1',
      'Principal / saldo arrendamiento financiero por cobrar al cliente.'),
-    ('210701', 'OBLIGACIONES LEASING FINANCIERO', 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA',
+    ('210701', 'OBLIGACIONES LEASING FINANCIERO', 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', '2.1',
      'Reconocimiento inicial (espejo contable) / ajustes de pasivo según política interna.'),
-    ('410701', 'INGRESOS FINANCIEROS LEASING', 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA',
+    ('410701', 'INGRESOS FINANCIEROS LEASING', 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', '4.1',
      'Intereses devengados / cobrados en operaciones de leasing financiero.')
-) AS v(codigo, nombre, tipo, clasificacion, naturaleza, descripcion)
-JOIN fin.plan_cuenta p ON p.codigo = '1.1'
+) AS v(codigo, nombre, tipo, clasificacion, naturaleza, parent_codigo, descripcion)
+JOIN fin.plan_cuenta p ON p.codigo = v.parent_codigo
 WHERE NOT EXISTS (SELECT 1 FROM fin.plan_cuenta x WHERE x.codigo = v.codigo);
 
 -- Si aún no existe agrupador 1.1, insertar cuentas sin padre (no debería ocurrir en instalación estándar)
@@ -49,6 +49,25 @@ INSERT INTO fin.plan_cuenta (
 SELECT '410701', 'INGRESOS FINANCIEROS LEASING', 3, NULL, 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA',
        TRUE, FALSE, 'ACTIVO', 'Intereses leasing financiero'
 WHERE NOT EXISTS (SELECT 1 FROM fin.plan_cuenta WHERE codigo = '410701');
+
+-- Corrección de jerarquía para instalaciones existentes.
+UPDATE fin.plan_cuenta h
+SET cuenta_padre_id = p.id
+FROM fin.plan_cuenta p
+WHERE h.codigo = '113701'
+  AND p.codigo = '1.1';
+
+UPDATE fin.plan_cuenta h
+SET cuenta_padre_id = p.id
+FROM fin.plan_cuenta p
+WHERE h.codigo = '210701'
+  AND p.codigo = '2.1';
+
+UPDATE fin.plan_cuenta h
+SET cuenta_padre_id = p.id
+FROM fin.plan_cuenta p
+WHERE h.codigo = '410701'
+  AND p.codigo = '4.1';
 
 -- ============================================================
 -- CONFIGURACIÓN CONTABLE (eventos estándar del módulo)

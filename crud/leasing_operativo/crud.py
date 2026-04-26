@@ -123,6 +123,50 @@ def _monto_from_reglas(reglas: list[dict[str, Any]], lado: str, ord_idx: int, de
     return default if target else Decimal("0")
 
 
+def _resolver_monto_regla_evento(
+    *,
+    codigo_evento: str,
+    regla: dict[str, Any],
+    monto_base: Decimal,
+    monto_iva: Decimal,
+) -> Decimal:
+    lado = str(regla.get("lado") or "").strip().upper()
+    tipo = str(regla.get("tipo") or "").strip().upper()
+    clasificacion = str(regla.get("clasificacion") or "").strip().upper()
+    texto = " ".join(
+        [
+            str(regla.get("nombre_evento") or ""),
+            str(regla.get("descripcion") or ""),
+            str(regla.get("nombre_cuenta") or ""),
+            str(regla.get("codigo_cuenta") or ""),
+        ]
+    ).upper()
+    total = (monto_base + monto_iva).quantize(Decimal("0.01"))
+
+    # Regla crítica de control: la facturación debe reconocer CxC por bruto.
+    if codigo_evento == "LOP_FACTURACION":
+        if lado == "DEBE":
+            if tipo == "ACTIVO" or clasificacion.startswith("ACTIVO"):
+                return total
+            if any(token in texto for token in ("CLIENTE", "COBRAR", "CXC", "113801", "110301")):
+                return total
+            return monto_base
+        if lado == "HABER":
+            if "IVA" in texto or tipo == "PASIVO" or clasificacion.startswith("PASIVO"):
+                return monto_iva
+            return monto_base
+        return Decimal("0")
+
+    if codigo_evento in {"LOP_ACTIVACION", "LOP_DEPRECIACION"}:
+        return monto_base
+
+    # Fallback para futuros eventos no parametrizados.
+    orden = int(regla.get("orden") or 1)
+    if orden == 2:
+        return monto_iva
+    return monto_base
+
+
 def _crear_asiento_desde_config_evento(
     db: Session,
     *,
@@ -150,14 +194,14 @@ def _crear_asiento_desde_config_evento(
     detalles: list[dict[str, Any]] = []
     for r in reglas:
         lado = str(r.get("lado") or "").upper()
-        orden = int(r.get("orden") or 1)
         if lado not in {"DEBE", "HABER"}:
             continue
-        monto = Decimal("0")
-        if orden == 1:
-            monto = monto_base
-        elif orden == 2:
-            monto = monto_iva
+        monto = _resolver_monto_regla_evento(
+            codigo_evento=codigo_evento,
+            regla=r,
+            monto_base=monto_base,
+            monto_iva=monto_iva,
+        )
         if monto <= 0:
             continue
         detalles.append(

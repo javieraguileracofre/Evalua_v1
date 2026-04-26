@@ -8,6 +8,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
+from crud.finanzas.config_contable import obtener_configuracion_evento_modulo
 from models.comercial.leasing_financiero_cotizacion import (
     LeasingFinancieroCotizacion,
     LeasingFinancieroProyeccionLinea,
@@ -22,6 +23,33 @@ CUENTA_BANCO = "110201"
 
 def _q2(v: Decimal | float | int) -> Decimal:
     return Decimal(str(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _cuenta_desde_config(
+    db: Session,
+    *,
+    submodulo: str,
+    tipo_documento: str,
+    codigo_evento: str,
+    lado: str,
+    orden: int,
+    fallback: str,
+) -> str:
+    reglas = obtener_configuracion_evento_modulo(
+        db,
+        modulo="COMERCIAL",
+        submodulo=submodulo,
+        tipo_documento=tipo_documento,
+        codigo_evento=codigo_evento,
+    )
+    for r in reglas:
+        if (
+            str(r.get("lado") or "").strip().upper() == lado
+            and int(r.get("orden") or 0) == orden
+            and str(r.get("codigo_cuenta") or "").strip()
+        ):
+            return str(r["codigo_cuenta"]).strip()
+    return fallback
 
 
 def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCotizacion) -> None:
@@ -39,6 +67,51 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
 
     principal = _q2(monto_base)
     seq = 0
+    cuenta_cxc = _cuenta_desde_config(
+        db,
+        submodulo="LEASING_FIN",
+        tipo_documento="ORIGINACION",
+        codigo_evento="LEASING_FIN_ORIGINACION",
+        lado="DEBE",
+        orden=1,
+        fallback=CUENTA_CXC,
+    )
+    cuenta_pasivo = _cuenta_desde_config(
+        db,
+        submodulo="LEASING_FIN",
+        tipo_documento="ORIGINACION",
+        codigo_evento="LEASING_FIN_ORIGINACION",
+        lado="HABER",
+        orden=1,
+        fallback=CUENTA_PASIVO,
+    )
+    cuenta_banco = _cuenta_desde_config(
+        db,
+        submodulo="LEASING_FIN",
+        tipo_documento="COBRO_CUOTA",
+        codigo_evento="LEASING_FIN_COBRO_CUOTA",
+        lado="DEBE",
+        orden=1,
+        fallback=CUENTA_BANCO,
+    )
+    cuenta_cxc_cobro = _cuenta_desde_config(
+        db,
+        submodulo="LEASING_FIN",
+        tipo_documento="COBRO_CUOTA",
+        codigo_evento="LEASING_FIN_COBRO_CUOTA",
+        lado="HABER",
+        orden=1,
+        fallback=CUENTA_CXC,
+    )
+    cuenta_interes = _cuenta_desde_config(
+        db,
+        submodulo="LEASING_FIN",
+        tipo_documento="COBRO_CUOTA",
+        codigo_evento="LEASING_FIN_COBRO_CUOTA",
+        lado="HABER",
+        orden=2,
+        fallback=CUENTA_INTERES,
+    )
 
     def add_line(
         *,
@@ -68,7 +141,7 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
         etapa="ORIGINACION",
         ref_cuota=None,
         glosa="Originación: reconocimiento CxC leasing",
-        cuenta=CUENTA_CXC,
+        cuenta=cuenta_cxc,
         debe=principal,
         haber=Decimal("0"),
     )
@@ -76,7 +149,7 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
         etapa="ORIGINACION",
         ref_cuota=None,
         glosa="Originación: contrapartida obligación leasing",
-        cuenta=CUENTA_PASIVO,
+        cuenta=cuenta_pasivo,
         debe=Decimal("0"),
         haber=principal,
     )
@@ -102,7 +175,7 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
                 etapa="OPCION_COMPRA",
                 ref_cuota=cuota.numero_cuota,
                 glosa=f"Opción de compra cuota #{cuota.numero_cuota}",
-                cuenta=CUENTA_BANCO,
+                cuenta=cuenta_banco,
                 debe=total,
                 haber=Decimal("0"),
             )
@@ -110,7 +183,7 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
                 etapa="OPCION_COMPRA",
                 ref_cuota=cuota.numero_cuota,
                 glosa=f"Baja CxC por opción de compra #{cuota.numero_cuota}",
-                cuenta=CUENTA_CXC,
+                cuenta=cuenta_cxc_cobro,
                 debe=Decimal("0"),
                 haber=total,
             )
@@ -120,7 +193,7 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
             etapa="COBRO_CUOTA",
             ref_cuota=cuota.numero_cuota,
             glosa=f"Cobro proyectado cuota #{cuota.numero_cuota} (tesorería)",
-            cuenta=CUENTA_BANCO,
+            cuenta=cuenta_banco,
             debe=total,
             haber=Decimal("0"),
         )
@@ -129,7 +202,7 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
                 etapa="COBRO_CUOTA",
                 ref_cuota=cuota.numero_cuota,
                 glosa=f"Amortización capital cuota #{cuota.numero_cuota}",
-                cuenta=CUENTA_CXC,
+                cuenta=cuenta_cxc_cobro,
                 debe=Decimal("0"),
                 haber=cap,
             )
@@ -138,7 +211,7 @@ def regenerar_proyeccion_contable(db: Session, cotizacion: LeasingFinancieroCoti
                 etapa="COBRO_CUOTA",
                 ref_cuota=cuota.numero_cuota,
                 glosa=f"Ingreso financiero intereses cuota #{cuota.numero_cuota}",
-                cuenta=CUENTA_INTERES,
+                cuenta=cuenta_interes,
                 debe=Decimal("0"),
                 haber=inter,
             )
