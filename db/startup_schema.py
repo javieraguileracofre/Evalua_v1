@@ -482,6 +482,29 @@ def ensure_leasing_operativo_schema(engine: Engine) -> None:
                 "No se pudo aplicar 105_leasing_operativo_parametros_tipo.sql. Detalle: %s",
                 exc,
             )
+    # Re-seed catálogos si existen tablas pero quedaron vacías por patch parcial/manual.
+    if _has_table(engine, schema="public", table="leasing_op_tipo_activo") and _PATCH_102.is_file():
+        with engine.connect() as conn:
+            tipos_n = int(
+                conn.execute(text("SELECT COUNT(*) FROM public.leasing_op_tipo_activo")).scalar() or 0
+            )
+        if tipos_n == 0:
+            try:
+                _run_sql_patch_autocommit(engine, _PATCH_102)
+                logger.info("Re-seed leasing operativo aplicado (102) por catálogo tipo_activo vacío.")
+            except Exception as exc:
+                logger.warning("No se pudo re-seed 102_leasing_operativo.sql: %s", exc)
+    if _has_table(engine, schema="public", table="leasing_op_param_tipo") and _PATCH_105.is_file():
+        with engine.connect() as conn:
+            param_n = int(
+                conn.execute(text("SELECT COUNT(*) FROM public.leasing_op_param_tipo")).scalar() or 0
+            )
+        if param_n == 0:
+            try:
+                _run_sql_patch_autocommit(engine, _PATCH_105)
+                logger.info("Re-seed leasing operativo aplicado (105) por parámetros vacíos.")
+            except Exception as exc:
+                logger.warning("No se pudo re-seed 105_leasing_operativo_parametros_tipo.sql: %s", exc)
 
 
 def ensure_fin_config_contable_seed(engine: Engine) -> None:

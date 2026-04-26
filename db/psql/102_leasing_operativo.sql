@@ -103,7 +103,7 @@ VALUES
 ('MAQUINARIA', 'Maquinaria industrial', 15, 40, 'INDUSTRIA', 0.88, 1.08, 0.00005, 0.0006, 8),
 ('EQUIPO_IT', 'Equipos TI / oficina', 8, 25, 'TECNOLOGIA', 0.92, 1.15, 0, 0.0001, 10),
 ('CAMIONETA', 'Camioneta liviana', 22, 48, 'TRANSPORTE', 1.02, 1.02, 0.00015, 0.00003, 5)
-ON CONFLICT (codigo) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 INSERT INTO public.leasing_op_politica (clave, valor_json, descripcion)
 VALUES
@@ -150,7 +150,7 @@ VALUES
     }'::jsonb,
     'Parámetros riesgo crediticio leasing operativo.'
 )
-ON CONFLICT (clave) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- Plantillas de costo operativo (mensual equivalente); se pueden ampliar por SQL
 INSERT INTO public.leasing_op_costo_plantilla (tipo_activo_id, codigo, descripcion, periodicidad, monto_mensual_equiv, orden)
@@ -171,7 +171,7 @@ CROSS JOIN (VALUES
   ('CAMIONETA', 'MANT_PREV', 'Mantención', 'MENSUAL', 150000, 20)
 ) AS v(codigo_tipo, codigo, descr, per, monto, ord)
 WHERE t.codigo = v.codigo_tipo
-ON CONFLICT (tipo_activo_id, codigo) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 CREATE OR REPLACE FUNCTION public.trg_lo_sim_set_updated()
 RETURNS trigger AS $$
