@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
+import re
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -61,6 +62,26 @@ def _buscar_cuenta_por_palabras_nombre(db: Session, palabras: tuple[str, ...]) -
     return db.execute(stmt).scalar_one_or_none()
 
 
+def _normalizar_codigo(codigo: str) -> str:
+    """Quita separadores para comparar códigos contables equivalentes."""
+    return re.sub(r"[^0-9A-Za-z]", "", (codigo or "").strip()).upper()
+
+
+def _buscar_cuenta_por_codigo_tolerante(db: Session, codigo: str) -> PlanCuenta | None:
+    """Resuelve código exacto o equivalente (ej. 11.05 == 1.1.05)."""
+    exacta = obtener_plan_cuenta_por_codigo(db, codigo)
+    if exacta:
+        return exacta
+    codigo_norm = _normalizar_codigo(codigo)
+    if not codigo_norm:
+        return None
+    stmt = select(PlanCuenta).where(func.upper(PlanCuenta.estado) == "ACTIVO")
+    for cu in db.execute(stmt).scalars():
+        if _normalizar_codigo(str(cu.codigo or "")) == codigo_norm:
+            return cu
+    return None
+
+
 def _resolver_cuenta(
     db: Session,
     *,
@@ -79,7 +100,7 @@ def _resolver_cuenta(
         if not c or c in probados:
             continue
         probados.append(c)
-        cu = obtener_plan_cuenta_por_codigo(db, c)
+        cu = _buscar_cuenta_por_codigo_tolerante(db, c)
         if cu and str(cu.estado).upper() == "ACTIVO" and cu.acepta_movimiento:
             return cu
 
