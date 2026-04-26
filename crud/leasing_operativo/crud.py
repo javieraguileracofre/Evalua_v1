@@ -70,6 +70,21 @@ def _default_perfil_param() -> dict[str, Any]:
     }
 
 
+def _json_safe(v: Any) -> Any:
+    """Convierte valores a tipos serializables para JSONB."""
+    if isinstance(v, Decimal):
+        return float(v)
+    if isinstance(v, (date, datetime)):
+        return v.isoformat()
+    if isinstance(v, dict):
+        return {str(k): _json_safe(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_json_safe(x) for x in v]
+    if isinstance(v, tuple):
+        return [_json_safe(x) for x in v]
+    return v
+
+
 def listar_politica(db: Session) -> list[LeasingOpPolitica]:
     return list(db.scalars(select(LeasingOpPolitica).where(LeasingOpPolitica.activo.is_(True))).all())
 
@@ -250,6 +265,8 @@ def crear_simulacion_y_calcular(
         "haircut_residual_pct": tipo.haircut_residual_pct,
     }
     result = run_economic_engine(inputs=inp, tipo_activo=tipo_d, politica=politica, plantillas_costo=plantillas)
+    inp_json = _json_safe(inp)
+    result_json = _json_safe(result)
 
     dec = result.get("decision") or {}
     sim = LeasingOpSimulacion(
@@ -263,8 +280,8 @@ def crear_simulacion_y_calcular(
         margen_pct=margen_pct,
         spread_pct=spread_pct,
         tir_objetivo_anual=tir_objetivo,
-        inputs_json=inp,
-        result_json=result,
+        inputs_json=inp_json,
+        result_json=result_json,
         decision_codigo=str(dec.get("decision_codigo") or "PENDIENTE"),
         decision_detalle=str(dec.get("decision_detalle") or ""),
         estado="COTIZADO",
@@ -279,7 +296,7 @@ def crear_simulacion_y_calcular(
         LeasingOpHistorial(
             simulacion_id=int(sim.id),
             evento="SIMULACION_CREADA",
-            detalle_json={"capex": result.get("capex_total")},
+            detalle_json={"capex": result_json.get("capex_total")},
             usuario=usuario,
         )
     )
