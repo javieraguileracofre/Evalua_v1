@@ -33,6 +33,7 @@ _PATCH_103 = _ROOT / "db" / "psql" / "103_leasing_operativo_contrato_cuota.sql"
 _PATCH_104 = _ROOT / "db" / "psql" / "104_leasing_operativo_activo_fijo.sql"
 _PATCH_105 = _ROOT / "db" / "psql" / "105_leasing_operativo_parametros_tipo.sql"
 _PATCH_106 = _ROOT / "db" / "psql" / "106_leasing_operativo_documentos.sql"
+_PATCH_107 = _ROOT / "db" / "psql" / "107_leasing_operativo_contabilidad_base.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -490,6 +491,30 @@ def ensure_leasing_operativo_schema(engine: Engine) -> None:
         except Exception as exc:
             logger.warning(
                 "No se pudo aplicar 106_leasing_operativo_documentos.sql. Detalle: %s",
+                exc,
+            )
+    # Config contable base LOP (usa tablas fin.config_* existentes).
+    if _PATCH_107.is_file() and _has_table(engine, schema="fin", table="config_contable_detalle_modulo"):
+        try:
+            with engine.connect() as conn:
+                lop_cfg = conn.execute(
+                    text(
+                        """
+                        SELECT 1
+                        FROM fin.config_contable_detalle_modulo
+                        WHERE modulo = 'LEASING_OP'
+                          AND codigo_evento IN ('LOP_ACTIVACION', 'LOP_FACTURACION', 'LOP_DEPRECIACION')
+                          AND estado = 'ACTIVO'
+                        LIMIT 1
+                        """
+                    )
+                ).scalar()
+            if not lop_cfg:
+                _run_sql_patch_autocommit(engine, _PATCH_107)
+                logger.info("Parche aplicado: configuración contable base leasing operativo (107).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 107_leasing_operativo_contabilidad_base.sql. Detalle: %s",
                 exc,
             )
     # Re-seed catálogos si existen tablas pero quedaron vacías por patch parcial/manual.

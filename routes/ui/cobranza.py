@@ -21,6 +21,7 @@ from crud.cobranza import cobranza as crud_cobranza
 from crud.comunicaciones import email_log as crud_email_log
 from db.session import get_db
 from models import Caja, Cliente
+from services.cobranza.pago_service import contabilizar_pago_cliente
 from services.comunicaciones.email_service import enviar_recordatorio_cobranza
 
 router = APIRouter(tags=["Cobranza"])
@@ -526,7 +527,7 @@ def cobranza_registrar_pago(
         raise HTTPException(status_code=404, detail="Cuenta por cobrar no encontrada")
 
     try:
-        crud_cobranza.crear_pago(
+        pago = crud_cobranza.crear_pago(
             db=db,
             cxc=cxc,
             fecha_pago=fecha_pago,
@@ -536,6 +537,11 @@ def cobranza_registrar_pago(
             referencia=referencia,
             observacion=observacion,
         )
+        auth = getattr(request.state, "auth_user", None)
+        actor = None
+        if isinstance(auth, dict):
+            actor = str(auth.get("email") or auth.get("username") or auth.get("sub") or "")
+        contabilizar_pago_cliente(db, pago_id=int(pago.id), usuario=actor, actualizar_cxc=False)
         return _redirect(
             request,
             "cobranza_detalle_cliente",

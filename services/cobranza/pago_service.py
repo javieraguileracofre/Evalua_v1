@@ -134,6 +134,7 @@ def contabilizar_pago_cliente(
     *,
     pago_id: int,
     usuario: Optional[str] = None,
+    actualizar_cxc: bool = True,
 ) -> None:
     pago = db.get(PagoCliente, pago_id)
     if not pago:
@@ -148,7 +149,8 @@ def contabilizar_pago_cliente(
         raise ValueError("Monto de pago no válido.")
 
     try:
-        _actualizar_cxc_por_pago(db, cxc, monto)
+        if actualizar_cxc:
+            _actualizar_cxc_por_pago(db, cxc, monto)
         _registrar_movimiento_caja_por_pago(db, pago)
 
         reglas = _obtener_configuracion_pago_cliente(db)

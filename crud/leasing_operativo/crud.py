@@ -11,7 +11,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from crud.comercial import credito_riesgo as crud_cr
+from crud.finanzas.config_contable import obtener_configuracion_evento_modulo
+from crud.finanzas.contabilidad_asientos import crear_asiento
+from crud.finanzas.cuentas_por_pagar import CuentasPorPagarCRUD
 from models.comercial.credito_riesgo import CreditoSolicitud
+from models.cobranza.cuentas_por_cobrar import CuentaPorCobrar
+from models.finanzas.compras_finanzas import APDocumento
+from models.maestros.proveedor import Proveedor
 from models.leasing_operativo.models import (
     LeasingOpActivoDepreciacion,
     LeasingOpActivoFijo,
@@ -26,6 +32,7 @@ from models.leasing_operativo.models import (
     LeasingOpSimulacion,
     LeasingOpTipoActivo,
 )
+from schemas.finanzas.cuentas_por_pagar import DocumentoCreate, DocumentoDetalleCreate
 from services.leasing_operativo.economic_engine import merge_politica, run_economic_engine
 
 
@@ -86,6 +93,366 @@ def _json_safe(v: Any) -> Any:
     if isinstance(v, tuple):
         return [_json_safe(x) for x in v]
     return v
+
+
+def _recompute_stage(wf: dict[str, Any]) -> str:
+    hitos = wf.get("hitos") or {}
+    cred = wf.get("credito") or {}
+    if hitos.get("activacion_contable"):
+        return "ACTIVADO_CONTABLE"
+    if hitos.get("factura_compra_recepcion"):
+        return "FACTURA_COMPRA"
+    if hitos.get("acta_entrega_recepcion"):
+        return "ENTREGA_RECEPCION"
+    if hitos.get("orden_compra_proveedor"):
+        return "ORDEN_COMPRA"
+    if hitos.get("contrato_confeccionado"):
+        return "CONTRATO_CONFECCIONADO"
+    d = str(cred.get("dictamen") or "PENDIENTE").upper()
+    if d in {"APROBAR", "OBSERVAR"}:
+        return "CREDITO_APROBADO"
+    if d == "RECHAZAR":
+        return "CREDITO_RECHAZADO"
+    if cred.get("solicitud_id"):
+        return "CREDITO_EN_EVALUACION"
+    return "COTIZACION"
+
+
+def _monto_from_reglas(reglas: list[dict[str, Any]], lado: str, ord_idx: int, default: Decimal) -> Decimal:
+    target = [r for r in reglas if str(r.get("lado") or "").upper() == lado and int(r.get("orden") or 0) == ord_idx]
+    return default if target else Decimal("0")
+
+
+def _crear_asiento_desde_config_evento(
+    db: Session,
+    *,
+    modulo: str,
+    submodulo: str,
+    tipo_documento: str,
+    codigo_evento: str,
+    monto_base: Decimal,
+    monto_iva: Decimal = Decimal("0"),
+    fecha: date | None = None,
+    origen_tipo: str,
+    origen_id: int,
+    glosa: str,
+    usuario: str | None = None,
+) -> int | None:
+    reglas = obtener_configuracion_evento_modulo(
+        db,
+        modulo=modulo,
+        submodulo=submodulo,
+        tipo_documento=tipo_documento,
+        codigo_evento=codigo_evento,
+    )
+    if not reglas:
+        return None
+    detalles: list[dict[str, Any]] = []
+    for r in reglas:
+        lado = str(r.get("lado") or "").upper()
+        orden = int(r.get("orden") or 1)
+        if lado not in {"DEBE", "HABER"}:
+            continue
+        monto = Decimal("0")
+        if orden == 1:
+            monto = monto_base
+        elif orden == 2:
+            monto = monto_iva
+        if monto <= 0:
+            continue
+        detalles.append(
+            {
+                "codigo_cuenta": str(r.get("codigo_cuenta") or "").strip(),
+                "descripcion": glosa[:120],
+                "debe": monto if lado == "DEBE" else Decimal("0"),
+                "haber": monto if lado == "HABER" else Decimal("0"),
+            }
+        )
+    if not detalles:
+        return None
+    return crear_asiento(
+        db,
+        fecha=fecha or datetime.now(timezone.utc).date(),
+        origen_tipo=origen_tipo,
+        origen_id=origen_id,
+        glosa=glosa[:255],
+        detalles=detalles,
+        usuario=usuario,
+        moneda="CLP",
+        do_commit=False,
+    )
+
+
+def _parse_date_iso(raw: Any) -> date:
+    s = str(raw or "").strip()
+    if not s:
+        return datetime.now(timezone.utc).date()
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).date()
+    except Exception:
+        return datetime.now(timezone.utc).date()
+
+
+def _resolve_proveedor_id(db: Session, proveedor_id: Any, proveedor_nombre: Any) -> int | None:
+    try:
+        pid = int(proveedor_id or 0)
+    except Exception:
+        pid = 0
+    if pid > 0:
+        p = db.get(Proveedor, pid)
+        return int(p.id) if p else None
+    nombre = str(proveedor_nombre or "").strip()
+    if not nombre:
+        return None
+    p = db.scalars(
+        select(Proveedor)
+        .where(Proveedor.razon_social.ilike(nombre), Proveedor.activo.is_(True))
+        .order_by(Proveedor.id.desc())
+        .limit(1)
+    ).first()
+    if p:
+        return int(p.id)
+    p = db.scalars(
+        select(Proveedor)
+        .where(Proveedor.razon_social.ilike(f"%{nombre}%"), Proveedor.activo.is_(True))
+        .order_by(Proveedor.id.desc())
+        .limit(1)
+    ).first()
+    return int(p.id) if p else None
+
+
+def _registrar_factura_compra_ap(
+    db: Session,
+    sim: LeasingOpSimulacion,
+    *,
+    data: dict[str, Any],
+    wf: dict[str, Any],
+    usuario: str,
+) -> dict[str, Any]:
+    out = dict(data or {})
+    ap_id = out.get("ap_documento_id")
+    if ap_id:
+        return out
+    docs = wf.get("documentos") or {}
+    oc = docs.get("orden_compra") or {}
+    proveedor_id = _resolve_proveedor_id(
+        db,
+        out.get("proveedor_id") or oc.get("proveedor_id"),
+        out.get("proveedor_nombre") or oc.get("proveedor_nombre"),
+    )
+    if not proveedor_id:
+        raise ValueError(
+            "No se pudo resolver proveedor para registrar factura en CxP. "
+            "Seleccione proveedor_id válido o registre proveedor maestro."
+        )
+    fecha_fact = _parse_date_iso(out.get("fecha_factura"))
+    neto = Decimal(str(out.get("neto") or 0))
+    iva = Decimal(str(out.get("iva") or 0))
+    total = Decimal(str(out.get("total") or 0))
+    if total <= 0:
+        raise ValueError("Factura de compra inválida: total debe ser mayor a 0.")
+    if neto <= 0:
+        neto = total - iva
+    # idempotencia: evitar doble AP para mismo proveedor+folio
+    folio = str(out.get("nro_factura") or f"LOP-{sim.id}").strip()
+    ap_exist = db.scalars(
+        select(APDocumento)
+        .where(APDocumento.proveedor_id == proveedor_id, APDocumento.folio == folio)
+        .order_by(APDocumento.id.desc())
+        .limit(1)
+    ).first()
+    if ap_exist:
+        out["proveedor_id"] = proveedor_id
+        out["ap_documento_id"] = int(ap_exist.id)
+        out["ap_asiento_id"] = int(ap_exist.asiento_id) if getattr(ap_exist, "asiento_id", None) else None
+        return out
+    payload = DocumentoCreate(
+        proveedor_id=proveedor_id,
+        tipo="FACTURA",
+        folio=folio,
+        fecha_emision=fecha_fact,
+        fecha_recepcion=fecha_fact,
+        fecha_vencimiento=_add_months(fecha_fact, 1),
+        moneda="CLP",
+        tipo_cambio=Decimal("1"),
+        es_exento="NO" if iva > 0 else "SI",
+        referencia=f"LOP {sim.codigo or sim.id}",
+        observaciones=f"Compra activo leasing operativo {sim.codigo or sim.id}",
+        detalles=[
+            DocumentoDetalleCreate(
+                descripcion=f"Compra activo leasing operativo {sim.codigo or sim.id}",
+                cantidad=Decimal("1"),
+                precio_unitario=neto,
+                descuento=Decimal("0"),
+                categoria_gasto_id=None,
+                centro_costo_id=None,
+            )
+        ],
+        impuestos=[],
+        tipo_compra_contable="INVENTARIO",
+        cuenta_gasto_codigo=None,
+        cuenta_proveedores_codigo=None,
+        generar_asiento_contable=True,
+    )
+    ap = CuentasPorPagarCRUD().create_documento(db, payload, user_email=usuario)
+    out["proveedor_id"] = proveedor_id
+    out["ap_documento_id"] = int(ap.id)
+    out["ap_asiento_id"] = int(ap.asiento_id) if getattr(ap, "asiento_id", None) else None
+    return out
+
+
+def _registrar_cxc_contrato(
+    db: Session,
+    sim: LeasingOpSimulacion,
+    *,
+    usuario: str,
+) -> dict[str, Any]:
+    contrato = obtener_contrato_por_simulacion(db, int(sim.id))
+    if not contrato:
+        raise ValueError("No existe contrato para activar contablemente.")
+    if not sim.cliente_id:
+        raise ValueError("Simulación sin cliente; no se puede crear cartera CxC.")
+    iva_pct = Decimal(str((sim.result_json or {}).get("iva_pct") or 0))
+    factor = Decimal("1") + (iva_pct / Decimal("100"))
+    creadas = 0
+    for c in contrato.cuotas or []:
+        ref = f"LOP_CONTRATO:{int(contrato.id)}:CUOTA:{int(c.nro)}"
+        existe = db.scalars(
+            select(CuentaPorCobrar).where(
+                CuentaPorCobrar.cliente_id == int(sim.cliente_id),
+                CuentaPorCobrar.observacion == ref,
+            ).limit(1)
+        ).first()
+        if existe:
+            continue
+        bruto = (Decimal(str(c.monto_renta or 0)) * factor).quantize(Decimal("0.01"))
+        db.add(
+            CuentaPorCobrar(
+                cliente_id=int(sim.cliente_id),
+                nota_venta_id=None,
+                fecha_emision=contrato.fecha_inicio,
+                fecha_vencimiento=c.fecha_vencimiento,
+                monto_original=bruto,
+                saldo_pendiente=bruto,
+                estado="PENDIENTE",
+                observacion=ref,
+            )
+        )
+        creadas += 1
+    return {"contrato_id": int(contrato.id), "cuentas_por_cobrar_creadas": creadas, "iva_pct": float(iva_pct)}
+
+
+def _registrar_asiento_activacion(
+    db: Session,
+    sim: LeasingOpSimulacion,
+    *,
+    contrato_id: int,
+    usuario: str,
+) -> int | None:
+    docs = ((_get_workflow(sim).get("documentos") or {}).get("factura_compra") or {})
+    total = Decimal(str(docs.get("total") or 0))
+    iva = Decimal(str(docs.get("iva") or 0))
+    base = total - iva if total > iva else total
+    return _crear_asiento_desde_config_evento(
+        db,
+        modulo="LEASING_OP",
+        submodulo="ACTIVACION",
+        tipo_documento="CONTRATO",
+        codigo_evento="LOP_ACTIVACION",
+        monto_base=base,
+        monto_iva=Decimal("0"),
+        fecha=datetime.now(timezone.utc).date(),
+        origen_tipo="LOP_ACTIVACION",
+        origen_id=int(contrato_id),
+        glosa=f"Activación contable leasing operativo contrato {contrato_id}",
+        usuario=usuario,
+    )
+
+
+def facturar_cuotas_periodo(
+    db: Session,
+    contrato: LeasingOpContrato,
+    *,
+    periodo_yyyymm: str,
+    usuario: str = "sistema",
+) -> dict[str, Any]:
+    periodo = (periodo_yyyymm or "").strip()
+    if len(periodo) != 6 or not periodo.isdigit():
+        raise ValueError("Periodo inválido. Use formato YYYYMM.")
+    y = int(periodo[:4])
+    m = int(periodo[4:6])
+    if m < 1 or m > 12:
+        raise ValueError("Periodo inválido. Mes debe estar entre 01 y 12.")
+    sim = contrato.simulacion
+    if not sim or not sim.cliente_id:
+        raise ValueError("Contrato sin simulación/cliente; no se puede facturar.")
+    iva_pct = Decimal(str((sim.result_json or {}).get("iva_pct") or 0))
+    iva_factor = iva_pct / Decimal("100")
+    created = 0
+    asiento_ids: list[int] = []
+    for q in contrato.cuotas or []:
+        if q.fecha_vencimiento.year != y or q.fecha_vencimiento.month != m:
+            continue
+        ref = f"LOP_FACT:{int(contrato.id)}:CUOTA:{int(q.nro)}:{periodo}"
+        exists = db.scalars(
+            select(CuentaPorCobrar).where(
+                CuentaPorCobrar.cliente_id == int(sim.cliente_id),
+                CuentaPorCobrar.observacion == ref,
+            ).limit(1)
+        ).first()
+        if exists:
+            continue
+        neto = Decimal(str(q.monto_renta or 0)).quantize(Decimal("0.01"))
+        iva = (neto * iva_factor).quantize(Decimal("0.01"))
+        bruto = (neto + iva).quantize(Decimal("0.01"))
+        db.add(
+            CuentaPorCobrar(
+                cliente_id=int(sim.cliente_id),
+                nota_venta_id=None,
+                fecha_emision=q.fecha_vencimiento,
+                fecha_vencimiento=q.fecha_vencimiento,
+                monto_original=bruto,
+                saldo_pendiente=bruto,
+                estado="PENDIENTE",
+                observacion=ref,
+            )
+        )
+        aid = _crear_asiento_desde_config_evento(
+            db,
+            modulo="LEASING_OP",
+            submodulo="FACTURACION",
+            tipo_documento="CUOTA",
+            codigo_evento="LOP_FACTURACION",
+            monto_base=neto,
+            monto_iva=iva,
+            fecha=q.fecha_vencimiento,
+            origen_tipo="LOP_FACTURACION",
+            origen_id=int(contrato.id),
+            glosa=f"Facturación cuota {q.nro} contrato {contrato.codigo}",
+            usuario=usuario,
+        )
+        if aid:
+            asiento_ids.append(int(aid))
+        created += 1
+    if created == 0:
+        return {"periodo": periodo, "cuotas_facturadas": 0, "asientos": []}
+    db.add(
+        LeasingOpHistorial(
+            simulacion_id=int(sim.id),
+            evento="FACTURACION_MENSUAL_GENERADA",
+            detalle_json={"periodo": periodo, "cuotas": created, "asientos": asiento_ids},
+            usuario=usuario,
+        )
+    )
+    wf = _get_workflow(sim)
+    wf.setdefault("contabilidad", {})["facturacion_mensual"] = {"periodo": periodo, "cuotas": created, "asientos": asiento_ids}
+    wf["etapa_actual"] = _recompute_stage(wf)
+    rj = dict(sim.result_json or {})
+    rj["workflow_v1"] = _json_safe(wf)
+    sim.result_json = rj
+    db.add(sim)
+    db.flush()
+    return {"periodo": periodo, "cuotas_facturadas": created, "asientos": asiento_ids}
 
 
 def _workflow_default() -> dict[str, Any]:
@@ -476,6 +843,7 @@ def sincronizar_estado_credito(db: Session, sim: LeasingOpSimulacion, *, usuario
         wf["hitos"]["resultado_credito"] = True
         wf["checklist_documental"]["aprobacion_credito"] = False
         wf["etapa_actual"] = "CREDITO_RECHAZADO"
+    wf["etapa_actual"] = _recompute_stage(wf)
     return _save_workflow(db, sim, wf, usuario, "CREDITO_ESTADO_SINCRONIZADO", {"estado_credito": sol.estado, "dictamen": dictamen})
 
 
@@ -555,10 +923,20 @@ def registrar_hito_operativo(
         hitos["activacion_contable"] = True
         docs["activacion_contable"] = True
         wf["etapa_actual"] = "ACTIVADO_CONTABLE"
+        cxc = _registrar_cxc_contrato(db, sim, usuario=usuario)
+        ctr_id = int(cxc.get("contrato_id") or 0)
+        as_id = _registrar_asiento_activacion(db, sim, contrato_id=ctr_id, usuario=usuario) if ctr_id > 0 else None
+        wf.setdefault("contabilidad", {})["cxc"] = _json_safe(cxc)
+        if as_id:
+            wf.setdefault("contabilidad", {})["asiento_activacion_id"] = int(as_id)
         ev = "CONTRATO_ACTIVADO_CONTABLE"
     else:
         raise ValueError("Hito operativo inválido.")
-    return _save_workflow(db, sim, wf, usuario, ev, {"hito": h})
+    detalle = {"hito": h}
+    if h == "activacion_contable":
+        detalle["contabilidad"] = wf.get("contabilidad")
+    wf["etapa_actual"] = _recompute_stage(wf)
+    return _save_workflow(db, sim, wf, usuario, ev, detalle)
 
 
 def guardar_documento_proceso(
@@ -574,7 +952,19 @@ def guardar_documento_proceso(
     m = (modulo or "").strip().lower()
     if m not in {"contrato", "orden_compra", "acta_entrega", "factura_compra"}:
         raise ValueError("Módulo documental inválido.")
-    docs[m] = _json_safe(data)
+    hit = wf.setdefault("hitos", {})
+    if m == "contrato" and not hit.get("resultado_credito"):
+        raise ValueError("Primero debe existir resultado de crédito.")
+    if m == "orden_compra" and not hit.get("contrato_confeccionado"):
+        raise ValueError("Primero debe confeccionar contrato.")
+    if m == "acta_entrega" and not hit.get("orden_compra_proveedor"):
+        raise ValueError("Primero debe registrar orden de compra.")
+    if m == "factura_compra" and not hit.get("acta_entrega_recepcion"):
+        raise ValueError("Primero debe registrar acta de entrega/recepción.")
+    clean_data = _json_safe(data) or {}
+    if m == "factura_compra":
+        clean_data = _registrar_factura_compra_ap(db, sim, data=clean_data, wf=wf, usuario=usuario)
+    docs[m] = _json_safe(clean_data)
     wf["documentos"] = docs
     # Persistencia relacional versionada para reimpresión/auditoría.
     ultima = db.scalars(
@@ -593,7 +983,7 @@ def guardar_documento_proceso(
             modulo=m,
             version_n=next_v,
             estado="VIGENTE",
-            payload_json=_json_safe(data) or {},
+            payload_json=_json_safe(clean_data) or {},
             usuario=usuario,
         )
     )
@@ -613,7 +1003,8 @@ def guardar_documento_proceso(
         wf["hitos"]["factura_compra_recepcion"] = True
         wf["checklist_documental"]["factura_compra"] = True
         wf["etapa_actual"] = "FACTURA_COMPRA"
-    return _save_workflow(db, sim, wf, usuario, f"DOC_{m.upper()}_GUARDADO", {"modulo": m})
+    wf["etapa_actual"] = _recompute_stage(wf)
+    return _save_workflow(db, sim, wf, usuario, f"DOC_{m.upper()}_GUARDADO", {"modulo": m, "data": clean_data})
 
 
 def obtener_documento_proceso_actual(
@@ -666,6 +1057,11 @@ def resolver_comite(db: Session, com: LeasingOpComite, decision: str, comentario
         sim.estado = "RECHAZADO"
     else:
         sim.estado = "COTIZADO"
+    wf = _get_workflow(sim)
+    wf["etapa_actual"] = _recompute_stage(wf)
+    rj = dict(sim.result_json or {})
+    rj["workflow_v1"] = _json_safe(wf)
+    sim.result_json = rj
     db.add(com)
     db.add(sim)
     db.flush()
@@ -768,6 +1164,7 @@ def crear_contrato_y_cuotas(
     docs["cotizacion"] = True
     wf["checklist_documental"] = docs
     rj = dict(sim.result_json or {})
+    wf["etapa_actual"] = _recompute_stage(wf)
     rj["workflow_v1"] = _json_safe(wf)
     sim.result_json = rj
     db.add(sim)
@@ -861,10 +1258,15 @@ def generar_depreciacion_mensual_activo(
     activo: LeasingOpActivoFijo,
     periodo_yyyymm: str,
     asiento_ref: str | None = None,
+    usuario: str = "sistema",
 ) -> LeasingOpActivoDepreciacion:
     periodo = (periodo_yyyymm or "").strip()
     if len(periodo) != 6 or not periodo.isdigit():
         raise ValueError("Periodo inválido. Use formato YYYYMM.")
+    y = int(periodo[:4])
+    m = int(periodo[4:6])
+    if m < 1 or m > 12:
+        raise ValueError("Periodo inválido. Mes debe estar entre 01 y 12.")
     existing = db.scalars(
         select(LeasingOpActivoDepreciacion).where(
             LeasingOpActivoDepreciacion.activo_id == int(activo.id),
@@ -886,6 +1288,23 @@ def generar_depreciacion_mensual_activo(
         valor_libro_cierre=nuevo_libro,
         asiento_ref=(asiento_ref or "").strip() or None,
     )
+    if not row.asiento_ref:
+        as_id = _crear_asiento_desde_config_evento(
+            db,
+            modulo="LEASING_OP",
+            submodulo="DEPRECIACION",
+            tipo_documento="ACTIVO_FIJO",
+            codigo_evento="LOP_DEPRECIACION",
+            monto_base=dep,
+            monto_iva=Decimal("0"),
+            fecha=date(y, m, 1),
+            origen_tipo="LOP_DEPRECIACION",
+            origen_id=int(activo.id),
+            glosa=f"Depreciación activo {activo.codigo} periodo {periodo}",
+            usuario=usuario,
+        )
+        if as_id:
+            row.asiento_ref = str(as_id)
     activo.valor_libro = nuevo_libro
     db.add(row)
     db.add(activo)

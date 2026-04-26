@@ -17,6 +17,17 @@
     {% endif %}
   </div>
   <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white">
+      <form method="post" action="{{ request.url_for('leasing_operativo_contrato_facturar_periodo', cid=ctr.id) }}" class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Facturar periodo (YYYYMM)</label>
+          <input name="periodo_yyyymm" class="form-control form-control-sm" value="{{ ctr.fecha_inicio.strftime('%Y%m') if ctr.fecha_inicio else '' }}" />
+        </div>
+        <div class="col-md-3">
+          <button class="btn btn-sm btn-outline-primary w-100" type="submit">Generar facturación mensual</button>
+        </div>
+      </form>
+    </div>
     <div class="card-header bg-white fw-semibold">Plan de cuotas (renta)</div>
     <div class="table-responsive">
       <table class="table table-sm table-striped mb-0">

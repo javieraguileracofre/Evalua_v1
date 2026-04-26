@@ -7,6 +7,9 @@
   <div class="card border-0 shadow-sm">
     <div class="card-body">
       <form method="post" action="{{ request.url_for('leasing_operativo_factura_builder_save', sim_id=sim.id) }}" class="row g-3">
+        <input type="hidden" name="ap_documento_id" value="{{ doc.get('ap_documento_id', '') }}" />
+        <div class="col-md-4"><label class="form-label">Proveedor ID (maestro)</label><input name="proveedor_id" class="form-control" value="{{ doc.get('proveedor_id', '') }}" /></div>
+        <div class="col-md-8"><label class="form-label">Proveedor nombre (fallback búsqueda)</label><input name="proveedor_nombre" class="form-control" value="{{ doc.get('proveedor_nombre', '') }}" /></div>
         <div class="col-md-4"><label class="form-label">N° factura</label><input name="nro_factura" class="form-control" value="{{ doc.get('nro_factura', '') }}" required /></div>
         <div class="col-md-4"><label class="form-label">Fecha factura</label><input type="date" name="fecha_factura" class="form-control" value="{{ doc.get('fecha_factura', '') }}" required /></div>
         <div class="col-md-4"><label class="form-label">Neto</label><input name="neto" class="form-control" value="{{ doc.get('neto', '') }}" required /></div>
@@ -16,6 +19,9 @@
         <div class="col-12">
           <div class="alert alert-light border small mb-0">
             Sugerencia contable: Dr Activo fijo / Dr IVA crédito fiscal / Cr CxP proveedor. Luego, al pago, Dr CxP / Cr Banco.
+            {% if doc.get('ap_documento_id') %}
+            <br />Documento AP registrado: <strong>#{{ doc.get('ap_documento_id') }}</strong>{% if doc.get('ap_asiento_id') %} · Asiento: <strong>#{{ doc.get('ap_asiento_id') }}</strong>{% endif %}
+            {% endif %}
           </div>
         </div>
         <div class="col-12 d-grid"><button class="btn btn-primary" type="submit">Guardar factura y referencia contable</button></div>

@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
 from sqlalchemy.orm import Session
 
-from core.rbac import usuario_es_admin
+from core.rbac import usuario_es_admin, usuario_tiene_rol
 from core.paths import TEMPLATES_DIR
 from crud.leasing_operativo import crud as lo_crud
 from crud.maestros.cliente import listar_clientes
@@ -30,6 +30,23 @@ def _guard_param_admin(request: Request) -> RedirectResponse | None:
         url="/?msg=Solo+jefe+comercial%2Fadmin+puede+modificar+parametros+LOP&sev=danger",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+def _guard_operacion_write(request: Request) -> RedirectResponse | None:
+    auth = getattr(request.state, "auth_user", None)
+    if usuario_es_admin(auth) or usuario_tiene_rol(auth, "OPERACIONES") or usuario_tiene_rol(auth, "FINANZAS"):
+        return None
+    return RedirectResponse(
+        url="/?msg=No+tiene+permiso+para+modificar+leasing+operativo&sev=danger",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+def _actor(request: Request) -> str:
+    auth = getattr(request.state, "auth_user", None)
+    if isinstance(auth, dict):
+        return str(auth.get("email") or auth.get("username") or auth.get("sub") or "sistema")
+    return "sistema"
 
 
 def _dec(raw: str | None, default: str = "0") -> Decimal:
@@ -168,7 +185,9 @@ def lo_tablero(request: Request, db: Session = Depends(get_db)):
     rows = lo_crud.listar_simulaciones(db, limit=400)
     etapas = [
         "COTIZACION",
+        "CREDITO_EN_EVALUACION",
         "CREDITO_APROBADO",
+        "CREDITO_RECHAZADO",
         "CONTRATO_CONFECCIONADO",
         "ORDEN_COMPRA",
         "ENTREGA_RECEPCION",
@@ -384,6 +403,9 @@ def lo_simulador_post(
     riesgo_uso_mult: str = Form("1"),
     riesgo_liq_mult: str = Form("1"),
 ):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     tid = _int(tipo_activo_id, 0)
     if tid <= 0:
         raise HTTPException(400, "Tipo de activo requerido")
@@ -453,6 +475,7 @@ def lo_simulador_post(
             spread_pct=_dec(spread_pct) if str(metodo_pricing).upper() == "COSTO_SPREAD" else None,
             tir_objetivo=_dec(tir_objetivo_anual) if str(metodo_pricing).upper() == "TIR_OBJETIVO" else None,
             inputs=inputs,
+            usuario=_actor(request),
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
@@ -468,7 +491,7 @@ def lo_detail(request: Request, sim_id: int, db: Session = Depends(get_db)):
     if not sim:
         raise HTTPException(404, "Simulación no encontrada")
     try:
-        sim = lo_crud.sincronizar_estado_credito(db, sim, usuario="sistema")
+        sim = lo_crud.sincronizar_estado_credito(db, sim, usuario=_actor(request))
     except Exception:
         pass
     res = sim.result_json or {}
@@ -519,13 +542,16 @@ def lo_cotizacion_pdf(sim_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/operacion/{sim_id}/contrato", name="leasing_operativo_crear_contrato")
+@router.post("/operacion/{sim_id}/contrato/generar", name="leasing_operativo_crear_contrato")
 def lo_crear_contrato(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
     try:
-        lo_crud.crear_contrato_y_cuotas(db, sim, usuario="sistema")
+        lo_crud.crear_contrato_y_cuotas(db, sim, usuario=_actor(request))
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     return RedirectResponse(
@@ -540,11 +566,14 @@ def lo_derivar_credito(
     sim_id: int,
     db: Session = Depends(get_db),
 ):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
     try:
-        _, sol = lo_crud.derivar_a_credito(db, sim, usuario="sistema")
+        _, sol = lo_crud.derivar_a_credito(db, sim, usuario=_actor(request))
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     # abrir ficha de crédito/riesgo para evaluación formal
@@ -560,10 +589,13 @@ def lo_sync_credito(
     sim_id: int,
     db: Session = Depends(get_db),
 ):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
-    lo_crud.sincronizar_estado_credito(db, sim, usuario="sistema")
+    lo_crud.sincronizar_estado_credito(db, sim, usuario=_actor(request))
     return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
 
 
@@ -574,11 +606,14 @@ def lo_registrar_hito(
     db: Session = Depends(get_db),
     hito: str = Form(...),
 ):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
     try:
-        lo_crud.registrar_hito_operativo(db, sim, hito=hito, usuario="sistema")
+        lo_crud.registrar_hito_operativo(db, sim, hito=hito, usuario=_actor(request))
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
@@ -607,6 +642,9 @@ def lo_contrato_builder_save(
     lugar_firma: str = Form(""),
     observaciones: str = Form(""),
 ):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
@@ -620,7 +658,7 @@ def lo_contrato_builder_save(
             "lugar_firma": lugar_firma,
             "observaciones": observaciones,
         },
-        usuario="sistema",
+        usuario=_actor(request),
     )
     return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
 
@@ -645,6 +683,7 @@ def lo_oc_builder_save(
     sim_id: int,
     db: Session = Depends(get_db),
     proveedor_nombre: str = Form(""),
+    proveedor_id: str = Form(""),
     oc_numero: str = Form(""),
     fecha_oc: str = Form(""),
     monto_oc: str = Form("0"),
@@ -655,6 +694,9 @@ def lo_oc_builder_save(
     anio: str = Form("2024"),
     vin_serie: str = Form(""),
 ):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
@@ -678,13 +720,14 @@ def lo_oc_builder_save(
         modulo="orden_compra",
         data={
             "proveedor_nombre": proveedor_nombre,
+            "proveedor_id": _int(proveedor_id) or None,
             "oc_numero": oc_numero,
             "fecha_oc": fecha_oc,
             "monto_oc": float(_dec(monto_oc)),
             "activo_fijo_id": int(activo_creado.id) if activo_creado else None,
             "activo_fijo_codigo": getattr(activo_creado, "codigo", None),
         },
-        usuario="sistema",
+        usuario=_actor(request),
     )
     return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
 
@@ -714,6 +757,9 @@ def lo_acta_builder_save(
     checklist_seguridad: str = Form(""),
     observaciones: str = Form(""),
 ):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
@@ -729,7 +775,7 @@ def lo_acta_builder_save(
             "checklist_seguridad": checklist_seguridad,
             "observaciones": observaciones,
         },
-        usuario="sistema",
+        usuario=_actor(request),
     )
     return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
 
@@ -758,7 +804,13 @@ def lo_factura_builder_save(
     iva: str = Form("0"),
     total: str = Form("0"),
     asiento_manual_ref: str = Form(""),
+    proveedor_id: str = Form(""),
+    proveedor_nombre: str = Form(""),
+    ap_documento_id: str = Form(""),
 ):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
@@ -773,10 +825,35 @@ def lo_factura_builder_save(
             "iva": float(_dec(iva)),
             "total": float(_dec(total)),
             "asiento_manual_ref": asiento_manual_ref,
+            "proveedor_id": _int(proveedor_id) or None,
+            "proveedor_nombre": proveedor_nombre,
+            "ap_documento_id": _int(ap_documento_id) or None,
         },
-        usuario="sistema",
+        usuario=_actor(request),
     )
     return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
+
+
+@router.post("/cartera/contrato/{cid}/facturar", name="leasing_operativo_contrato_facturar_periodo")
+def lo_contrato_facturar_periodo(
+    request: Request,
+    cid: int,
+    db: Session = Depends(get_db),
+    periodo_yyyymm: str = Form(...),
+):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
+    ctr = lo_crud.obtener_contrato(db, cid)
+    if not ctr:
+        raise HTTPException(404)
+    try:
+        lo_crud.facturar_cuotas_periodo(db, ctr, periodo_yyyymm=periodo_yyyymm, usuario=_actor(request))
+        db.commit()
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(400, str(e)) from e
+    return RedirectResponse(str(request.url_for("leasing_operativo_contrato_detail", cid=cid)), status_code=303)
 
 
 @router.get("/cartera", response_class=HTMLResponse, name="leasing_operativo_cartera")
@@ -861,22 +938,28 @@ def lo_comite_resolver(
     decision: str = Form(...),
     comentario: str = Form(""),
 ):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     c = lo_crud.obtener_comite(db, cid)
     if not c or c.estado != "PENDIENTE":
         raise HTTPException(400, "Comité no disponible")
     d = str(decision).strip().upper()
     if d not in ("APROBAR", "RECHAZAR", "CONDICIONES"):
         raise HTTPException(400, "Decisión inválida")
-    lo_crud.resolver_comite(db, c, d, comentario or "", "sistema")
+    lo_crud.resolver_comite(db, c, d, comentario or "", _actor(request))
     return RedirectResponse(str(request.url_for("leasing_operativo_comite_list")), status_code=303)
 
 
 @router.post("/operacion/{sim_id}/comite", name="leasing_operativo_comite_abrir")
 def lo_comite_abrir(request: Request, sim_id: int, db: Session = Depends(get_db), resumen: str = Form("")):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
-    lo_crud.abrir_comite(db, sim, resumen or "Evaluación comité leasing operativo.")
+    lo_crud.abrir_comite(db, sim, resumen or "Evaluación comité leasing operativo.", usuario=_actor(request))
     return RedirectResponse(str(request.url_for("leasing_operativo_comite_list")), status_code=303)
 
 
@@ -904,6 +987,9 @@ def lo_activos_post(
     valor_residual_esperado: str = Form("0"),
     vida_util_meses_sii: str = Form("60"),
 ):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     tid = _int(tipo_activo_id, 0) or None
     lo_crud.crear_activo_fijo(
         db,
@@ -939,11 +1025,20 @@ def lo_activo_depreciar(
     periodo_yyyymm: str = Form(...),
     asiento_ref: str = Form(""),
 ):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
     a = lo_crud.obtener_activo_fijo(db, aid)
     if not a:
         raise HTTPException(404)
     try:
-        lo_crud.generar_depreciacion_mensual_activo(db, activo=a, periodo_yyyymm=periodo_yyyymm, asiento_ref=asiento_ref)
+        lo_crud.generar_depreciacion_mensual_activo(
+            db,
+            activo=a,
+            periodo_yyyymm=periodo_yyyymm,
+            asiento_ref=asiento_ref,
+            usuario=_actor(request),
+        )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     return RedirectResponse(
