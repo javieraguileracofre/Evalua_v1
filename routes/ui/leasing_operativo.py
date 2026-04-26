@@ -61,6 +61,10 @@ def _date(raw: str | None) -> date:
         return datetime.utcnow().date()
 
 
+def _num(raw: str | None, default: str = "0") -> float:
+    return float(_dec(raw, default))
+
+
 def _build_inputs_from_form(form: dict[str, str]) -> dict:
     return {
         "moneda": (form.get("moneda") or "CLP").upper(),
@@ -217,36 +221,36 @@ def lo_parametros_save(
     if (redir := _guard_param_admin(request)) is not None:
         return redir
     perfil = {
-        "uso": {"km_anual": _dec(km_anual), "horas_anual": _dec(horas_anual)},
+        "uso": {"km_anual": _num(km_anual), "horas_anual": _num(horas_anual)},
         "activo": {
-            "marca_modelo_factor": _dec(marca_modelo_factor),
-            "sector_economico_mult": _dec(sector_economico_mult),
-            "inflacion_activo_pct_anual": _dec(inflacion_activo_pct_anual),
-            "condicion_factor": _dec(condicion_factor),
+            "marca_modelo_factor": _num(marca_modelo_factor, "1"),
+            "sector_economico_mult": _num(sector_economico_mult, "1"),
+            "inflacion_activo_pct_anual": _num(inflacion_activo_pct_anual, "3"),
+            "condicion_factor": _num(condicion_factor, "1"),
         },
         "collateral": {
-            "costo_repossession": _dec(col_costo_repossession),
-            "costo_legal": _dec(col_costo_legal),
-            "transporte": _dec(col_transporte),
-            "reacondicionamiento": _dec(col_reacondicionamiento),
-            "descuento_venta_forzada_pct": _dec(col_descuento_venta_forzada_pct),
+            "costo_repossession": _num(col_costo_repossession),
+            "costo_legal": _num(col_costo_legal),
+            "transporte": _num(col_transporte),
+            "reacondicionamiento": _num(col_reacondicionamiento),
+            "descuento_venta_forzada_pct": _num(col_descuento_venta_forzada_pct, "12"),
             "meses_liquidacion": _int(col_meses_liquidacion, 4),
-            "tasa_fin_liquidacion_mensual": _dec(col_tasa_fin_liquidacion_mensual),
+            "tasa_fin_liquidacion_mensual": _num(col_tasa_fin_liquidacion_mensual, "0.008"),
         },
         "riesgo": {
             "segmento_cliente": (riesgo_segmento_cliente or "MEDIO").upper(),
-            "sector_mult": _dec(riesgo_sector_mult),
-            "activo_mult": _dec(riesgo_activo_mult),
-            "uso_intensivo_mult": _dec(riesgo_uso_intensivo_mult),
-            "liquidez_mult": _dec(riesgo_liquidez_mult),
+            "sector_mult": _num(riesgo_sector_mult, "1"),
+            "activo_mult": _num(riesgo_activo_mult, "1"),
+            "uso_intensivo_mult": _num(riesgo_uso_intensivo_mult, "1"),
+            "liquidez_mult": _num(riesgo_liquidez_mult, "1"),
         },
         "comercial": {
-            "comision_vendedor": _dec(comision_vendedor),
-            "comision_canal": _dec(comision_canal),
-            "costo_adquisicion": _dec(costo_adquisicion),
-            "evaluacion": _dec(evaluacion),
-            "legal": _dec(legal),
-            "onboarding": _dec(onboarding),
+            "comision_vendedor": _num(comision_vendedor),
+            "comision_canal": _num(comision_canal),
+            "costo_adquisicion": _num(costo_adquisicion),
+            "evaluacion": _num(evaluacion),
+            "legal": _num(legal),
+            "onboarding": _num(onboarding),
         },
     }
     lo_crud.upsert_parametro_tipo(
