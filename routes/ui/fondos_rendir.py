@@ -104,6 +104,20 @@ def fondos_rendir_hub(
         return redir
     stats = crud_fr.dashboard_stats(db)
     fondos = crud_fr.listar_fondos(db, limite=50)
+    setup_contable: dict[str, Any] = {"ok": False, "msg": "", "cuentas": {}}
+    try:
+        cuentas = diagnosticar_setup_contable(db)
+        setup_contable = {
+            "ok": True,
+            "msg": "Configuración contable validada.",
+            "cuentas": cuentas,
+        }
+    except ValueError as e:
+        setup_contable = {
+            "ok": False,
+            "msg": public_error_message(e),
+            "cuentas": {},
+        }
     return templates.TemplateResponse(
         "fondos_rendir/hub.html",
         {
@@ -111,6 +125,7 @@ def fondos_rendir_hub(
             "active_menu": "fondos_rendir",
             "stats": stats,
             "fondos": fondos,
+            "setup_contable": setup_contable,
         },
     )
 

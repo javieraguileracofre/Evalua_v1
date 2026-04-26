@@ -234,6 +234,35 @@
 </div>
 
 <div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="fr-dark-card p-3 border-start border-4 {% if setup_contable.ok %}border-success{% else %}border-danger{% endif %}">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <div class="text-uppercase small fw-semibold mb-1" style="color:#c5d3e3;">Diagnóstico contable</div>
+          {% if setup_contable.ok %}
+            <div class="small">
+              <span class="badge bg-success">OK</span>
+              {{ setup_contable.msg }}
+              Anticipo: <strong>{{ setup_contable.cuentas.anticipo.codigo }}</strong>,
+              Caja: <strong>{{ setup_contable.cuentas.caja.codigo }}</strong>,
+              Gasto: <strong>{{ setup_contable.cuentas.gasto.codigo }}</strong>.
+            </div>
+          {% else %}
+            <div class="small">
+              <span class="badge bg-danger">Requiere revisión</span>
+              {{ setup_contable.msg }}
+            </div>
+          {% endif %}
+        </div>
+        <a href="{{ request.url_for('fondos_rendir_diagnostico_contable') }}" class="btn btn-sm btn-fr-ghost">
+          Revalidar
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
   <div class="col-6 col-xl-3">
     <div class="fr-dark-card p-3 h-100">
       <div class="text-uppercase small fw-semibold mb-2" style="color:#c5d3e3;">Anticipos abiertos</div>
