@@ -30,6 +30,7 @@ _PATCH_100 = _ROOT / "db" / "psql" / "100_comercial_leasing_financiero.sql"
 _PATCH_101 = _ROOT / "db" / "psql" / "101_credito_riesgo.sql"
 _PATCH_102 = _ROOT / "db" / "psql" / "102_leasing_operativo.sql"
 _PATCH_103 = _ROOT / "db" / "psql" / "103_leasing_operativo_contrato_cuota.sql"
+_PATCH_104 = _ROOT / "db" / "psql" / "104_leasing_operativo_activo_fijo.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -460,6 +461,15 @@ def ensure_leasing_operativo_schema(engine: Engine) -> None:
         except Exception as exc:
             logger.warning(
                 "No se pudo aplicar 103_leasing_operativo_contrato_cuota.sql. Detalle: %s",
+                exc,
+            )
+    if _PATCH_104.is_file() and not _has_table(engine, schema="public", table="leasing_op_activo_fijo"):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_104)
+            logger.info("Parche aplicado: leasing operativo activo fijo (104).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 104_leasing_operativo_activo_fijo.sql. Detalle: %s",
                 exc,
             )
 

@@ -1,0 +1,59 @@
+{% extends "layout/base.html" %}
+{% block title %}Activos fijos LOP{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/leasing_operativo.css" />
+<div class="container py-4 lo-page">
+  <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+    <div>
+      <a href="{{ request.url_for('leasing_operativo_list') }}" class="small text-decoration-none">← Simulaciones</a>
+      <h1 class="h5 fw-semibold mt-1 mb-0">Activos fijos — leasing operativo</h1>
+      <p class="text-secondary small mb-0">Gestión de activo y depreciación mensual (SII).</p>
+    </div>
+  </div>
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold">Nuevo activo</div>
+    <div class="card-body">
+      <form method="post" action="{{ request.url_for('leasing_operativo_activos_post') }}" class="row g-2">
+        <div class="col-md-3">
+          <label class="form-label">Tipo activo</label>
+          <select name="tipo_activo_id" class="form-select">
+            <option value="">—</option>
+            {% for t in tipos %}<option value="{{ t.id }}">{{ t.nombre }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2"><label class="form-label">Marca</label><input name="marca" class="form-control" required /></div>
+        <div class="col-md-2"><label class="form-label">Modelo</label><input name="modelo" class="form-control" required /></div>
+        <div class="col-md-2"><label class="form-label">Año</label><input name="anio" type="number" class="form-control" value="2024" required /></div>
+        <div class="col-md-3"><label class="form-label">VIN / Serie</label><input name="vin_serie" class="form-control" /></div>
+        <div class="col-md-3"><label class="form-label">Fecha compra</label><input type="date" name="fecha_compra" class="form-control" /></div>
+        <div class="col-md-3"><label class="form-label">Costo compra (CLP)</label><input name="costo_compra" class="form-control" value="0" /></div>
+        <div class="col-md-3"><label class="form-label">Residual esperado</label><input name="valor_residual_esperado" class="form-control" value="0" /></div>
+        <div class="col-md-2"><label class="form-label">Vida útil SII (meses)</label><input name="vida_util_meses_sii" class="form-control" value="60" /></div>
+        <div class="col-md-1 d-grid align-items-end"><button class="btn btn-primary" type="submit">Crear</button></div>
+      </form>
+    </div>
+  </div>
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead class="table-light"><tr><th>Código</th><th>Activo</th><th>Costo</th><th>Valor libro</th><th>Dep. mensual</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          {% for a in items %}
+          <tr>
+            <td class="font-monospace small">{{ a.codigo }}</td>
+            <td>{{ a.marca }} {{ a.modelo }} ({{ a.anio }})</td>
+            <td>{{ "{:,.0f}".format(a.costo_compra or 0).replace(",", ".") }}</td>
+            <td>{{ "{:,.0f}".format(a.valor_libro or 0).replace(",", ".") }}</td>
+            <td>{{ "{:,.0f}".format(a.depreciacion_mensual_sii or 0).replace(",", ".") }}</td>
+            <td><span class="badge bg-light text-dark border">{{ a.estado }}</span></td>
+            <td><a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('leasing_operativo_activo_detail', aid=a.id) }}">Detalle</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-4">Sin activos fijos.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

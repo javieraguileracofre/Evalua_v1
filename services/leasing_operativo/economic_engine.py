@@ -104,6 +104,15 @@ def _costos_operativos_mensuales(
     return mes, detalle
 
 
+def _convertir_desde_clp(monto_clp: Decimal, moneda: str, uf_clp: Decimal, usd_clp: Decimal) -> Decimal:
+    m = (moneda or "CLP").upper()
+    if m == "UF" and uf_clp > 0:
+        return (monto_clp / uf_clp).quantize(Decimal("0.0001"))
+    if m == "USD" and usd_clp > 0:
+        return (monto_clp / usd_clp).quantize(Decimal("0.01"))
+    return monto_clp.quantize(Decimal("1"))
+
+
 def run_economic_engine(
     *,
     inputs: dict[str, Any],
@@ -112,6 +121,11 @@ def run_economic_engine(
     plantillas_costo: list[dict[str, Any]],
 ) -> dict[str, Any]:
     esc = str(inputs.get("escenario") or "BASE").upper()
+    moneda = str(inputs.get("moneda") or "CLP").upper()
+    iva_pct = _d(inputs.get("iva_pct"), "19")
+    market = inputs.get("market_data") or {}
+    uf_clp = _d(market.get("uf_clp"))
+    usd_clp = _d(market.get("usd_clp"))
     escenarios = politica.get("escenarios_v1") or {}
     mult = escenarios.get(esc) or escenarios.get("BASE") or {}
     residual_mult = _d(mult.get("residual_mult"), "1")
@@ -253,6 +267,8 @@ def run_economic_engine(
         renta = renta_costo_mas_spread(costo_pico_mes, spread_pct)
 
     renta_sug = max(renta, renta_min)
+    iva_mensual = (renta_sug * iva_pct / Decimal("100")).quantize(Decimal("1"))
+    renta_bruta = (renta_sug + iva_mensual).quantize(Decimal("1"))
 
     filas: list[dict[str, Any]] = []
     for t in range(plazo):
@@ -323,6 +339,32 @@ def run_economic_engine(
         "costo_total_mensual_promedio": float(costo_prom),
         "renta_minima": float(renta_min),
         "renta_sugerida": float(renta_sug),
+        "renta_mensual_neta": float(renta_sug),
+        "iva_pct": float(iva_pct),
+        "iva_mensual": float(iva_mensual),
+        "renta_mensual_bruta": float(renta_bruta),
+        "moneda_cotizacion": moneda,
+        "tipo_cambio_ref": {
+            "uf_clp": float(uf_clp),
+            "usd_clp": float(usd_clp),
+        },
+        "renta_moneda_cotizacion": float(_convertir_desde_clp(renta_sug, moneda, uf_clp, usd_clp)),
+        "renta_bruta_moneda_cotizacion": float(_convertir_desde_clp(renta_bruta, moneda, uf_clp, usd_clp)),
+        "desglose_renta_mensual": {
+            "depreciacion_economica": float(depreciacion_m),
+            "costo_fondo": float(sum(fondo_m, Decimal("0")) / Decimal(plazo)),
+            "costos_operativos": float(sum(op_m, Decimal("0")) / Decimal(plazo)),
+            "prima_riesgo": float(riesgo_m),
+            "costo_comercial": float(com_m),
+            "spread_ganancia": float((renta_sug - costo_prom).quantize(Decimal("1"))),
+        },
+        "contabilidad_recomendada": {
+            "renta_neta": "CUENTAS_POR_COBRAR",
+            "iva_debito": "IVA_DEBITO_FISCAL",
+            "costo_fondo": "COSTO_DE_VENTA",
+            "costos_mantencion": "COSTO_DE_VENTA",
+            "spread_ganancia": "INGRESO_OPERACIONAL",
+        },
         "margen_operacional_promedio_pct": float(margen_prom),
         "flujo_mensual": filas,
         "van": float(van),

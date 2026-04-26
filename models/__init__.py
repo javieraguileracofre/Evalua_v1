@@ -25,6 +25,8 @@ from .maestros.proveedor import (
 # ============================================================
 
 from .leasing_operativo.models import (
+    LeasingOpActivoDepreciacion,
+    LeasingOpActivoFijo,
     LeasingOpComite,
     LeasingOpContrato,
     LeasingOpCostoPlantilla,
@@ -150,6 +152,8 @@ __all__ = [
     "LeasingOpPolitica",
     "LeasingOpCostoPlantilla",
     "LeasingOpSimulacion",
+    "LeasingOpActivoFijo",
+    "LeasingOpActivoDepreciacion",
     "LeasingOpContrato",
     "LeasingOpCuota",
     "LeasingOpComite",

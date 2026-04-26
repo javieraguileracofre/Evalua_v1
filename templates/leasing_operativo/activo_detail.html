@@ -1,0 +1,44 @@
+{% extends "layout/base.html" %}
+{% block title %}{{ a.codigo }} — Activo{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/leasing_operativo.css" />
+<div class="container py-4 lo-page">
+  <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+    <div>
+      <a href="{{ request.url_for('leasing_operativo_activos') }}" class="small text-decoration-none">← Activos</a>
+      <h1 class="h5 fw-semibold mt-1 mb-0">{{ a.codigo }}</h1>
+      <p class="text-secondary small mb-0">{{ a.marca }} {{ a.modelo }} ({{ a.anio }}) · Valor libro {{ "{:,.0f}".format(a.valor_libro or 0).replace(",", ".") }}</p>
+    </div>
+  </div>
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold">Depreciación mensual (SII)</div>
+    <div class="card-body">
+      <form method="post" action="{{ request.url_for('leasing_operativo_activo_depreciar', aid=a.id) }}" class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label">Periodo (YYYYMM)</label><input name="periodo_yyyymm" class="form-control" placeholder="202604" required /></div>
+        <div class="col-md-4"><label class="form-label">Referencia asiento</label><input name="asiento_ref" class="form-control" placeholder="ASI-2026-000123" /></div>
+        <div class="col-md-3"><label class="form-label">Dep. mensual</label><input class="form-control" value="{{ '{:,.0f}'.format(a.depreciacion_mensual_sii or 0).replace(',', '.') }}" disabled /></div>
+        <div class="col-md-2 d-grid"><button class="btn btn-primary" type="submit">Aplicar</button></div>
+      </form>
+    </div>
+  </div>
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped mb-0">
+        <thead class="table-light"><tr><th>Periodo</th><th>Depreciación</th><th>Valor libro cierre</th><th>Asiento</th></tr></thead>
+        <tbody>
+          {% for d in a.depreciaciones or [] %}
+          <tr>
+            <td>{{ d.periodo_yyyymm }}</td>
+            <td>{{ "{:,.0f}".format(d.depreciacion_mes or 0).replace(",", ".") }}</td>
+            <td>{{ "{:,.0f}".format(d.valor_libro_cierre or 0).replace(",", ".") }}</td>
+            <td>{{ d.asiento_ref or '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-muted py-3">Sin depreciaciones aplicadas.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from datetime import date, datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
@@ -15,6 +16,7 @@ from core.paths import TEMPLATES_DIR
 from crud.leasing_operativo import crud as lo_crud
 from crud.maestros.cliente import listar_clientes
 from db.session import get_db
+from services.leasing_operativo.market_data import fetch_cl_market_indicators
 
 router = APIRouter(prefix="/comercial/leasing-operativo", tags=["Comercial · Leasing operativo"])
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -39,8 +41,27 @@ def _int(raw: str | None, d: int = 0) -> int:
         return d
 
 
+def _date(raw: str | None) -> date:
+    v = (raw or "").strip()
+    if not v:
+        return datetime.utcnow().date()
+    try:
+        return datetime.strptime(v, "%Y-%m-%d").date()
+    except Exception:
+        return datetime.utcnow().date()
+
+
 def _build_inputs_from_form(form: dict[str, str]) -> dict:
     return {
+        "moneda": (form.get("moneda") or "CLP").upper(),
+        "iva_pct": form.get("iva_pct") or "19",
+        "market_data": {
+            "uf_clp": form.get("uf_clp"),
+            "usd_clp": form.get("usd_clp"),
+            "ipc_pct": form.get("ipc_pct"),
+            "source": form.get("market_source"),
+            "as_of": form.get("market_as_of"),
+        },
         "capex": {
             "precio_compra": form.get("precio_compra"),
             "importacion": form.get("importacion"),
@@ -106,9 +127,26 @@ def lo_list(request: Request, db: Session = Depends(get_db)):
 def lo_simulador_get(request: Request, db: Session = Depends(get_db)):
     tipos = lo_crud.listar_tipos_activo(db)
     clientes, _ = listar_clientes(db, activos_solo=True, limit=400)
+    mkt = fetch_cl_market_indicators()
+    marcas = [
+        "Toyota", "Chevrolet", "Hyundai", "Kia", "Mitsubishi", "Volvo", "Scania", "Caterpillar", "Komatsu", "JCB"
+    ]
+    modelos = [
+        "Hilux", "D-Max", "NPR", "FH", "R450", "320D", "WB97", "PC200", "Actros", "Otro"
+    ]
+    anios = list(range(2010, 2027))
     return templates.TemplateResponse(
         "leasing_operativo/simulador.html",
-        {"request": request, "tipos": tipos, "clientes": clientes, "active_menu": "leasing_operativo"},
+        {
+            "request": request,
+            "tipos": tipos,
+            "clientes": clientes,
+            "market": mkt,
+            "marcas": marcas,
+            "modelos": modelos,
+            "anios": anios,
+            "active_menu": "leasing_operativo",
+        },
     )
 
 
@@ -125,6 +163,16 @@ def lo_simulador_post(
     spread_pct: str = Form("8"),
     margen_pct: str = Form("12"),
     tir_objetivo_anual: str = Form("14"),
+    moneda: str = Form("CLP"),
+    iva_pct: str = Form("19"),
+    uf_clp: str = Form("0"),
+    usd_clp: str = Form("0"),
+    ipc_pct: str = Form("0"),
+    market_source: str = Form(""),
+    market_as_of: str = Form(""),
+    activo_marca: str = Form(""),
+    activo_modelo: str = Form(""),
+    activo_anio: str = Form(""),
     precio_compra: str = Form("0"),
     importacion: str = Form("0"),
     inscripcion: str = Form("0"),
@@ -168,6 +216,13 @@ def lo_simulador_post(
     cid = _int(cid_raw, 0) or None
     form = {
         "precio_compra": precio_compra,
+        "moneda": moneda,
+        "iva_pct": iva_pct,
+        "uf_clp": uf_clp,
+        "usd_clp": usd_clp,
+        "ipc_pct": ipc_pct,
+        "market_source": market_source,
+        "market_as_of": market_as_of,
         "importacion": importacion,
         "inscripcion": inscripcion,
         "patente": patente,
@@ -183,6 +238,9 @@ def lo_simulador_post(
         "sector_economico_mult": sector_economico_mult,
         "inflacion_activo_pct_anual": inflacion_activo_pct_anual,
         "condicion_factor": condicion_factor,
+        "activo_marca": activo_marca,
+        "activo_modelo": activo_modelo,
+        "activo_anio": activo_anio,
         "col_valor_mercado": col_valor_mercado,
         "col_repossession": col_repossession,
         "col_legal": col_legal,
@@ -204,6 +262,9 @@ def lo_simulador_post(
         "riesgo_liq_mult": riesgo_liq_mult,
     }
     inputs = _build_inputs_from_form(form)
+    inputs["activo"]["marca"] = activo_marca
+    inputs["activo"]["modelo"] = activo_modelo
+    inputs["activo"]["anio"] = _int(activo_anio, 0)
     try:
         sim = lo_crud.crear_simulacion_y_calcular(
             db,
@@ -392,3 +453,75 @@ def lo_comite_abrir(request: Request, sim_id: int, db: Session = Depends(get_db)
         raise HTTPException(404)
     lo_crud.abrir_comite(db, sim, resumen or "Evaluación comité leasing operativo.")
     return RedirectResponse(str(request.url_for("leasing_operativo_comite_list")), status_code=303)
+
+
+@router.get("/activos", response_class=HTMLResponse, name="leasing_operativo_activos")
+def lo_activos(request: Request, db: Session = Depends(get_db)):
+    items = lo_crud.listar_activos_fijos(db, limit=300)
+    tipos = lo_crud.listar_tipos_activo(db)
+    return templates.TemplateResponse(
+        "leasing_operativo/activos.html",
+        {"request": request, "items": items, "tipos": tipos, "active_menu": "leasing_operativo"},
+    )
+
+
+@router.post("/activos", name="leasing_operativo_activos_post")
+def lo_activos_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    tipo_activo_id: str = Form(""),
+    marca: str = Form(""),
+    modelo: str = Form(""),
+    anio: str = Form("2024"),
+    vin_serie: str = Form(""),
+    fecha_compra: str = Form(""),
+    costo_compra: str = Form("0"),
+    valor_residual_esperado: str = Form("0"),
+    vida_util_meses_sii: str = Form("60"),
+):
+    tid = _int(tipo_activo_id, 0) or None
+    lo_crud.crear_activo_fijo(
+        db,
+        tipo_activo_id=tid,
+        marca=marca,
+        modelo=modelo,
+        anio=_int(anio, 2024),
+        vin_serie=vin_serie,
+        fecha_compra=_date(fecha_compra),
+        costo_compra=_dec(costo_compra),
+        valor_residual_esperado=_dec(valor_residual_esperado),
+        vida_util_meses_sii=_int(vida_util_meses_sii, 60),
+    )
+    return RedirectResponse(str(request.url_for("leasing_operativo_activos")), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/activos/{aid}", response_class=HTMLResponse, name="leasing_operativo_activo_detail")
+def lo_activo_detail(request: Request, aid: int, db: Session = Depends(get_db)):
+    a = lo_crud.obtener_activo_fijo(db, aid)
+    if not a:
+        raise HTTPException(404)
+    return templates.TemplateResponse(
+        "leasing_operativo/activo_detail.html",
+        {"request": request, "a": a, "active_menu": "leasing_operativo"},
+    )
+
+
+@router.post("/activos/{aid}/depreciar", name="leasing_operativo_activo_depreciar")
+def lo_activo_depreciar(
+    request: Request,
+    aid: int,
+    db: Session = Depends(get_db),
+    periodo_yyyymm: str = Form(...),
+    asiento_ref: str = Form(""),
+):
+    a = lo_crud.obtener_activo_fijo(db, aid)
+    if not a:
+        raise HTTPException(404)
+    try:
+        lo_crud.generar_depreciacion_mensual_activo(db, activo=a, periodo_yyyymm=periodo_yyyymm, asiento_ref=asiento_ref)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return RedirectResponse(
+        str(request.url_for("leasing_operativo_activo_detail", aid=aid)),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )

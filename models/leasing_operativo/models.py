@@ -132,6 +132,45 @@ class LeasingOpCuota(Base):
     contrato: Mapped["LeasingOpContrato"] = relationship("LeasingOpContrato", back_populates="cuotas")
 
 
+class LeasingOpActivoFijo(Base):
+    __tablename__ = "leasing_op_activo_fijo"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    codigo: Mapped[str] = mapped_column(String(48), nullable=False, unique=True)
+    tipo_activo_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("leasing_op_tipo_activo.id", ondelete="SET NULL"), nullable=True, index=True)
+    marca: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    modelo: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    anio: Mapped[int] = mapped_column(Integer, nullable=False)
+    vin_serie: Mapped[str | None] = mapped_column(String(120))
+    fecha_compra: Mapped[date] = mapped_column(Date, nullable=False, server_default=text("CURRENT_DATE"))
+    costo_compra: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    valor_residual_esperado: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"), server_default="0")
+    vida_util_meses_sii: Mapped[int] = mapped_column(Integer, nullable=False, default=60, server_default="60")
+    depreciacion_mensual_sii: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"), server_default="0")
+    valor_libro: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    estado: Mapped[str] = mapped_column(String(24), nullable=False, default="DISPONIBLE", server_default="DISPONIBLE")
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    tipo: Mapped["LeasingOpTipoActivo | None"] = relationship("LeasingOpTipoActivo")
+    depreciaciones: Mapped[list["LeasingOpActivoDepreciacion"]] = relationship(
+        "LeasingOpActivoDepreciacion", back_populates="activo", cascade="all, delete-orphan"
+    )
+
+
+class LeasingOpActivoDepreciacion(Base):
+    __tablename__ = "leasing_op_activo_depreciacion"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    activo_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("leasing_op_activo_fijo.id", ondelete="CASCADE"), nullable=False, index=True)
+    periodo_yyyymm: Mapped[str] = mapped_column(String(6), nullable=False)
+    depreciacion_mes: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    valor_libro_cierre: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    asiento_ref: Mapped[str | None] = mapped_column(String(80))
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    activo: Mapped["LeasingOpActivoFijo"] = relationship("LeasingOpActivoFijo", back_populates="depreciaciones")
+
+
 class LeasingOpComite(Base):
     __tablename__ = "leasing_op_comite"
 

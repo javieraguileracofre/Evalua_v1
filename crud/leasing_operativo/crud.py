@@ -11,6 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from models.leasing_operativo.models import (
+    LeasingOpActivoDepreciacion,
+    LeasingOpActivoFijo,
     LeasingOpComite,
     LeasingOpContrato,
     LeasingOpCostoPlantilla,
@@ -317,3 +319,102 @@ def listar_comite_pendiente(db: Session, limit: int = 100) -> list[LeasingOpComi
         .limit(limit)
     )
     return list(db.scalars(stmt).all())
+
+
+def listar_activos_fijos(db: Session, limit: int = 300) -> list[LeasingOpActivoFijo]:
+    stmt = (
+        select(LeasingOpActivoFijo)
+        .options(selectinload(LeasingOpActivoFijo.tipo))
+        .order_by(LeasingOpActivoFijo.id.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(stmt).all())
+
+
+def obtener_activo_fijo(db: Session, aid: int) -> LeasingOpActivoFijo | None:
+    stmt = (
+        select(LeasingOpActivoFijo)
+        .options(selectinload(LeasingOpActivoFijo.tipo), selectinload(LeasingOpActivoFijo.depreciaciones))
+        .where(LeasingOpActivoFijo.id == aid)
+    )
+    return db.scalars(stmt).first()
+
+
+def crear_activo_fijo(
+    db: Session,
+    *,
+    tipo_activo_id: int | None,
+    marca: str,
+    modelo: str,
+    anio: int,
+    vin_serie: str | None,
+    fecha_compra: date,
+    costo_compra: Decimal,
+    valor_residual_esperado: Decimal,
+    vida_util_meses_sii: int,
+) -> LeasingOpActivoFijo:
+    vida = max(int(vida_util_meses_sii or 60), 1)
+    dep_m = ((costo_compra - valor_residual_esperado) / Decimal(vida)).quantize(Decimal("0.0001"))
+    dep_m = max(dep_m, Decimal("0"))
+    af = LeasingOpActivoFijo(
+        codigo="",
+        tipo_activo_id=tipo_activo_id,
+        marca=(marca or "").strip(),
+        modelo=(modelo or "").strip(),
+        anio=anio,
+        vin_serie=(vin_serie or "").strip() or None,
+        fecha_compra=fecha_compra,
+        costo_compra=costo_compra,
+        valor_residual_esperado=valor_residual_esperado,
+        vida_util_meses_sii=vida,
+        depreciacion_mensual_sii=dep_m,
+        valor_libro=costo_compra,
+        estado="DISPONIBLE",
+    )
+    db.add(af)
+    db.flush()
+    y = datetime.now(timezone.utc).year
+    af.codigo = f"AFLO-{y}-{int(af.id):05d}"
+    db.add(af)
+    db.commit()
+    db.refresh(af)
+    return af
+
+
+def generar_depreciacion_mensual_activo(
+    db: Session,
+    *,
+    activo: LeasingOpActivoFijo,
+    periodo_yyyymm: str,
+    asiento_ref: str | None = None,
+) -> LeasingOpActivoDepreciacion:
+    periodo = (periodo_yyyymm or "").strip()
+    if len(periodo) != 6 or not periodo.isdigit():
+        raise ValueError("Periodo inválido. Use formato YYYYMM.")
+    existing = db.scalars(
+        select(LeasingOpActivoDepreciacion).where(
+            LeasingOpActivoDepreciacion.activo_id == int(activo.id),
+            LeasingOpActivoDepreciacion.periodo_yyyymm == periodo,
+        )
+    ).first()
+    if existing:
+        raise ValueError("Ya existe depreciación para ese periodo.")
+    dep = Decimal(str(activo.depreciacion_mensual_sii or 0))
+    if dep <= 0:
+        raise ValueError("Activo sin depreciación mensual configurada.")
+    nuevo_libro = (Decimal(str(activo.valor_libro)) - dep).quantize(Decimal("0.0001"))
+    if nuevo_libro < Decimal("0"):
+        nuevo_libro = Decimal("0")
+    row = LeasingOpActivoDepreciacion(
+        activo_id=int(activo.id),
+        periodo_yyyymm=periodo,
+        depreciacion_mes=dep,
+        valor_libro_cierre=nuevo_libro,
+        asiento_ref=(asiento_ref or "").strip() or None,
+    )
+    activo.valor_libro = nuevo_libro
+    db.add(row)
+    db.add(activo)
+    db.commit()
+    db.refresh(row)
+    return row

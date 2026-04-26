@@ -90,11 +90,13 @@ Con public.clientes existente, en SQL Editor ejecute TODO (idempotente):
 
   db/psql/102_leasing_operativo.sql
   db/psql/103_leasing_operativo_contrato_cuota.sql
+  db/psql/104_leasing_operativo_activo_fijo.sql
 
 Crea leasing_op_tipo_activo, leasing_op_politica, leasing_op_costo_plantilla, leasing_op_simulacion,
 leasing_op_comite, leasing_op_historial y datos semilla (tipos, políticas, plantillas de costo).
 El 103 añade leasing_op_contrato y leasing_op_cuota (cartera).
-La app intenta aplicar 102/103 al arrancar si faltan las tablas.
+El 104 añade leasing_op_activo_fijo y leasing_op_activo_depreciacion (submódulo activos).
+La app intenta aplicar 102/103/104 al arrancar si faltan las tablas.
 
 Si algo falla
 -------------

@@ -52,6 +52,22 @@
       <div class="col-md-2"><label class="form-label">Spread %</label><input name="spread_pct" class="form-control" value="8" /></div>
       <div class="col-md-2"><label class="form-label">Margen %</label><input name="margen_pct" class="form-control" value="12" /></div>
       <div class="col-md-2"><label class="form-label">TIR obj. % anual</label><input name="tir_objetivo_anual" class="form-control" value="14" /></div>
+      <div class="col-md-2">
+        <label class="form-label">Moneda</label>
+        <select name="moneda" class="form-select">
+          <option value="CLP" selected>CLP</option>
+          <option value="UF">UF</option>
+          <option value="USD">USD</option>
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label">IVA %</label><input name="iva_pct" class="form-control" value="19" /></div>
+
+      <div class="col-12 lo-section-title">Indicadores de referencia (BC/mercado)</div>
+      <div class="col-md-2"><label class="form-label">UF (CLP)</label><input name="uf_clp" class="form-control" value="{{ market.uf_clp or 0 }}" /></div>
+      <div class="col-md-2"><label class="form-label">USD (CLP)</label><input name="usd_clp" class="form-control" value="{{ market.usd_clp or 0 }}" /></div>
+      <div class="col-md-2"><label class="form-label">IPC %</label><input name="ipc_pct" class="form-control" value="{{ market.ipc_pct or 0 }}" /></div>
+      <div class="col-md-6"><label class="form-label">Fuente</label><input name="market_source" class="form-control" value="{{ market.source or '' }}" /></div>
+      <input type="hidden" name="market_as_of" value="{{ market.as_of or '' }}" />
 
       <div class="col-12 lo-section-title">CAPEX activable</div>
       <div class="col-md-4"><label class="form-label">Precio compra</label><input name="precio_compra" class="form-control" value="0" /></div>
@@ -68,6 +84,30 @@
       <div class="col-12 lo-section-title">Uso y activo</div>
       <div class="col-md-3"><label class="form-label">Km anual</label><input name="km_anual" class="form-control" value="80000" /></div>
       <div class="col-md-3"><label class="form-label">Horas anual</label><input name="horas_anual" class="form-control" value="0" /></div>
+      <div class="col-md-2">
+        <label class="form-label">Marca</label>
+        <select name="activo_marca" class="form-select">
+          {% for m in marcas %}
+          <option value="{{ m }}">{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Modelo</label>
+        <select name="activo_modelo" class="form-select">
+          {% for m in modelos %}
+          <option value="{{ m }}">{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Año</label>
+        <select name="activo_anio" class="form-select">
+          {% for a in anios %}
+          <option value="{{ a }}" {% if a == 2024 %}selected{% endif %}>{{ a }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="col-md-2"><label class="form-label">Factor marca</label><input name="marca_modelo_factor" class="form-control" value="1" /></div>
       <div class="col-md-2"><label class="form-label">Mult. sector</label><input name="sector_economico_mult" class="form-control" value="1" /></div>
       <div class="col-md-2"><label class="form-label">Infl. activo % a.</label><input name="inflacion_activo_pct_anual" class="form-control" value="3" /></div>
