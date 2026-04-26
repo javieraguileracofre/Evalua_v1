@@ -313,3 +313,48 @@ def contabilizar_liquidacion_rendicion(
     )
     fondo.asiento_id_liquidacion = aid  # type: ignore[assignment]
     return aid
+
+
+def diagnostico_cuentas_fondos_rendir(db: Session) -> dict[str, dict[str, str]]:
+    """
+    Verifica resolución de cuentas críticas de fondos por rendir y retorna
+    el detalle para diagnóstico operacional.
+    """
+    cuenta_anticipo = _resolver_cuenta(
+        db,
+        rol="Anticipo / fondos por rendir (activo)",
+        env_var="FONDO_RENDIR_CUENTA_ANTICIPO",
+        valor_env=settings.fondo_rendir_cuenta_anticipo,
+        fallbacks_codigo=_FALLBACK_ANTICIPO,
+        palabras_nombre=("ANTICIPO", "RENDIR", "FONDO"),
+    )
+    cuenta_caja = _resolver_cuenta(
+        db,
+        rol="Caja o equivalente",
+        env_var="FONDO_RENDIR_CUENTA_CAJA",
+        valor_env=settings.fondo_rendir_cuenta_caja,
+        fallbacks_codigo=_FALLBACK_CAJA,
+        palabras_nombre=("CAJA", "EFECTIVO"),
+    )
+    cuenta_gasto = _resolver_cuenta(
+        db,
+        rol="Gasto operacional / transporte",
+        env_var="FONDO_RENDIR_CUENTA_GASTO",
+        valor_env=settings.fondo_rendir_cuenta_gasto,
+        fallbacks_codigo=_FALLBACK_GASTO,
+        palabras_nombre=("GASTO", "TRANSPORTE", "OPERACION"),
+    )
+    return {
+        "anticipo": {
+            "codigo": str(cuenta_anticipo.codigo),
+            "nombre": str(cuenta_anticipo.nombre),
+        },
+        "caja": {
+            "codigo": str(cuenta_caja.codigo),
+            "nombre": str(cuenta_caja.nombre),
+        },
+        "gasto": {
+            "codigo": str(cuenta_gasto.codigo),
+            "nombre": str(cuenta_gasto.nombre),
+        },
+    }

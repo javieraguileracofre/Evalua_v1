@@ -20,8 +20,12 @@ from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
 from core.rbac import guard_finanzas_consulta, guard_finanzas_mutacion
 from crud import fondos_rendir as crud_fr
-from crud import fondos_rendir_contabilidad as crud_fr_cont
 from db.session import get_db
+from services.fondos_rendir import (
+    aprobar_rendicion_y_contabilizar,
+    crear_anticipo_y_contabilizar,
+    diagnosticar_setup_contable,
+)
 
 router = APIRouter(prefix="/fondos-rendir", tags=["Fondos por rendir"])
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -425,6 +429,13 @@ def fondos_rendir_fondo_nuevo(request: Request, db: Session = Depends(get_db)):
     empleados = crud_fr.listar_empleados(db, solo_activos=True)
     vehiculos = crud_fr.listar_vehiculos_transporte(db, solo_activos=True)
     fecha_default = datetime.now().strftime("%Y-%m-%dT%H:%M")
+    setup_msg: str | None = None
+    setup_sev = "info"
+    try:
+        diagnosticar_setup_contable(db)
+    except ValueError as e:
+        setup_msg = public_error_message(e)
+        setup_sev = "warning"
     return templates.TemplateResponse(
         "fondos_rendir/fondo_form.html",
         {
@@ -433,6 +444,8 @@ def fondos_rendir_fondo_nuevo(request: Request, db: Session = Depends(get_db)):
             "empleados": empleados,
             "vehiculos": vehiculos,
             "fecha_default": fecha_default,
+            "msg": setup_msg,
+            "sev": setup_sev,
         },
     )
 
@@ -456,7 +469,7 @@ async def fondos_rendir_fondo_crear(
             raise ValueError("Seleccione un trabajador.")
         if monto is None or monto <= 0:
             raise ValueError("Indique un monto de anticipo válido.")
-        f = crud_fr.crear_fondo(
+        f = crear_anticipo_y_contabilizar(
             db,
             empleado_id=eid,
             vehiculo_transporte_id=vid,
@@ -464,7 +477,6 @@ async def fondos_rendir_fondo_crear(
             fecha_entrega=fr_dt,
             observaciones=str(fd.get("observaciones") or "") or None,
         )
-        crud_fr_cont.contabilizar_entrega_anticipo(db, f)
         db.commit()
         db.refresh(f)
     except ValueError as e:
@@ -486,6 +498,35 @@ async def fondos_rendir_fondo_crear(
         msg=f"Anticipo {f.folio} creado (asiento de entrega contable registrado). Registre los gastos y envíe la rendición.",
         sev="success",
     )
+
+
+@router.get(
+    "/diagnostico-contable",
+    response_class=HTMLResponse,
+    name="fondos_rendir_diagnostico_contable",
+)
+def fondos_rendir_diagnostico_contable(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_finanzas_consulta(request)) is not None:
+        return redir
+    try:
+        setup = diagnosticar_setup_contable(db)
+        msg = (
+            "Configuración contable OK. "
+            f"Anticipo: {setup['anticipo']['codigo']} | "
+            f"Caja: {setup['caja']['codigo']} | "
+            f"Gasto: {setup['gasto']['codigo']}."
+        )
+        return _redirect(request, "fondos_rendir_hub", msg=msg, sev="success")
+    except ValueError as e:
+        return _redirect(
+            request,
+            "fondos_rendir_hub",
+            msg=public_error_message(e),
+            sev="danger",
+        )
 
 
 @router.get("/anticipos/{fondo_id}", response_class=HTMLResponse, name="fondos_rendir_fondo_detalle")
@@ -655,12 +696,7 @@ def fondos_rendir_fondo_aprobar(
     if (redir := guard_finanzas_mutacion(request)) is not None:
         return redir
     try:
-        crud_fr.aprobar_rendicion(db, fondo_id)
-        db.flush()
-        f = crud_fr.obtener_fondo(db, fondo_id)
-        if not f:
-            raise ValueError("Anticipo no encontrado.")
-        crud_fr_cont.contabilizar_liquidacion_rendicion(db, f)
+        aprobar_rendicion_y_contabilizar(db, fondo_id=fondo_id)
         db.commit()
     except ValueError as e:
         db.rollback()
