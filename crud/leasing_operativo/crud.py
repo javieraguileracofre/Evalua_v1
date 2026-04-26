@@ -85,6 +85,71 @@ def _json_safe(v: Any) -> Any:
     return v
 
 
+def _workflow_default() -> dict[str, Any]:
+    return {
+        "etapa_actual": "COTIZACION",
+        "hitos": {
+            "cotizacion_emitida": True,
+            "analisis_credito": False,
+            "resultado_credito": False,
+            "contrato_confeccionado": False,
+            "orden_compra_proveedor": False,
+            "acta_entrega_recepcion": False,
+            "factura_compra_recepcion": False,
+            "activacion_contable": False,
+        },
+        "checklist_documental": {
+            "cotizacion": True,
+            "aprobacion_credito": False,
+            "orden_compra": False,
+            "acta_entrega_firmada": False,
+            "factura_compra": False,
+            "activacion_contable": False,
+        },
+        "credito": {
+            "dictamen": "PENDIENTE",
+            "score": None,
+            "dscr": None,
+            "dpd_max": None,
+            "comentario": "",
+        },
+    }
+
+
+def _get_workflow(sim: LeasingOpSimulacion) -> dict[str, Any]:
+    rj = sim.result_json or {}
+    wf = rj.get("workflow_v1") if isinstance(rj, dict) else None
+    base = _workflow_default()
+    if isinstance(wf, dict):
+        # merge shallow controlado
+        for k in ("etapa_actual",):
+            if k in wf:
+                base[k] = wf[k]
+        for k in ("hitos", "checklist_documental", "credito"):
+            if isinstance(wf.get(k), dict):
+                base[k].update(wf[k])
+    return base
+
+
+def _save_workflow(db: Session, sim: LeasingOpSimulacion, wf: dict[str, Any], usuario: str, evento: str, detalle: dict[str, Any] | None = None) -> LeasingOpSimulacion:
+    rj = dict(sim.result_json or {})
+    rj["workflow_v1"] = _json_safe(wf)
+    sim.result_json = rj
+    db.add(sim)
+    db.flush()
+    db.add(
+        LeasingOpHistorial(
+            simulacion_id=int(sim.id),
+            evento=evento,
+            detalle_json=_json_safe(detalle or {}),
+            usuario=usuario,
+        )
+    )
+    db.commit()
+    db.refresh(sim)
+    return sim
+
+
 def listar_politica(db: Session) -> list[LeasingOpPolitica]:
     return list(db.scalars(select(LeasingOpPolitica).where(LeasingOpPolitica.activo.is_(True))).all())
 
@@ -267,6 +332,7 @@ def crear_simulacion_y_calcular(
     result = run_economic_engine(inputs=inp, tipo_activo=tipo_d, politica=politica, plantillas_costo=plantillas)
     inp_json = _json_safe(inp)
     result_json = _json_safe(result)
+    result_json["workflow_v1"] = _workflow_default()
 
     dec = result.get("decision") or {}
     sim = LeasingOpSimulacion(
@@ -303,6 +369,88 @@ def crear_simulacion_y_calcular(
     db.commit()
     db.refresh(sim)
     return sim
+
+
+def registrar_analisis_credito(
+    db: Session,
+    sim: LeasingOpSimulacion,
+    *,
+    dictamen: str,
+    score: Decimal | None,
+    dscr: Decimal | None,
+    dpd_max: int | None,
+    comentario: str,
+    usuario: str = "sistema",
+) -> LeasingOpSimulacion:
+    wf = _get_workflow(sim)
+    d = (dictamen or "").strip().upper()
+    if d not in {"APROBAR", "OBSERVAR", "RECHAZAR"}:
+        raise ValueError("Dictamen de crédito inválido.")
+    wf["credito"] = {
+        "dictamen": d,
+        "score": float(score) if score is not None else None,
+        "dscr": float(dscr) if dscr is not None else None,
+        "dpd_max": int(dpd_max) if dpd_max is not None else None,
+        "comentario": (comentario or "").strip()[:2000],
+    }
+    wf["hitos"]["analisis_credito"] = True
+    wf["hitos"]["resultado_credito"] = True
+    wf["checklist_documental"]["aprobacion_credito"] = d in {"APROBAR", "OBSERVAR"}
+    wf["etapa_actual"] = "CREDITO_APROBADO" if d in {"APROBAR", "OBSERVAR"} else "CREDITO_RECHAZADO"
+    return _save_workflow(
+        db,
+        sim,
+        wf,
+        usuario,
+        "ANALISIS_CREDITO_REGISTRADO",
+        {"dictamen": d, "score": wf["credito"]["score"], "dscr": wf["credito"]["dscr"], "dpd_max": wf["credito"]["dpd_max"]},
+    )
+
+
+def registrar_hito_operativo(
+    db: Session,
+    sim: LeasingOpSimulacion,
+    *,
+    hito: str,
+    usuario: str = "sistema",
+) -> LeasingOpSimulacion:
+    wf = _get_workflow(sim)
+    hitos = wf["hitos"]
+    docs = wf["checklist_documental"]
+    h = (hito or "").strip().lower()
+    if h == "orden_compra_proveedor":
+        if not hitos.get("resultado_credito"):
+            raise ValueError("Primero debe registrarse resultado de crédito.")
+        hitos["orden_compra_proveedor"] = True
+        docs["orden_compra"] = True
+        wf["etapa_actual"] = "ORDEN_COMPRA"
+        ev = "ORDEN_COMPRA_REGISTRADA"
+    elif h == "acta_entrega_recepcion":
+        if not hitos.get("orden_compra_proveedor"):
+            raise ValueError("Primero registre orden de compra al proveedor.")
+        hitos["acta_entrega_recepcion"] = True
+        docs["acta_entrega_firmada"] = True
+        wf["etapa_actual"] = "ENTREGA_RECEPCION"
+        ev = "ACTA_ENTREGA_RECEPCION_REGISTRADA"
+    elif h == "factura_compra_recepcion":
+        hitos["factura_compra_recepcion"] = True
+        docs["factura_compra"] = True
+        wf["etapa_actual"] = "FACTURA_COMPRA"
+        ev = "FACTURA_COMPRA_REGISTRADA"
+    elif h == "activacion_contable":
+        if not hitos.get("contrato_confeccionado"):
+            raise ValueError("Primero debe confeccionarse contrato.")
+        if not hitos.get("acta_entrega_recepcion"):
+            raise ValueError("Primero debe registrarse acta de entrega/recepción.")
+        if not hitos.get("factura_compra_recepcion"):
+            raise ValueError("Primero debe registrarse recepción de factura de compra.")
+        hitos["activacion_contable"] = True
+        docs["activacion_contable"] = True
+        wf["etapa_actual"] = "ACTIVADO_CONTABLE"
+        ev = "CONTRATO_ACTIVADO_CONTABLE"
+    else:
+        raise ValueError("Hito operativo inválido.")
+    return _save_workflow(db, sim, wf, usuario, ev, {"hito": h})
 
 
 def abrir_comite(db: Session, sim: LeasingOpSimulacion, resumen: str, usuario: str = "sistema") -> LeasingOpComite:
@@ -396,6 +544,10 @@ def crear_contrato_y_cuotas(
 ) -> LeasingOpContrato:
     if sim.estado != "APROBADO":
         raise ValueError("Solo operaciones en estado APROBADO pueden generar contrato.")
+    wf = _get_workflow(sim)
+    cred = wf.get("credito") or {}
+    if str(cred.get("dictamen") or "PENDIENTE").upper() not in {"APROBAR", "OBSERVAR"}:
+        raise ValueError("Debe existir análisis de crédito aprobado/observado antes de confeccionar contrato.")
     if obtener_contrato_por_simulacion(db, int(sim.id)):
         raise ValueError("Ya existe un contrato vinculado a esta simulación.")
     res = sim.result_json or {}
@@ -428,6 +580,14 @@ def crear_contrato_y_cuotas(
             )
         )
     sim.estado = "CONTRATO"
+    wf["hitos"]["contrato_confeccionado"] = True
+    wf["etapa_actual"] = "CONTRATO_CONFECCIONADO"
+    docs = wf.get("checklist_documental") or {}
+    docs["cotizacion"] = True
+    wf["checklist_documental"] = docs
+    rj = dict(sim.result_json or {})
+    rj["workflow_v1"] = _json_safe(wf)
+    sim.result_json = rj
     db.add(sim)
     db.add(
         LeasingOpHistorial(

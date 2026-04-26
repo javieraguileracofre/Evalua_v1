@@ -411,9 +411,10 @@ def lo_detail(request: Request, sim_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Simulación no encontrada")
     res = sim.result_json or {}
     ctr = getattr(sim, "contrato", None)
+    workflow = (res.get("workflow_v1") or {}) if isinstance(res, dict) else {}
     return templates.TemplateResponse(
         "leasing_operativo/operacion_detail.html",
-        {"request": request, "sim": sim, "res": res, "contrato": ctr, "active_menu": "leasing_operativo"},
+        {"request": request, "sim": sim, "res": res, "workflow": workflow, "contrato": ctr, "active_menu": "leasing_operativo"},
     )
 
 
@@ -469,6 +470,53 @@ def lo_crear_contrato(request: Request, sim_id: int, db: Session = Depends(get_d
         str(request.url_for("leasing_operativo_detail", sim_id=sim_id)),
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@router.post("/operacion/{sim_id}/credito", name="leasing_operativo_registrar_credito")
+def lo_registrar_credito(
+    request: Request,
+    sim_id: int,
+    db: Session = Depends(get_db),
+    dictamen: str = Form(...),
+    score: str = Form(""),
+    dscr: str = Form(""),
+    dpd_max: str = Form(""),
+    comentario: str = Form(""),
+):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    try:
+        lo_crud.registrar_analisis_credito(
+            db,
+            sim,
+            dictamen=str(dictamen).upper(),
+            score=_dec(score) if str(score or "").strip() else None,
+            dscr=_dec(dscr) if str(dscr or "").strip() else None,
+            dpd_max=_int(dpd_max) if str(dpd_max or "").strip() else None,
+            comentario=comentario or "",
+            usuario="sistema",
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
+
+
+@router.post("/operacion/{sim_id}/hito", name="leasing_operativo_registrar_hito")
+def lo_registrar_hito(
+    request: Request,
+    sim_id: int,
+    db: Session = Depends(get_db),
+    hito: str = Form(...),
+):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    try:
+        lo_crud.registrar_hito_operativo(db, sim, hito=hito, usuario="sistema")
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return RedirectResponse(str(request.url_for("leasing_operativo_detail", sim_id=sim_id)), status_code=303)
 
 
 @router.get("/cartera", response_class=HTMLResponse, name="leasing_operativo_cartera")

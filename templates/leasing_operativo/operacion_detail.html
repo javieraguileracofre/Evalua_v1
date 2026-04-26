@@ -21,6 +21,7 @@
     <li class="nav-item"><a class="nav-link" href="#lo-costos">Costos</a></li>
     <li class="nav-item"><a class="nav-link" href="#lo-flujo">Flujo</a></li>
     <li class="nav-item"><a class="nav-link" href="#lo-riesgo">Riesgo</a></li>
+    <li class="nav-item"><a class="nav-link" href="#lo-proceso">Proceso</a></li>
     <li class="nav-item"><a class="nav-link" href="#lo-decision">Decisión</a></li>
     <li class="nav-item"><a class="nav-link" href="#lo-reportes">Reportes</a></li>
   </ul>
@@ -96,6 +97,73 @@
     <div class="card-header bg-white fw-semibold">Riesgo y collateral</div>
     <div class="card-body small">
       <pre class="bg-light p-2 rounded mb-0" style="max-height:220px;overflow:auto">{{ res.collateral | tojson(indent=2) }}</pre>
+    </div>
+  </div>
+
+  <div id="lo-proceso" class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold">Flujo operativo LOP</div>
+    <div class="card-body small">
+      {% set wf = workflow or {} %}
+      {% set hitos = wf.get('hitos', {}) %}
+      {% set cred = wf.get('credito', {}) %}
+      {% set docs = wf.get('checklist_documental', {}) %}
+      <p class="mb-2">Etapa actual: <span class="badge text-bg-light border">{{ wf.get('etapa_actual', 'COTIZACION') }}</span></p>
+      <div class="row g-3">
+        <div class="col-lg-6">
+          <div class="border rounded p-2">
+            <div class="fw-semibold mb-2">1) Análisis de crédito</div>
+            <form method="post" action="{{ request.url_for('leasing_operativo_registrar_credito', sim_id=sim.id) }}" class="row g-2">
+              <div class="col-md-4">
+                <label class="form-label">Dictamen</label>
+                <select name="dictamen" class="form-select form-select-sm">
+                  <option value="APROBAR">APROBAR</option>
+                  <option value="OBSERVAR">OBSERVAR</option>
+                  <option value="RECHAZAR">RECHAZAR</option>
+                </select>
+              </div>
+              <div class="col-md-3"><label class="form-label">Score</label><input name="score" class="form-control form-control-sm" value="{{ cred.get('score','') }}" /></div>
+              <div class="col-md-3"><label class="form-label">DSCR</label><input name="dscr" class="form-control form-control-sm" value="{{ cred.get('dscr','') }}" /></div>
+              <div class="col-md-2"><label class="form-label">DPD máx</label><input name="dpd_max" class="form-control form-control-sm" value="{{ cred.get('dpd_max','') }}" /></div>
+              <div class="col-12"><label class="form-label">Comentario</label><input name="comentario" class="form-control form-control-sm" value="{{ cred.get('comentario','') }}" /></div>
+              <div class="col-12 d-grid"><button class="btn btn-sm btn-primary" type="submit">Guardar análisis crédito</button></div>
+            </form>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="border rounded p-2">
+            <div class="fw-semibold mb-2">2) Ejecución operacional</div>
+            <form method="post" action="{{ request.url_for('leasing_operativo_registrar_hito', sim_id=sim.id) }}" class="d-flex gap-2 mb-2">
+              <input type="hidden" name="hito" value="orden_compra_proveedor" />
+              <button class="btn btn-sm btn-outline-primary w-100" type="submit">Registrar orden compra</button>
+            </form>
+            <form method="post" action="{{ request.url_for('leasing_operativo_registrar_hito', sim_id=sim.id) }}" class="d-flex gap-2 mb-2">
+              <input type="hidden" name="hito" value="acta_entrega_recepcion" />
+              <button class="btn btn-sm btn-outline-primary w-100" type="submit">Registrar acta entrega/recepción</button>
+            </form>
+            <form method="post" action="{{ request.url_for('leasing_operativo_registrar_hito', sim_id=sim.id) }}" class="d-flex gap-2 mb-2">
+              <input type="hidden" name="hito" value="factura_compra_recepcion" />
+              <button class="btn btn-sm btn-outline-primary w-100" type="submit">Registrar recepción factura compra</button>
+            </form>
+            <form method="post" action="{{ request.url_for('leasing_operativo_registrar_hito', sim_id=sim.id) }}" class="d-flex gap-2">
+              <input type="hidden" name="hito" value="activacion_contable" />
+              <button class="btn btn-sm btn-success w-100" type="submit">Activar contrato contablemente</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="mt-3">
+        <div class="fw-semibold mb-1">Checklist documental</div>
+        <div class="row row-cols-2 row-cols-md-3 g-2">
+          {% for k, v in docs.items() %}
+          <div class="col">
+            <span class="badge {% if v %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ k }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="mt-2 text-muted">
+        Flujo: Cotización → Análisis de crédito → Resultado → Contrato → Orden de compra → Acta entrega/recepción → Factura compra → Activación contable.
+      </div>
     </div>
   </div>
 
