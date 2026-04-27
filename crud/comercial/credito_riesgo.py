@@ -16,7 +16,13 @@ from models.comercial.credito_riesgo import (
     CreditoPolitica,
     CreditoSolicitud,
 )
-from services.credito_riesgo_motor import MACRO_DEFAULT, PONDERACIONES_DEFAULT, evaluar_credito_riesgo, resultado_a_columnas
+from services.credito_riesgo_motor import (
+    MACRO_DEFAULT,
+    PONDERACIONES_DEFAULT,
+    REGLAS_FLUJOS_DEFAULT,
+    evaluar_credito_riesgo,
+    resultado_a_columnas,
+)
 
 
 def get_politica_valor(db: Session, clave: str) -> dict[str, Any] | None:
@@ -26,9 +32,36 @@ def get_politica_valor(db: Session, clave: str) -> dict[str, Any] | None:
     return dict(row.valor_json) if row.valor_json else {}
 
 
-def cargar_macro_y_ponderaciones(db: Session) -> tuple[dict[str, Decimal], dict[str, Decimal]]:
+def guardar_politica_valor(
+    db: Session,
+    *,
+    clave: str,
+    valor_json: dict[str, Any],
+    descripcion: str | None = None,
+) -> CreditoPolitica:
+    row = db.scalars(select(CreditoPolitica).where(CreditoPolitica.clave == clave)).first()
+    if row is None:
+        row = CreditoPolitica(
+            clave=clave,
+            valor_json=valor_json,
+            descripcion=descripcion,
+            activo=True,
+        )
+    else:
+        row.valor_json = valor_json
+        row.activo = True
+        if descripcion is not None:
+            row.descripcion = descripcion
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def cargar_macro_y_ponderaciones(db: Session) -> tuple[dict[str, Decimal], dict[str, Decimal], dict[str, Decimal]]:
     raw_m = get_politica_valor(db, "macro_referencia_chile_202602")
     raw_p = get_politica_valor(db, "ponderaciones_v1")
+    raw_r = get_politica_valor(db, "reglas_flujos_credito_v1")
     macro = {
         k: Decimal(str(v))
         for k, v in (raw_m or {}).items()
@@ -47,7 +80,16 @@ def cargar_macro_y_ponderaciones(db: Session) -> tuple[dict[str, Decimal], dict[
                 continue
     if len(pond) < 7:
         pond = dict(PONDERACIONES_DEFAULT)
-    return macro, pond
+    reglas: dict[str, Decimal] = dict(REGLAS_FLUJOS_DEFAULT)
+    if raw_r:
+        for k, v in raw_r.items():
+            if k not in REGLAS_FLUJOS_DEFAULT:
+                continue
+            try:
+                reglas[k] = Decimal(str(v))
+            except Exception:
+                continue
+    return macro, pond, reglas
 
 
 def listar_solicitudes(db: Session, *, limit: int = 200, estado: str | None = None) -> list[CreditoSolicitud]:
@@ -119,8 +161,14 @@ def actualizar_solicitud(db: Session, sol: CreditoSolicitud, *, usuario: str = "
     return sol
 
 
-def ejecutar_evaluacion(db: Session, sol: CreditoSolicitud, *, usuario: str = "sistema") -> CreditoEvaluacion:
-    macro, pond = cargar_macro_y_ponderaciones(db)
+def ejecutar_evaluacion(
+    db: Session,
+    sol: CreditoSolicitud,
+    *,
+    usuario: str = "sistema",
+    flujo_evaluacion: str = "PROFUNDO",
+) -> CreditoEvaluacion:
+    macro, pond, reglas = cargar_macro_y_ponderaciones(db)
     r = evaluar_credito_riesgo(
         ingreso_mensual=sol.ingreso_mensual,
         gastos_mensual=sol.gastos_mensual,
@@ -144,8 +192,12 @@ def ejecutar_evaluacion(db: Session, sol: CreditoSolicitud, *, usuario: str = "s
         anios_operacion_empresa=sol.anios_operacion_empresa,
         garantia_valor_liquidacion=sol.garantia_valor_liquidacion,
         exposicion_usd_pct=sol.exposicion_usd_pct,
+        concentracion_ingresos_pct=sol.concentracion_ingresos_pct,
+        historial_tributario=sol.historial_tributario,
+        flujo_evaluacion=flujo_evaluacion,
         macro=macro,
         ponderaciones=pond,
+        reglas_flujos=reglas,
     )
     col = resultado_a_columnas(r)
     ev = CreditoEvaluacion(
@@ -157,10 +209,13 @@ def ejecutar_evaluacion(db: Session, sol: CreditoSolicitud, *, usuario: str = "s
         plazo_maximo_sugerido=col["plazo_maximo_sugerido"],
         tasa_sugerida_anual=col["tasa_sugerida_anual"],
         recomendacion=col["recomendacion"],
+        decision_motor=col["decision_motor"],
+        flujo_evaluacion=col["flujo_evaluacion"],
         explicacion=col["explicacion"],
         desglose_json=col["desglose_json"],
         macro_json=col["macro_json"],
         stress_cuotas_json=col["stress_cuotas_json"],
+        log_reglas_json=col["log_reglas_json"],
         motor_version=col["motor_version"],
     )
     db.add(ev)
@@ -176,6 +231,8 @@ def ejecutar_evaluacion(db: Session, sol: CreditoSolicitud, *, usuario: str = "s
                 "evaluacion_id": int(ev.id),
                 "evaluacion_score": float(col["score_total"]),
                 "categoria": col["categoria"],
+                "flujo_evaluacion": col["flujo_evaluacion"],
+                "decision_motor": col["decision_motor"],
                 "recomendacion_motor": col["recomendacion"],
             },
             usuario=usuario,

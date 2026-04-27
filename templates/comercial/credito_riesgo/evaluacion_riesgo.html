@@ -2,6 +2,8 @@
 {% block title %}Ficha evaluación — {{ sol.codigo or sol.id }}{% endblock %}
 {% block content %}
 <div class="container py-4">
+  {% set evs = sol.evaluaciones|sort(attribute='id', reverse=true) %}
+  {% set ultimo = evs[0] if evs else none %}
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
     <div>
       <a href="{{ request.url_for('credito_riesgo_solicitudes_list') }}" class="small text-decoration-none">← Solicitudes</a>
@@ -39,18 +41,40 @@
       <div class="card border-0 shadow-sm mb-3">
         <div class="card-header bg-white fw-semibold">Motor de scoring</div>
         <div class="card-body">
-          <p class="small text-muted">Ejecuta el motor 0–1000 con ponderaciones oficiales, estrés de tasa y snapshot macro (BCCh / CMF referencia interna). Al calcular, la solicitud pasa a <strong>EN_EVALUACION</strong>; la recomendación del motor es orientativa hasta que registre una decisión manual.</p>
-          <form method="post" action="{{ request.url_for('credito_riesgo_evaluar', solicitud_id=sol.id) }}" class="d-inline">
-            <button type="submit" class="btn btn-primary">Calcular y guardar evaluación</button>
-          </form>
+          <p class="small text-muted">Ejecuta dos flujos: <strong>RÁPIDO</strong> (score comercial, endeudamiento y antigüedad) o <strong>PROFUNDO</strong> (flujo de caja, DSCR, concentración de ingresos, historial tributario y garantías). Ambos generan log de reglas y decisión clara.</p>
+          <div class="d-flex flex-wrap gap-2">
+            <form method="post" action="{{ request.url_for('credito_riesgo_evaluar_rapido', solicitud_id=sol.id) }}" class="d-inline">
+              <button type="submit" class="btn btn-outline-primary">Evaluación rápida</button>
+            </form>
+            <form method="post" action="{{ request.url_for('credito_riesgo_evaluar_profundo', solicitud_id=sol.id) }}" class="d-inline">
+              <button type="submit" class="btn btn-primary">Evaluación profunda</button>
+            </form>
+            <form method="post" action="{{ request.url_for('credito_riesgo_evaluar', solicitud_id=sol.id) }}" class="d-inline">
+              <button type="submit" class="btn btn-outline-secondary">Calcular (compatibilidad)</button>
+            </form>
+          </div>
+          <p class="small text-secondary mt-2 mb-0">
+            Concentración ingresos actual: <strong>{{ sol.concentracion_ingresos_pct }}%</strong> ·
+            Historial tributario: <strong>{{ sol.historial_tributario }}</strong>
+          </p>
+          {% if ultimo %}
+          <p class="small text-secondary mt-1 mb-0">
+            Último flujo: <strong>{{ ultimo.flujo_evaluacion }}</strong> ·
+            Decisión motor: <strong>{{ ultimo.decision_motor }}</strong>
+          </p>
+          {% endif %}
+          {% if ultimo and ultimo.log_reglas_json %}
+          <details class="mt-2">
+            <summary class="small">Ver log de reglas aplicadas</summary>
+            <pre class="small bg-light border rounded p-2 mt-2 mb-0">{{ ultimo.log_reglas_json }}</pre>
+          </details>
+          {% endif %}
         </div>
       </div>
 
       <div class="card border-0 shadow-sm">
         <div class="card-header bg-white fw-semibold">Decisión del negocio</div>
         <div class="card-body">
-          {% set evs = sol.evaluaciones|sort(attribute='id', reverse=true) %}
-          {% set ultimo = evs[0] if evs else none %}
           {% if ultimo %}
           <p class="small text-muted mb-2">Última corrida del motor: recomendación <strong>{{ ultimo.recomendacion }}</strong> (categoría {{ ultimo.categoria }}, score {{ "%.0f"|format(ultimo.score_total) }}).</p>
           {% else %}

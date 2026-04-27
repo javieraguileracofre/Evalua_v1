@@ -35,6 +35,7 @@ _PATCH_105 = _ROOT / "db" / "psql" / "105_leasing_operativo_parametros_tipo.sql"
 _PATCH_106 = _ROOT / "db" / "psql" / "106_leasing_operativo_documentos.sql"
 _PATCH_107 = _ROOT / "db" / "psql" / "107_leasing_operativo_contabilidad_base.sql"
 _PATCH_109 = _ROOT / "db" / "psql" / "109_leasing_financiero_workflow.sql"
+_PATCH_110 = _ROOT / "db" / "psql" / "110_credito_riesgo_flujos.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -464,13 +465,25 @@ def ensure_credito_riesgo_schema(engine: Engine) -> None:
             )
         ).scalar()
     if has:
+        if _PATCH_110.is_file():
+            try:
+                _run_sql_patch_autocommit(engine, _PATCH_110)
+                logger.info("Parche aplicado: mejoras de flujos crédito y riesgo (110).")
+            except Exception as exc:
+                logger.warning(
+                    "No se pudo aplicar 110_credito_riesgo_flujos.sql. Detalle: %s",
+                    exc,
+                )
         return
     try:
         _run_sql_patch_autocommit(engine, _PATCH_101)
         logger.info("Parche aplicado: crédito y riesgo (101).")
+        if _PATCH_110.is_file():
+            _run_sql_patch_autocommit(engine, _PATCH_110)
+            logger.info("Parche aplicado: mejoras de flujos crédito y riesgo (110).")
     except Exception as exc:
         logger.warning(
-            "No se pudo aplicar 101_credito_riesgo.sql. Ejecute manualmente en la base si es necesario. Detalle: %s",
+            "No se pudo aplicar 101/110 crédito y riesgo. Ejecute manualmente en la base si es necesario. Detalle: %s",
             exc,
         )
 

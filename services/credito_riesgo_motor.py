@@ -44,6 +44,23 @@ PONDERACIONES_DEFAULT: dict[str, Decimal] = {
     "macro_sectorial": Decimal("0.05"),
 }
 
+REGLAS_FLUJOS_DEFAULT: dict[str, Decimal] = {
+    # Flujo rapido
+    "rapido_score_aprobacion": Decimal("300"),
+    "rapido_endeudamiento_max_pct": Decimal("45"),
+    "rapido_antiguedad_min_anios": Decimal("1"),
+    # Flujo profundo
+    "profundo_dscr_aprobacion_min": Decimal("1.15"),
+    "profundo_dscr_rechazo_max": Decimal("1.00"),
+    "profundo_dscr_alerta_min": Decimal("1.10"),
+    "profundo_dscr_fuerte_min": Decimal("1.30"),
+    "profundo_garantia_aprobacion_min_pct": Decimal("80"),
+    "profundo_garantia_rechazo_max_pct": Decimal("70"),
+    "profundo_garantia_fuerte_min_pct": Decimal("120"),
+    "profundo_concentracion_alta_pct": Decimal("60"),
+    "profundo_concentracion_baja_pct": Decimal("35"),
+}
+
 
 def _d(v: Any, default: str = "0") -> Decimal:
     if v is None:
@@ -124,10 +141,13 @@ class MotorCreditoRiesgoResultado:
     plazo_maximo_sugerido: int
     tasa_sugerida_anual: Decimal
     recomendacion: str
+    decision_motor: str
+    flujo_evaluacion: str
     explicacion: str
     desglose_json: dict[str, Any]
     macro_json: dict[str, Any]
     stress_cuotas_json: dict[str, Any]
+    log_reglas_json: dict[str, Any]
     motivos: list[str] = field(default_factory=list)
 
 
@@ -243,12 +263,23 @@ def evaluar_credito_riesgo(
     anios_operacion_empresa: Any,
     garantia_valor_liquidacion: Any,
     exposicion_usd_pct: Any,
+    concentracion_ingresos_pct: Any,
+    historial_tributario: str | None,
+    flujo_evaluacion: str = "PROFUNDO",
     macro: dict[str, Decimal] | None = None,
     ponderaciones: dict[str, Decimal] | None = None,
+    reglas_flujos: dict[str, Decimal] | None = None,
 ) -> MotorCreditoRiesgoResultado:
     motivos: list[str] = []
     macro_use = {k: macro.get(k, v) if macro else v for k, v in MACRO_DEFAULT.items()}
     pond = ponderaciones or PONDERACIONES_DEFAULT
+    reglas = dict(REGLAS_FLUJOS_DEFAULT)
+    if reglas_flujos:
+        for k, v in reglas_flujos.items():
+            try:
+                reglas[k] = _d(v, str(REGLAS_FLUJOS_DEFAULT.get(k, Decimal("0"))))
+            except Exception:
+                continue
 
     ing = _d(ingreso_mensual)
     gas = _d(gastos_mensual)
@@ -268,6 +299,12 @@ def evaluar_credito_riesgo(
     reprog = _i(reprogramaciones, 0)
     gar_liq = _d(garantia_valor_liquidacion)
     usd_exp = _d(exposicion_usd_pct)
+    conc_ing = _d(concentracion_ingresos_pct)
+    hist_trib = (historial_tributario or "SIN_INFO").strip().upper()
+    flujo = (flujo_evaluacion or "PROFUNDO").strip().upper()
+    if flujo not in {"RAPIDO", "PROFUNDO"}:
+        flujo = "PROFUNDO"
+    log_reglas: list[dict[str, Any]] = []
 
     tipo_p = (tipo_persona or "NATURAL").strip().upper()
     ant_meses = _i(antiguedad_meses_natural, 0)
@@ -294,6 +331,14 @@ def evaluar_credito_riesgo(
     if excedente < 0:
         scap = min(scap, Decimal("80"))
         motivos.append("Excedente mensual negativo tras cuota propuesta.")
+    log_reglas.append(
+        {
+            "regla": "capacidad_pago_base",
+            "carga_financiera_pct": float(carga_fin),
+            "excedente_mensual": float(excedente),
+            "subscore": float(scap),
+        }
+    )
 
     tpm = macro_use.get("tpm_referencia_anual_pct", Decimal("5.25"))
     cuota_base = pmt_cuota_mensual(monto_sol, tpm, plazo)
@@ -345,6 +390,16 @@ def evaluar_credito_riesgo(
             motivos.append("Tipo de ingreso menos estable (honorarios/informal): mayor riesgo.")
         elif tc == "INDEFINIDO":
             motivos.append("Contrato indefinido: menor riesgo laboral percibido.")
+    log_reglas.append(
+        {
+            "regla": "historial_pago_base",
+            "mora_max_dias_12m": mora,
+            "protestos": prot,
+            "castigos": cast,
+            "reprogramaciones": reprog,
+            "subscore": float(shist),
+        }
+    )
 
     # --- Endeudamiento (0-150) ---
     slev = Decimal("120")
@@ -369,6 +424,12 @@ def evaluar_credito_riesgo(
             slev -= Decimal("30")
 
     slev = max(min(slev, Decimal("150")), Decimal("0"))
+    log_reglas.append(
+        {
+            "regla": "endeudamiento_base",
+            "subscore": float(slev),
+        }
+    )
 
     # --- Liquidez / flujo (0-150) ---
     sliq = Decimal("100")
@@ -399,6 +460,12 @@ def evaluar_credito_riesgo(
             sliq = min(sliq, Decimal("150"))
 
     sliq = max(min(sliq, Decimal("150")), Decimal("0"))
+    log_reglas.append(
+        {
+            "regla": "liquidez_flujo_base",
+            "subscore": float(sliq),
+        }
+    )
 
     # --- Antigüedad / estabilidad (0-100) ---
     if tipo_p == "JURIDICA":
@@ -418,6 +485,13 @@ def evaluar_credito_riesgo(
     else:
         sant = Decimal("20")
         motivos.append("Antigüedad muy corta (<1 año): riesgo operativo elevado.")
+    log_reglas.append(
+        {
+            "regla": "antiguedad_base",
+            "anios_referencia": int(yrs),
+            "subscore": float(sant),
+        }
+    )
 
     # --- Garantías (0-50) ---
     sgar = Decimal("25")
@@ -435,6 +509,12 @@ def evaluar_credito_riesgo(
         else:
             sgar = Decimal("10")
             motivos.append("Cobertura de garantía insuficiente (<70%).")
+    log_reglas.append(
+        {
+            "regla": "garantias_base",
+            "subscore": float(sgar),
+        }
+    )
 
     # --- Macro + sector (0-50) ---
     macro_factor, macro_det = _macro_ajustes(macro_use, motivos)
@@ -452,6 +532,85 @@ def evaluar_credito_riesgo(
         motivos.append("Alta exposición USD vs ingresos en CLP: riesgo cambiario.")
 
     smacro = max(min(smacro, Decimal("50")), Decimal("0"))
+    log_reglas.append(
+        {
+            "regla": "macro_sectorial_base",
+            "subscore": float(smacro),
+            "sector": sec_key,
+        }
+    )
+
+    # --- Flujo rápido: reglas simples de aprobación/rechazo ---
+    if flujo == "RAPIDO":
+        score_comercial = (shist + (slev * Decimal("1.3"))).quantize(Decimal("0.01"))
+        regla_endeudamiento_ok = carga_fin <= reglas["rapido_endeudamiento_max_pct"]
+        regla_antiguedad_ok = yrs >= int(reglas["rapido_antiguedad_min_anios"])
+        decision_rapida = "RECHAZAR"
+
+        if score_comercial >= reglas["rapido_score_aprobacion"] and regla_endeudamiento_ok and regla_antiguedad_ok:
+            decision_rapida = "APROBAR"
+
+        log_reglas.append(
+            {
+                "regla": "flujo_rapido_decision",
+                "score_comercial": float(score_comercial),
+                "endeudamiento_pct": float(carga_fin),
+                "antiguedad_anios": int(yrs),
+                "umbral_score_aprobacion": float(reglas["rapido_score_aprobacion"]),
+                "umbral_endeudamiento_pct": float(reglas["rapido_endeudamiento_max_pct"]),
+                "umbral_antiguedad_min_anios": int(reglas["rapido_antiguedad_min_anios"]),
+                "resultado": decision_rapida,
+            }
+        )
+
+        score = max(Decimal("0"), min((score_comercial / Decimal("400")) * Decimal("1000"), Decimal("1000"))).quantize(Decimal("0.01"))
+        cat = _categoria_desde_score(score)
+        clasif = _clasificacion_riesgo(cat)
+        reco = "APROBAR" if decision_rapida == "APROBAR" else "RECHAZAR"
+        decision_motor = decision_rapida
+
+        plazo_max = min(plazo, _plazo_max_por_categoria(cat))
+        spread = _tasa_spread(cat)
+        tasa_sugerida = (macro_use.get("tpm_referencia_anual_pct", Decimal("5.25")) + spread).quantize(Decimal("0.0001"))
+        monto_max = monto_sol if decision_motor == "APROBAR" else Decimal("0")
+        if decision_motor != "APROBAR":
+            plazo_max = 0
+
+        desglose = {
+            "flujo": "RAPIDO",
+            "subscores": {
+                "score_comercial": float(score_comercial),
+                "historial_pago": float(shist),
+                "endeudamiento": float(slev),
+                "antiguedad": float(sant),
+            },
+            "carga_financiera_pct": float(carga_fin),
+            "categoria": cat,
+        }
+        macro_json = {k: float(v) for k, v in macro_use.items()}
+        macro_json["detalle_reglas"] = macro_det
+
+        expl = (
+            f"Flujo RAPIDO ejecutado. Decisión automática: {decision_motor}. "
+            f"Score rápido {float(score):.0f}/1000 (categoría {cat})."
+        )
+        return MotorCreditoRiesgoResultado(
+            score_total=score,
+            categoria=cat,
+            clasificacion_riesgo=clasif,
+            monto_maximo_sugerido=monto_max.quantize(Decimal("1")),
+            plazo_maximo_sugerido=int(plazo_max),
+            tasa_sugerida_anual=tasa_sugerida,
+            recomendacion=reco,
+            decision_motor=decision_motor,
+            flujo_evaluacion="RAPIDO",
+            explicacion=expl,
+            desglose_json=desglose,
+            macro_json=macro_json,
+            stress_cuotas_json=stress_json,
+            log_reglas_json={"reglas_aplicadas": log_reglas},
+            motivos=motivos,
+        )
 
     # Ponderación: cada subscore ya está en su escala máxima (250,250,150,150,100,50,50 = 1000).
     # Los pesos en BD reescalan contribuciones si difieren del estándar.
@@ -497,6 +656,74 @@ def evaluar_credito_riesgo(
 
     monto_max = max(monto_max, Decimal("0")).quantize(Decimal("1"))
 
+    # Flujo profundo: capacidad de pago + garantías + análisis adicional.
+    dscr = Decimal("0")
+    if cuota_prop > 0:
+        dscr = (fcf_m / cuota_prop).quantize(Decimal("0.0001"))
+    stress_json["dscr"] = float(dscr)
+
+    ajuste_profundo = Decimal("0")
+    if dscr < reglas["profundo_dscr_alerta_min"]:
+        ajuste_profundo -= Decimal("90")
+        motivos.append("DSCR insuficiente en flujo profundo.")
+    elif dscr >= reglas["profundo_dscr_fuerte_min"]:
+        ajuste_profundo += Decimal("30")
+        motivos.append("DSCR sólido (>=1.30) en flujo profundo.")
+
+    if conc_ing > reglas["profundo_concentracion_alta_pct"]:
+        ajuste_profundo -= Decimal("60")
+        motivos.append("Alta concentración de ingresos (>60%).")
+    elif conc_ing <= reglas["profundo_concentracion_baja_pct"]:
+        ajuste_profundo += Decimal("20")
+        motivos.append("Concentración de ingresos diversificada (<=35%).")
+
+    if hist_trib == "OBSERVADO":
+        ajuste_profundo -= Decimal("80")
+        motivos.append("Historial tributario observado.")
+    elif hist_trib == "IRREGULAR":
+        ajuste_profundo -= Decimal("140")
+        motivos.append("Historial tributario irregular.")
+    elif hist_trib == "AL_DIA":
+        ajuste_profundo += Decimal("20")
+        motivos.append("Historial tributario al día.")
+
+    cobertura_garantia_pct = Decimal("0")
+    if monto_sol > 0 and gar_liq > 0:
+        cobertura_garantia_pct = (gar_liq / monto_sol) * Decimal("100")
+    stress_json["cobertura_garantia_pct"] = float(cobertura_garantia_pct)
+
+    if cobertura_garantia_pct < reglas["profundo_garantia_rechazo_max_pct"]:
+        ajuste_profundo -= Decimal("120")
+        motivos.append("Garantías insuficientes para flujo profundo.")
+    elif cobertura_garantia_pct >= reglas["profundo_garantia_fuerte_min_pct"]:
+        ajuste_profundo += Decimal("40")
+        motivos.append("Garantías fuertes para flujo profundo.")
+
+    score = max(Decimal("0"), min(score + ajuste_profundo, Decimal("1000"))).quantize(Decimal("0.01"))
+    cat = _categoria_desde_score(score)
+    clasif = _clasificacion_riesgo(cat)
+
+    decision_motor = "RECHAZAR"
+    if dscr >= reglas["profundo_dscr_aprobacion_min"] and cobertura_garantia_pct >= reglas["profundo_garantia_aprobacion_min_pct"] and cat in {"A", "B", "C"}:
+        decision_motor = "APROBAR"
+    elif cat in {"D", "E"} or dscr < reglas["profundo_dscr_rechazo_max"] or cobertura_garantia_pct < reglas["profundo_garantia_rechazo_max_pct"]:
+        decision_motor = "RECHAZAR"
+    else:
+        decision_motor = "CONDICIONES"
+
+    reco = decision_motor
+    log_reglas.append(
+        {
+            "regla": "flujo_profundo_decision",
+            "dscr": float(dscr),
+            "concentracion_ingresos_pct": float(conc_ing),
+            "historial_tributario": hist_trib,
+            "cobertura_garantia_pct": float(cobertura_garantia_pct),
+            "umbrales": {k: float(v) for k, v in reglas.items()},
+            "decision": decision_motor,
+        }
+    )
+
     desglose = {
         "subscores": {
             "capacidad_pago": float(scap),
@@ -506,6 +733,14 @@ def evaluar_credito_riesgo(
             "antiguedad": float(sant),
             "garantias": float(sgar),
             "macro_sectorial": float(smacro),
+        },
+        "flujo": "PROFUNDO",
+        "analisis_profundo": {
+            "dscr": float(dscr),
+            "concentracion_ingresos_pct": float(conc_ing),
+            "historial_tributario": hist_trib,
+            "cobertura_garantia_pct": float(cobertura_garantia_pct),
+            "ajuste_profundo_score": float(ajuste_profundo),
         },
         "ponderaciones": {k: float(v) for k, v in w.items()},
         "carga_financiera_pct": float(carga_fin),
@@ -518,8 +753,8 @@ def evaluar_credito_riesgo(
     macro_json["fuente_nota"] = "Valores referencia Chile Feb-2026 (BCCh inflación/PIB; CMF mora/cartera). Ajustar en credito_politica."
 
     expl = (
-        f"Cliente clasificado categoría {cat} (score {float(score):.0f}/1000). Clasificación de riesgo: {clasif}. "
-        f"Recomendación automática: {reco.replace('_', ' ')}.\n\nMotivos principales:\n"
+        f"Flujo PROFUNDO: categoría {cat} (score {float(score):.0f}/1000), riesgo {clasif}. "
+        f"Decisión automática: {decision_motor}.\n\nMotivos principales:\n"
         + "\n".join(f"- {m}" for m in motivos[:12])
     )
 
@@ -531,10 +766,13 @@ def evaluar_credito_riesgo(
         plazo_maximo_sugerido=int(plazo_max),
         tasa_sugerida_anual=tasa_sugerida,
         recomendacion=reco,
+        decision_motor=decision_motor,
+        flujo_evaluacion="PROFUNDO",
         explicacion=expl,
         desglose_json=desglose,
         macro_json=macro_json,
         stress_cuotas_json=stress_json,
+        log_reglas_json={"reglas_aplicadas": log_reglas},
         motivos=motivos,
     )
 
@@ -548,9 +786,12 @@ def resultado_a_columnas(r: MotorCreditoRiesgoResultado) -> dict[str, Any]:
         "plazo_maximo_sugerido": r.plazo_maximo_sugerido,
         "tasa_sugerida_anual": r.tasa_sugerida_anual,
         "recomendacion": r.recomendacion,
+        "decision_motor": r.decision_motor,
+        "flujo_evaluacion": r.flujo_evaluacion,
         "explicacion": r.explicacion,
         "desglose_json": r.desglose_json,
         "macro_json": r.macro_json,
         "stress_cuotas_json": r.stress_cuotas_json,
+        "log_reglas_json": r.log_reglas_json,
         "motor_version": "v1",
     }

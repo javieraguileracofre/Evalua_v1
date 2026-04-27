@@ -80,6 +80,12 @@ class CreditoSolicitud(Base):
     garantia_valor_liquidacion: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0"), server_default="0")
 
     exposicion_usd_pct: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False, default=Decimal("0"), server_default="0")
+    concentracion_ingresos_pct: Mapped[Decimal] = mapped_column(
+        Numeric(6, 2), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    historial_tributario: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="SIN_INFO", server_default="SIN_INFO"
+    )
 
     estado: Mapped[str] = mapped_column(String(30), nullable=False, default="BORRADOR", server_default="BORRADOR")
     observaciones: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
@@ -126,10 +132,19 @@ class CreditoEvaluacion(Base):
     tasa_sugerida_anual: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False)
 
     recomendacion: Mapped[str] = mapped_column(String(30), nullable=False)
+    flujo_evaluacion: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="PROFUNDO", server_default="PROFUNDO"
+    )
+    decision_motor: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="PENDIENTE", server_default="PENDIENTE"
+    )
     explicacion: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     desglose_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     macro_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     stress_cuotas_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    log_reglas_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     motor_version: Mapped[str] = mapped_column(String(20), nullable=False, default="v1", server_default="v1")
 
     creado_en: Mapped[datetime] = mapped_column(

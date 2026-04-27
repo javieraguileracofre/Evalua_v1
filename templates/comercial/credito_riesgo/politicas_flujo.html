@@ -1,0 +1,75 @@
+{% extends "layout/base.html" %}
+{% block title %}Políticas de flujos de crédito{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width: 980px;">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <a href="{{ request.url_for('credito_riesgo_dashboard') }}" class="small text-decoration-none">← Volver al dashboard</a>
+      <h1 class="h5 fw-semibold mt-2 mb-1">Políticas editables de flujos de crédito</h1>
+      <p class="small text-muted mb-0">Estos umbrales son usados por el motor en evaluaciones rápidas y profundas.</p>
+    </div>
+  </div>
+
+  <form method="post" action="{{ request.url_for('credito_riesgo_politicas_flujos_guardar') }}" class="card border-0 shadow-sm">
+    <div class="card-body row g-3">
+      <div class="col-12"><h2 class="h6 text-primary mb-0">Flujo rápido</h2></div>
+      <div class="col-md-4">
+        <label class="form-label">Score mínimo aprobación</label>
+        <input name="rapido_score_aprobacion" class="form-control" value="{{ reglas.rapido_score_aprobacion }}" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Endeudamiento máximo (%)</label>
+        <input name="rapido_endeudamiento_max_pct" class="form-control" value="{{ reglas.rapido_endeudamiento_max_pct }}" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Antigüedad mínima (años)</label>
+        <input name="rapido_antiguedad_min_anios" class="form-control" value="{{ reglas.rapido_antiguedad_min_anios }}" />
+      </div>
+
+      <div class="col-12 mt-3"><h2 class="h6 text-primary mb-0">Flujo profundo</h2></div>
+      <div class="col-md-3">
+        <label class="form-label">DSCR mínimo aprobación</label>
+        <input name="profundo_dscr_aprobacion_min" class="form-control" value="{{ reglas.profundo_dscr_aprobacion_min }}" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">DSCR máximo rechazo</label>
+        <input name="profundo_dscr_rechazo_max" class="form-control" value="{{ reglas.profundo_dscr_rechazo_max }}" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">DSCR umbral alerta</label>
+        <input name="profundo_dscr_alerta_min" class="form-control" value="{{ reglas.profundo_dscr_alerta_min }}" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">DSCR umbral fuerte</label>
+        <input name="profundo_dscr_fuerte_min" class="form-control" value="{{ reglas.profundo_dscr_fuerte_min }}" />
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Garantía mínima aprobación (%)</label>
+        <input name="profundo_garantia_aprobacion_min_pct" class="form-control" value="{{ reglas.profundo_garantia_aprobacion_min_pct }}" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Garantía máximo rechazo (%)</label>
+        <input name="profundo_garantia_rechazo_max_pct" class="form-control" value="{{ reglas.profundo_garantia_rechazo_max_pct }}" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Garantía umbral fuerte (%)</label>
+        <input name="profundo_garantia_fuerte_min_pct" class="form-control" value="{{ reglas.profundo_garantia_fuerte_min_pct }}" />
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Concentración alta ingresos (%)</label>
+        <input name="profundo_concentracion_alta_pct" class="form-control" value="{{ reglas.profundo_concentracion_alta_pct }}" />
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Concentración baja ingresos (%)</label>
+        <input name="profundo_concentracion_baja_pct" class="form-control" value="{{ reglas.profundo_concentracion_baja_pct }}" />
+      </div>
+    </div>
+    <div class="card-footer bg-white border-0 d-flex gap-2">
+      <button type="submit" class="btn btn-primary">Guardar y publicar reglas</button>
+      <a href="{{ request.url_for('credito_riesgo_dashboard') }}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

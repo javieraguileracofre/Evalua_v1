@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from io import BytesIO
+from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -40,6 +41,13 @@ def _parse_int(raw: str | None, default: int = 0) -> int:
         return default
 
 
+def _to_float(v: Any, default: float) -> float:
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+
 @router.get("/", name="credito_riesgo_root")
 def credito_riesgo_root():
     return RedirectResponse(url="/comercial/credito-riesgo/dashboard", status_code=status.HTTP_302_FOUND)
@@ -51,6 +59,73 @@ def credito_riesgo_dashboard(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         "comercial/credito_riesgo/dashboard_riesgo.html",
         {"request": request, "kpi": kpi, "active_menu": "credito_riesgo"},
+    )
+
+
+@router.get("/politicas/flujos", response_class=HTMLResponse, name="credito_riesgo_politicas_flujos")
+def politicas_flujos(request: Request, db: Session = Depends(get_db)):
+    defaults = {
+        "rapido_score_aprobacion": 300.0,
+        "rapido_endeudamiento_max_pct": 45.0,
+        "rapido_antiguedad_min_anios": 1.0,
+        "profundo_dscr_aprobacion_min": 1.15,
+        "profundo_dscr_rechazo_max": 1.00,
+        "profundo_dscr_alerta_min": 1.10,
+        "profundo_dscr_fuerte_min": 1.30,
+        "profundo_garantia_aprobacion_min_pct": 80.0,
+        "profundo_garantia_rechazo_max_pct": 70.0,
+        "profundo_garantia_fuerte_min_pct": 120.0,
+        "profundo_concentracion_alta_pct": 60.0,
+        "profundo_concentracion_baja_pct": 35.0,
+    }
+    raw = crud_cr.get_politica_valor(db, "reglas_flujos_credito_v1") or {}
+    reglas = {k: _to_float(raw.get(k), v) for k, v in defaults.items()}
+    return templates.TemplateResponse(
+        "comercial/credito_riesgo/politicas_flujo.html",
+        {"request": request, "reglas": reglas, "active_menu": "credito_riesgo"},
+    )
+
+
+@router.post("/politicas/flujos", name="credito_riesgo_politicas_flujos_guardar")
+def politicas_flujos_guardar(
+    request: Request,
+    db: Session = Depends(get_db),
+    rapido_score_aprobacion: str = Form("300"),
+    rapido_endeudamiento_max_pct: str = Form("45"),
+    rapido_antiguedad_min_anios: str = Form("1"),
+    profundo_dscr_aprobacion_min: str = Form("1.15"),
+    profundo_dscr_rechazo_max: str = Form("1.0"),
+    profundo_dscr_alerta_min: str = Form("1.10"),
+    profundo_dscr_fuerte_min: str = Form("1.30"),
+    profundo_garantia_aprobacion_min_pct: str = Form("80"),
+    profundo_garantia_rechazo_max_pct: str = Form("70"),
+    profundo_garantia_fuerte_min_pct: str = Form("120"),
+    profundo_concentracion_alta_pct: str = Form("60"),
+    profundo_concentracion_baja_pct: str = Form("35"),
+):
+    reglas = {
+        "rapido_score_aprobacion": float(_parse_decimal(rapido_score_aprobacion, "300")),
+        "rapido_endeudamiento_max_pct": float(_parse_decimal(rapido_endeudamiento_max_pct, "45")),
+        "rapido_antiguedad_min_anios": float(_parse_decimal(rapido_antiguedad_min_anios, "1")),
+        "profundo_dscr_aprobacion_min": float(_parse_decimal(profundo_dscr_aprobacion_min, "1.15")),
+        "profundo_dscr_rechazo_max": float(_parse_decimal(profundo_dscr_rechazo_max, "1.0")),
+        "profundo_dscr_alerta_min": float(_parse_decimal(profundo_dscr_alerta_min, "1.10")),
+        "profundo_dscr_fuerte_min": float(_parse_decimal(profundo_dscr_fuerte_min, "1.30")),
+        "profundo_garantia_aprobacion_min_pct": float(_parse_decimal(profundo_garantia_aprobacion_min_pct, "80")),
+        "profundo_garantia_rechazo_max_pct": float(_parse_decimal(profundo_garantia_rechazo_max_pct, "70")),
+        "profundo_garantia_fuerte_min_pct": float(_parse_decimal(profundo_garantia_fuerte_min_pct, "120")),
+        "profundo_concentracion_alta_pct": float(_parse_decimal(profundo_concentracion_alta_pct, "60")),
+        "profundo_concentracion_baja_pct": float(_parse_decimal(profundo_concentracion_baja_pct, "35")),
+    }
+    crud_cr.guardar_politica_valor(
+        db,
+        clave="reglas_flujos_credito_v1",
+        valor_json=reglas,
+        descripcion="Umbrales editables para flujos RAPIDO y PROFUNDO del motor de credito.",
+    )
+    return RedirectResponse(
+        url=str(request.url_for("credito_riesgo_politicas_flujos")),
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 
@@ -108,6 +183,8 @@ def form_solicitud_post(
     garantia_valor_comercial: str = Form("0"),
     garantia_valor_liquidacion: str = Form("0"),
     exposicion_usd_pct: str = Form("0"),
+    concentracion_ingresos_pct: str = Form("0"),
+    historial_tributario: str = Form("SIN_INFO"),
     observaciones: str = Form(""),
 ):
     cid = _parse_int(cliente_id, 0)
@@ -151,6 +228,8 @@ def form_solicitud_post(
         garantia_valor_comercial=_parse_decimal(garantia_valor_comercial),
         garantia_valor_liquidacion=_parse_decimal(garantia_valor_liquidacion),
         exposicion_usd_pct=_parse_decimal(exposicion_usd_pct),
+        concentracion_ingresos_pct=_parse_decimal(concentracion_ingresos_pct),
+        historial_tributario=(historial_tributario or "SIN_INFO")[:20].upper(),
         observaciones=observaciones or "",
         estado="BORRADOR",
     )
@@ -177,7 +256,31 @@ def solicitud_evaluar(request: Request, solicitud_id: int, db: Session = Depends
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
-    ev = crud_cr.ejecutar_evaluacion(db, sol)
+    ev = crud_cr.ejecutar_evaluacion(db, sol, flujo_evaluacion="PROFUNDO")
+    return RedirectResponse(
+        url=str(request.url_for("credito_riesgo_score_detalle", eval_id=int(ev.id))),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/solicitudes/{solicitud_id}/evaluar-rapido", name="credito_riesgo_evaluar_rapido")
+def solicitud_evaluar_rapido(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    sol = crud_cr.obtener_solicitud(db, solicitud_id)
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    ev = crud_cr.ejecutar_evaluacion(db, sol, flujo_evaluacion="RAPIDO")
+    return RedirectResponse(
+        url=str(request.url_for("credito_riesgo_score_detalle", eval_id=int(ev.id))),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/solicitudes/{solicitud_id}/evaluar-profundo", name="credito_riesgo_evaluar_profundo")
+def solicitud_evaluar_profundo(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    sol = crud_cr.obtener_solicitud(db, solicitud_id)
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    ev = crud_cr.ejecutar_evaluacion(db, sol, flujo_evaluacion="PROFUNDO")
     return RedirectResponse(
         url=str(request.url_for("credito_riesgo_score_detalle", eval_id=int(ev.id))),
         status_code=status.HTTP_303_SEE_OTHER,
