@@ -119,9 +119,55 @@ def postventa_hub(
 ):
     if (redir := guard_operacion_consulta(request)) is not None:
         return redir
-    filas = crud_postventa.listar_clientes_resumen_postventa(db, busqueda=q, limit=100)
-    stats = crud_postventa.hub_dashboard_stats(db)
-    metricas = crud_postventa.metricas_postventa(db)
+    filas: list[dict[str, Any]] = []
+    stats: dict[str, Any] = {
+        "n_interacciones_30d": 0,
+        "n_interacciones_total": 0,
+        "n_solicitudes_abiertas": 0,
+        "n_solicitudes_total": 0,
+        "chart": {
+            "tipo_labels": [],
+            "tipo_counts": [],
+            "estado_labels": [],
+            "estado_counts": [],
+            "prioridad_labels": [],
+            "prioridad_counts": [],
+            "mes_labels": [],
+            "mes_int": [],
+            "mes_sol": [],
+        },
+    }
+    metricas: dict[str, Any] = {
+        "casos_abiertos": 0,
+        "casos_nuevos_7d": 0,
+        "casos_nuevos_30d": 0,
+        "casos_resueltos_30d": 0,
+        "promedio_horas_primera_respuesta": 0.0,
+        "promedio_horas_resolucion": 0.0,
+        "casos_vencidos_sla": 0,
+        "casos_por_usuario_asignado": [],
+        "casos_por_estado": [],
+        "casos_por_prioridad": [],
+        "backlog_sin_asignar": 0,
+    }
+    try:
+        filas = crud_postventa.listar_clientes_resumen_postventa(db, busqueda=q, limit=100)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Postventa hub: error listando clientes resumen")
+        msg = msg or public_error_message(exc, default="Hub cargado con datos parciales.")
+        sev = "warning"
+    try:
+        stats = crud_postventa.hub_dashboard_stats(db)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Postventa hub: error calculando dashboard stats")
+        msg = msg or public_error_message(exc, default="Hub cargado con estadísticas parciales.")
+        sev = "warning"
+    try:
+        metricas = crud_postventa.metricas_postventa(db)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Postventa hub: error calculando métricas")
+        msg = msg or public_error_message(exc, default="Hub cargado con métricas parciales.")
+        sev = "warning"
     return templates.TemplateResponse(
         "postventa/hub.html",
         {
