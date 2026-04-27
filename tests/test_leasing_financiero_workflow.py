@@ -203,3 +203,14 @@ def test_nueva_cotizacion_post_handles_sqlalchemy_error(monkeypatch: pytest.Monk
             dolar_valor="",
         )
     assert err.value.status_code == 503
+
+
+def test_parse_decimal_money_thousands_dot():
+    assert lf_routes._parse_decimal("228.500", money=True) == Decimal("228500")
+    assert lf_routes._parse_decimal("1.234.567,89", money=True) == Decimal("1234567.89")
+    assert lf_routes._parse_decimal("1,234,567.89", money=True) == Decimal("1234567.89")
+
+
+def test_parse_decimal_rate_keeps_decimal():
+    assert lf_routes._parse_decimal("0,1200", money=False) == Decimal("0.1200")
+    assert lf_routes._parse_decimal("228.500", money=False) == Decimal("228.500")

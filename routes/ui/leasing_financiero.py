@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional
@@ -33,10 +34,19 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 logger = logging.getLogger("evalua.leasing_financiero.ui")
 
 
-def _parse_decimal(value: str) -> Optional[Decimal]:
+def _parse_decimal(value: str, *, money: bool = False) -> Optional[Decimal]:
     value = (value or "").strip()
     if not value:
         return None
+    value = value.replace(" ", "")
+
+    # Campos monetarios: soporta miles con "." (es-CL) y "," (en-US)
+    if money:
+        if re.fullmatch(r"\d{1,3}(\.\d{3})+(,\d+)?", value):
+            value = value.replace(".", "").replace(",", ".")
+        elif re.fullmatch(r"\d{1,3}(,\d{3})+(\.\d+)?", value):
+            value = value.replace(",", "")
+
     # Soporta formatos: 1234.56, 1,234.56, 1.234,56, 1234,56
     if "," in value and "." in value:
         if value.rfind(",") > value.rfind("."):
@@ -243,24 +253,24 @@ def lf_cotizacion_nueva_post(
 
     obj_in = LeasingCotizacionCreate(
         cliente_id=int(cliente.id),
-        monto=_parse_decimal(monto),
+        monto=_parse_decimal(monto, money=True),
         moneda=moneda_norm,
         tasa=_parse_decimal(tasa),
         plazo=_parse_int(plazo),
-        opcion_compra=_parse_decimal(opcion_compra),
+        opcion_compra=_parse_decimal(opcion_compra, money=True),
         periodos_gracia=_parse_int(periodos_gracia) or 0,
         fecha_inicio=_parse_date(fecha_inicio),
-        valor_neto=_parse_decimal(valor_neto),
+        valor_neto=_parse_decimal(valor_neto, money=True),
         pago_inicial_tipo=(pago_inicial_tipo or None),
-        pago_inicial_valor=_parse_decimal(pago_inicial_valor),
+        pago_inicial_valor=_parse_decimal(pago_inicial_valor, money=True),
         financia_seguro=_parse_bool(financia_seguro),
-        seguro_monto_uf=_parse_decimal(seguro_monto_uf),
-        otros_montos_pesos=_parse_decimal(otros_montos_pesos),
+        seguro_monto_uf=_parse_decimal(seguro_monto_uf, money=True),
+        otros_montos_pesos=_parse_decimal(otros_montos_pesos, money=True),
         concesionario=(concesionario or None),
         ejecutivo=(ejecutivo or None),
         fecha_cotizacion=_parse_date(fecha_cotizacion),
         uf_valor=uf_val,
-        monto_financiado=_parse_decimal(monto_financiado),
+        monto_financiado=_parse_decimal(monto_financiado, money=True),
         dolar_valor=usd_val,
         estado=_normalizar_estado("BORRADOR"),
         contrato_activo=False,
@@ -621,15 +631,15 @@ def lf_cotizacion_editar_post(
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
     obj = LeasingCotizacionUpdate(
-        monto=_parse_decimal(monto),
+        monto=_parse_decimal(monto, money=True),
         moneda=_normalizar_moneda(moneda),
         tasa=_parse_decimal(tasa),
         plazo=_parse_int(plazo),
-        opcion_compra=_parse_decimal(opcion_compra),
+        opcion_compra=_parse_decimal(opcion_compra, money=True),
         periodos_gracia=_parse_int(periodos_gracia),
         fecha_inicio=_parse_date(fecha_inicio),
-        valor_neto=_parse_decimal(valor_neto),
-        monto_financiado=_parse_decimal(monto_financiado),
+        valor_neto=_parse_decimal(valor_neto, money=True),
+        monto_financiado=_parse_decimal(monto_financiado, money=True),
         estado=_normalizar_estado(estado),
         uf_valor=_parse_decimal(uf_valor),
         dolar_valor=_parse_decimal(dolar_valor),
