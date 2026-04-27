@@ -54,14 +54,21 @@
     </div>
     <div class="col-md-4">
       <div class="eva-kpi">
-        <div class="lbl">Total intereses</div>
-        <div class="val">{{ "{:,.0f}".format(total_interes or 0).replace(",", ".") }} {{ cotizacion.moneda or 'CLP' }}</div>
+        <div class="lbl">Total rentas</div>
+        <div class="val">{{ "{:,.0f}".format(total_rentas or 0).replace(",", ".") }} {{ cotizacion.moneda or 'CLP' }}</div>
       </div>
     </div>
     <div class="col-md-4">
       <div class="eva-kpi">
-        <div class="lbl">Total cuotas</div>
-        <div class="val">{{ "{:,.0f}".format(total_cuotas or 0).replace(",", ".") }} {{ cotizacion.moneda or 'CLP' }}</div>
+        <div class="lbl">Opción compra</div>
+        <div class="val">{{ "{:,.0f}".format(total_opcion or 0).replace(",", ".") }} {{ cotizacion.moneda or 'CLP' }}</div>
+        <div class="sub small text-muted">Total intereses: {{ "{:,.0f}".format(total_interes or 0).replace(",", ".") }} {{ cotizacion.moneda or 'CLP' }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="eva-kpi">
+        <div class="lbl">Total a pagar</div>
+        <div class="val">{{ "{:,.0f}".format(total_pagado or 0).replace(",", ".") }} {{ cotizacion.moneda or 'CLP' }}</div>
       </div>
     </div>
   </div>

@@ -72,16 +72,21 @@ def build_amortizacion_excel(
         value=float((cotizacion.tasa or Decimal("0")) * Decimal("100")),
     )
     ws.cell(row=row + 3, column=3, value="%")
-    ws.cell(row=row + 4, column=1, value="Plazo")
-    ws.cell(row=row + 4, column=2, value=cotizacion.plazo or 0)
-    ws.cell(row=row + 4, column=3, value="periodos")
+    plazo = cotizacion.plazo or 0
+    opcion_compra = cotizacion.opcion_compra or 0
+    tiene_opcion = opcion_compra > 0
+    total_pagos = plazo + (1 if tiene_opcion else 0)
+    ws.cell(row=row + 4, column=1, value="Rentas contractuales")
+    ws.cell(row=row + 4, column=2, value=plazo)
     ws.cell(row=row + 5, column=1, value="Opción compra")
-    ws.cell(row=row + 5, column=2, value=float(cotizacion.opcion_compra or 0))
+    ws.cell(row=row + 5, column=2, value=float(opcion_compra))
+    ws.cell(row=row + 6, column=1, value="Total pagos")
+    ws.cell(row=row + 6, column=2, value=total_pagos)
 
-    for r in range(row, row + 6):
+    for r in range(row, row + 7):
         ws.cell(row=r, column=1).font = bold
 
-    row += 7
+    row += 8
 
     headers = [
         "#",
@@ -182,13 +187,16 @@ def build_amortizacion_pdf(
     tasa = cotizacion.tasa or Decimal("0")
     plazo = cotizacion.plazo or 0
     opcion = cotizacion.opcion_compra or 0
+    tiene_opcion = opcion > 0
+    total_pagos = plazo + (1 if tiene_opcion else 0)
 
     datos_html = (
         f"<b>Cliente:</b> {cliente}<br/>"
         f"<b>Monto financiado:</b> {_fmt_moneda(monto_fin, cotizacion.moneda)} {cotizacion.moneda}<br/>"
         f"<b>Tasa anual:</b> {float(tasa * 100):.2f} %<br/>"
-        f"<b>Plazo:</b> {plazo} periodos<br/>"
+        f"<b>Rentas contractuales:</b> {plazo}<br/>"
         f"<b>Opción compra:</b> {_fmt_moneda(opcion, cotizacion.moneda)} {cotizacion.moneda}<br/>"
+        f"<b>Total pagos:</b> {total_pagos}<br/>"
     )
     story.append(Paragraph(datos_html, styles["Normal"]))
     story.append(Spacer(1, 12))

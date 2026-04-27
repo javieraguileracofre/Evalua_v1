@@ -571,7 +571,9 @@ def lf_cotizacion_amortizacion_view(
         raise HTTPException(status_code=400, detail=str(e))
 
     total_interes = sum((c.interes for c in tabla), Decimal("0.00"))
-    total_cuotas = sum((c.cuota for c in tabla), Decimal("0.00"))
+    total_rentas = sum((c.cuota for c in tabla if not c.es_opcion_compra), Decimal("0.00"))
+    total_opcion = sum((c.cuota for c in tabla if c.es_opcion_compra), Decimal("0.00"))
+    total_pagado = total_rentas + total_opcion
 
     return templates.TemplateResponse(
         "comercial/leasing_financiero/cotizacion_amortizacion.html",
@@ -580,7 +582,9 @@ def lf_cotizacion_amortizacion_view(
             "cotizacion": cotizacion,
             "tabla": tabla,
             "total_interes": total_interes,
-            "total_cuotas": total_cuotas,
+            "total_rentas": total_rentas,
+            "total_opcion": total_opcion,
+            "total_pagado": total_pagado,
             "active_menu": "leasing_financiero",
         },
     )

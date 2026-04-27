@@ -71,10 +71,16 @@ def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> Li
     periodos_gracia = cotizacion.periodos_gracia or 0
     if periodos_gracia < 0:
         periodos_gracia = 0
-    if periodos_gracia > total_periodos:
-        periodos_gracia = total_periodos
 
     residual = _q(cotizacion.opcion_compra or 0)
+    if residual < 0:
+        raise ValueError("La opción de compra no puede ser negativa.")
+    if residual >= saldo:
+        raise ValueError("La opción de compra debe ser menor al monto financiado.")
+
+    if total_periodos <= periodos_gracia:
+        raise ValueError("El plazo debe ser mayor a los períodos de gracia.")
+
     tiene_residual = residual > 0
 
     fecha_inicio: Optional[date] = cotizacion.fecha_inicio
@@ -112,18 +118,9 @@ def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> Li
         saldo = saldo_final
 
     n_pagos = total_periodos - periodos_gracia
-    if n_pagos <= 0:
-        return tabla
-
     if i == 0:
-        if tiene_residual and n_pagos > 1:
-            capital_a_amortizar = saldo - residual
-            cuota_capital = _q(capital_a_amortizar / Decimal(n_pagos - 1))
-        else:
-            capital_a_amortizar = saldo
-            cuota_capital = _q(capital_a_amortizar / Decimal(n_pagos))
-
-        cuota_constante = cuota_capital
+        capital_a_amortizar = saldo - residual if tiene_residual else saldo
+        cuota_constante = _q(capital_a_amortizar / Decimal(n_pagos))
     else:
         ip1 = Decimal("1") + i
         ip1_pow_N = ip1**n_pagos
@@ -145,14 +142,38 @@ def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> Li
             interes = Decimal("0.00")
 
         es_ultima = k == n_pagos
-        if es_ultima and tiene_residual:
-            amortizacion = _q(saldo_inicial - residual)
+        saldo_objetivo = residual if (es_ultima and tiene_residual) else Decimal("0.00")
+        if es_ultima:
+            amortizacion = _q(saldo_inicial - saldo_objetivo)
             cuota = _q(interes + amortizacion)
-            saldo_final = _q(residual)
+            saldo_final = _q(saldo_objetivo)
         else:
             amortizacion = _q(cuota_constante - interes)
             saldo_final = _q(saldo_inicial - amortizacion)
             cuota = cuota_constante
+
+        if not es_ultima and saldo_final < residual:
+            amortizacion = _q(saldo_inicial - residual)
+            cuota = _q(interes + amortizacion)
+            saldo_final = _q(residual)
+
+        if not tiene_residual and saldo_final < 0:
+            amortizacion = _q(saldo_inicial)
+            cuota = _q(interes + amortizacion)
+            saldo_final = Decimal("0.00")
+
+        if not tiene_residual and es_ultima and saldo_final != Decimal("0.00"):
+            amortizacion = _q(saldo_inicial)
+            cuota = _q(interes + amortizacion)
+            saldo_final = Decimal("0.00")
+
+        if tiene_residual and es_ultima and saldo_final != residual:
+            amortizacion = _q(saldo_inicial - residual)
+            cuota = _q(interes + amortizacion)
+            saldo_final = _q(residual)
+
+        if amortizacion > 0 and cuota <= 0:
+            raise ValueError("La renta calculada debe ser mayor a 0.")
 
         fecha_cuota = _sumar_meses(fecha_inicio, periodos_gracia + k) if usar_fechas else None
 
