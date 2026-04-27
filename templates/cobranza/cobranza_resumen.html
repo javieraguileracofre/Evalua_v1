@@ -223,7 +223,7 @@
       <div class="card-body">
         <div class="text-muted small text-uppercase fw-semibold mb-2">Documentos</div>
         <div class="fs-3 fw-bold">{{ total_docs }}</div>
-        <div class="small text-muted mt-2">Cuentas por cobrar activas en la cartera.</div>
+        <div class="small text-muted mt-2">Documentos en el módulo cobranza (puede coexistir con cartera solo contable).</div>
       </div>
     </div>
   </div>
@@ -233,7 +233,7 @@
       <div class="card-body">
         <div class="text-muted small text-uppercase fw-semibold mb-2">Monto total</div>
         <div class="fs-4 fw-bold">{{ clp(total_monto) }}</div>
-        <div class="small text-muted mt-2">Base monetaria consolidada de documentos.</div>
+        <div class="small text-muted mt-2">Monto original de documentos con saldo; si solo hay cartera en GL, se alinea al saldo consolidado del plan CxC.</div>
       </div>
     </div>
   </div>
@@ -243,7 +243,7 @@
       <div class="card-body">
         <div class="text-muted small text-uppercase fw-semibold mb-2">Saldo pendiente</div>
         <div class="fs-4 fw-bold text-danger">{{ clp(total_saldo) }}</div>
-        <div class="small text-muted mt-2">Monto total por recuperar en cartera.</div>
+        <div class="small text-muted mt-2">Incluye todas las cuentas por cobrar del plan (110301, leasing, etc.) según asientos publicados.</div>
       </div>
     </div>
   </div>
@@ -309,15 +309,19 @@
 
                 <td class="text-center">
                   <div class="d-flex justify-content-center flex-wrap gap-2">
-                    <a href="{{ request.url_for('cobranza_gestion', cliente_id=row.cliente_id) }}"
-                       class="btn btn-sm btn-outline-secondary">
-                      <i class="bi bi-clipboard-check"></i> Gestionar
-                    </a>
+                    {% if row.cliente_id and row.cliente_id > 0 %}
+                      <a href="{{ request.url_for('cobranza_gestion', cliente_id=row.cliente_id) }}"
+                         class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-clipboard-check"></i> Gestionar
+                      </a>
 
-                    <a href="{{ request.url_for('cobranza_detalle_cliente', cliente_id=row.cliente_id) }}"
-                       class="btn btn-sm btn-outline-primary">
-                      Ver detalle
-                    </a>
+                      <a href="{{ request.url_for('cobranza_detalle_cliente', cliente_id=row.cliente_id) }}"
+                         class="btn btn-sm btn-outline-primary">
+                        Ver detalle
+                      </a>
+                    {% else %}
+                      <span class="text-muted small">Solo contabilidad (sin cliente en módulo)</span>
+                    {% endif %}
                   </div>
                 </td>
               </tr>

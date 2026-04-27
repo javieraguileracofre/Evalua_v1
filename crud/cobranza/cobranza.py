@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, inspect, select
 from sqlalchemy.orm import Session, selectinload
 
 from models import Cliente, CuentaPorCobrar, PagoCliente
@@ -15,6 +16,8 @@ try:
     from models.comunicaciones.email_log import EmailLog  # type: ignore
 except Exception:  # pragma: no cover
     EmailLog = None
+
+logger = logging.getLogger("evalua.cobranza.crud")
 
 
 def _to_decimal(value: Any) -> Decimal:
@@ -46,6 +49,63 @@ def _get_email_log_attr(*names: str):
         if hasattr(EmailLog, name):
             return getattr(EmailLog, name)
     return None
+
+
+def saldo_cxc_consolidado_desde_contabilidad(db: Session) -> Decimal:
+    """
+    Saldo deudor consolidado de todas las cuentas por cobrar del plan (fin.plan_cuenta),
+    según movimientos en asientos (debe - haber).
+
+    Incluye p. ej. 110301 (clientes), 113701 (leasing financiero), 113801 (leasing operativo)
+    y cualquier otra cuenta activa corriente deudora cuyo nombre identifique cartera por cobrar.
+    La subcartera operativa `cuentas_por_cobrar` puede no reflejar originaciones que solo pasan por GL.
+    """
+    try:
+        bind = db.get_bind()
+        insp = inspect(bind)
+        try:
+            has_plan = insp.has_table("plan_cuenta", schema="fin")
+            has_det = insp.has_table("asientos_detalle", schema="public")
+        except Exception:
+            has_plan = has_det = False
+        if not has_plan or not has_det:
+            return Decimal("0")
+        from crud.finanzas.contabilidad_asientos import _detalle_exprs
+
+        code_expr, _ = _detalle_exprs(db)
+    except Exception:  # pragma: no cover
+        logger.exception("Cobranza: no se pudo preparar lectura de saldo CxC desde contabilidad")
+        return Decimal("0")
+
+    sql = text(
+        f"""
+        SELECT COALESCE(SUM(ad.debe - ad.haber), 0)::numeric(18, 2) AS saldo
+        FROM public.asientos_detalle ad
+        INNER JOIN public.asientos_contables ac ON ac.id = ad.asiento_id
+        INNER JOIN fin.plan_cuenta pc
+          ON TRIM(BOTH FROM pc.codigo::text) = TRIM(BOTH FROM CAST({code_expr} AS text))
+        WHERE COALESCE(ac.estado, 'PUBLICADO') = 'PUBLICADO'
+          AND pc.tipo = 'ACTIVO'
+          AND pc.clasificacion = 'ACTIVO_CORRIENTE'
+          AND pc.naturaleza = 'DEUDORA'
+          AND pc.estado = 'ACTIVO'
+          AND COALESCE(pc.acepta_movimiento, TRUE) IS TRUE
+          AND (
+                upper(pc.nombre) LIKE '%CUENTAS POR COBRAR%'
+             OR upper(pc.nombre) LIKE '%CTAS.%COBRAR%'
+             OR upper(pc.nombre) LIKE '%CTA.%COBRAR%'
+          )
+          AND upper(pc.nombre) NOT LIKE '%POR PAGAR%'
+        """
+    )
+    try:
+        row = db.execute(sql).mappings().first()
+        if not row or row.get("saldo") is None:
+            return Decimal("0")
+        return _to_decimal(row["saldo"])
+    except Exception:  # pragma: no cover
+        logger.exception("Cobranza: falló la consulta de saldo CxC consolidado (GL)")
+        return Decimal("0")
 
 
 def listar_cuentas_por_cobrar(
@@ -236,20 +296,49 @@ def resumen_cobranza_por_cliente(db: Session) -> list[dict]:
         .group_by(Cliente.id, Cliente.razon_social)
         .order_by(Cliente.razon_social.asc())
     )
-    return list(db.execute(stmt).mappings())
+    rows = list(db.execute(stmt).mappings())
+
+    saldo_gl = saldo_cxc_consolidado_desde_contabilidad(db)
+    saldo_sub = sum(_to_decimal(r.get("saldo_pendiente")) for r in rows)
+    delta = saldo_gl - saldo_sub
+    if delta > Decimal("0.5"):
+        rows.append(
+            {
+                "cliente_id": 0,
+                "razon_social": "Cartera contable (plan CxC sin documento en módulo cobranza)",
+                "monto_total": delta,
+                "saldo_pendiente": delta,
+                "documentos": 0,
+            }
+        )
+    return rows
 
 
 def resumen_cobranza_general(db: Session) -> dict:
     stmt = (
         select(
             func.count(CuentaPorCobrar.id).label("total_documentos"),
-            func.sum(CuentaPorCobrar.saldo_pendiente).label("total_monto"),
+            func.sum(CuentaPorCobrar.monto_original).label("total_monto"),
             func.sum(CuentaPorCobrar.saldo_pendiente).label("total_saldo"),
         )
         .where(CuentaPorCobrar.saldo_pendiente > 0)
     )
     row = db.execute(stmt).mappings().first()
-    return row or {"total_documentos": 0, "total_monto": 0, "total_saldo": 0}
+    base = dict(row or {"total_documentos": 0, "total_monto": 0, "total_saldo": 0})
+
+    saldo_gl = saldo_cxc_consolidado_desde_contabilidad(db)
+    saldo_sub = _to_decimal(base.get("total_saldo"))
+    monto_sub = _to_decimal(base.get("total_monto"))
+
+    saldo_consolidado = max(saldo_gl, saldo_sub)
+    base["total_saldo_contable"] = saldo_gl
+    base["total_saldo"] = saldo_consolidado
+    if monto_sub <= 0 and saldo_consolidado > 0:
+        base["total_monto"] = saldo_consolidado
+    else:
+        base["total_monto"] = max(monto_sub, saldo_consolidado)
+
+    return base
 
 
 def obtener_kpis_dashboard_cobranza(
@@ -269,9 +358,13 @@ def obtener_kpis_dashboard_cobranza(
     )
     row = db.execute(stmt).mappings().one()
 
-    saldo_total_num = float(row["saldo_total_num"] or 0)
+    saldo_sub = float(row["saldo_total_num"] or 0)
+    saldo_gl = float(saldo_cxc_consolidado_desde_contabilidad(db))
+    saldo_total_num = max(saldo_sub, saldo_gl)
     docs_con_saldo = int(row["docs_con_saldo"] or 0)
     clientes_con_saldo = int(row["clientes_con_saldo"] or 0)
+    if saldo_gl > saldo_sub + 0.5:
+        clientes_con_saldo += 1
 
     stmt_vencidos = (
         select(func.coalesce(func.count(CuentaPorCobrar.id), 0))
