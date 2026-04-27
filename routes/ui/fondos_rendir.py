@@ -102,10 +102,73 @@ def fondos_rendir_hub(
 ):
     if (redir := guard_finanzas_consulta(request)) is not None:
         return redir
-    stats = crud_fr.dashboard_stats(db)
-    conc = crud_fr.dashboard_conciliacion_transporte(db)
-    mant = crud_fr.alertas_mantencion(db)
-    fondos = crud_fr.listar_fondos(db, limite=50)
+    stats: dict[str, Any] = {
+        "n_abiertos": 0,
+        "n_pendiente_aprobacion": 0,
+        "monto_abiertos": Decimal("0.00"),
+        "monto_pendiente_aprobacion": Decimal("0.00"),
+        "alertas_rendicion": [],
+        "n_total": 0,
+        "monto_total": Decimal("0.00"),
+        "abiertos_mas_3_dias": 0,
+        "abiertos_mas_7_dias": 0,
+        "abiertos_mas_15_dias": 0,
+        "monto_abierto_por_chofer": [],
+        "monto_pendiente_aprobar": Decimal("0.00"),
+        "total_rendido": Decimal("0.00"),
+        "total_anticipado": Decimal("0.00"),
+        "chart": {"estado_labels": [], "estado_montos": [], "estado_counts": [], "mes_labels": [], "mes_montos": [], "mes_n": []},
+    }
+    conc: dict[str, Any] = {
+        "fondos_vencidos": [],
+        "fondos_sin_viaje": [],
+        "gastos_combustible_sin_viaje": [],
+        "viajes_sin_rendicion": [],
+        "rendiciones_inconsistentes": [],
+        "fondos_chofer_vehiculo_distinto": [],
+    }
+    mant: dict[str, Any] = {
+        "mantenciones_vencidas": [],
+        "mantenciones_proximas": [],
+        "documentos_por_vencer": [],
+    }
+    fondos: list[Any] = []
+    msg_q = request.query_params.get("msg")
+    sev_q = request.query_params.get("sev", "info")
+    try:
+        stats = crud_fr.dashboard_stats(db)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Fondos rendir hub: error en dashboard_stats")
+        if not msg_q:
+            msg_q = public_error_message(
+                exc,
+                default=(
+                    "Hub cargado con datos parciales. Verifique la migración de transporte/fondos "
+                    "(112/113) y la consistencia de esquema."
+                ),
+            )
+            sev_q = "warning"
+    try:
+        conc = crud_fr.dashboard_conciliacion_transporte(db)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Fondos rendir hub: error en dashboard_conciliacion_transporte")
+        if not msg_q:
+            msg_q = public_error_message(exc, default="Conciliación transporte no disponible temporalmente.")
+            sev_q = "warning"
+    try:
+        mant = crud_fr.alertas_mantencion(db)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Fondos rendir hub: error en alertas_mantencion")
+        if not msg_q:
+            msg_q = public_error_message(exc, default="Alertas de mantención no disponibles temporalmente.")
+            sev_q = "warning"
+    try:
+        fondos = crud_fr.listar_fondos(db, limite=50)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Fondos rendir hub: error en listar_fondos")
+        if not msg_q:
+            msg_q = public_error_message(exc, default="Listado de anticipos no disponible temporalmente.")
+            sev_q = "warning"
     setup_contable: dict[str, Any] = {"ok": False, "msg": "", "cuentas": {}}
     try:
         cuentas = diagnosticar_setup_contable(db)
@@ -130,6 +193,8 @@ def fondos_rendir_hub(
             "mant": mant,
             "fondos": fondos,
             "setup_contable": setup_contable,
+            "msg": msg_q,
+            "sev": sev_q,
         },
     )
 

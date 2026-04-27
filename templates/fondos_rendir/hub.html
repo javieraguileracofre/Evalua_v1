@@ -233,6 +233,11 @@
     <a href="{{ request.url_for('transporte_hub') }}" class="btn btn-fr-toolbar btn-sm"><i class="bi bi-signpost-split-fill"></i> Transporte</a>
   </div>
 </div>
+{% if msg %}
+<div class="alert alert-{{ sev or 'warning' }} mb-3">
+  {{ msg }}
+</div>
+{% endif %}
 <div class="row g-3 mb-3">
   <div class="col-md-3"><div class="fr-dark-card p-3 h-100"><div class="small text-uppercase">Fondos sin viaje</div><div class="fr-kpi-lg">{{ conc.fondos_sin_viaje|length }}</div></div></div>
   <div class="col-md-3"><div class="fr-dark-card p-3 h-100"><div class="small text-uppercase">Gasto combustible sin viaje</div><div class="fr-kpi-lg">{{ conc.gastos_combustible_sin_viaje|length }}</div></div></div>
