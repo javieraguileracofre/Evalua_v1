@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional
@@ -9,6 +10,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
@@ -28,6 +30,7 @@ from services.leasing_financiero_export import build_amortizacion_excel, build_a
 
 router = APIRouter(prefix="/comercial/leasing/cotizaciones", tags=["Comercial · Leasing financiero"])
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+logger = logging.getLogger("evalua.leasing_financiero.ui")
 
 
 def _parse_decimal(value: str) -> Optional[Decimal]:
@@ -267,6 +270,18 @@ def lf_cotizacion_nueva_post(
         cotizacion = crud_lf.crear_cotizacion(db, obj_in=obj_in)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SQLAlchemyError as exc:
+        logger.exception("Error SQL al crear cotización LF (cliente_id=%s)", cliente_id)
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible crear la cotización por un problema de base de datos. Verifique migraciones de leasing financiero.",
+        ) from exc
+    except Exception as exc:
+        logger.exception("Error inesperado al crear cotización LF (cliente_id=%s)", cliente_id)
+        raise HTTPException(
+            status_code=500,
+            detail="No fue posible crear la cotización en este momento. Intente nuevamente.",
+        ) from exc
 
     return RedirectResponse(
         url=str(request.url_for("lf_cotizacion_detalle", cotizacion_id=cotizacion.id)),

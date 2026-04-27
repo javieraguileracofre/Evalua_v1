@@ -115,6 +115,8 @@ def _registrar_historial(
     usuario: str = "sistema",
     metadata_json: dict[str, Any] | None = None,
 ) -> None:
+    if cotizacion.id is None:
+        raise ValueError("No se puede registrar historial sin ID de cotización.")
     db.add(
         LeasingFinancieroHistorial(
             cotizacion_id=int(cotizacion.id),
@@ -152,24 +154,28 @@ def crear_cotizacion(db: Session, *, obj_in: LeasingCotizacionCreate) -> Leasing
 
     if not data.get("estado"):
         data["estado"] = "BORRADOR"
-    cot = LeasingFinancieroCotizacion(**data)
-    db.add(cot)
-    _registrar_historial(
-        db,
-        cotizacion=cot,
-        tipo_evento="CREACION",
-        estado_desde=None,
-        estado_hasta=str(data["estado"]),
-        comentario="Creación de cotización leasing financiero",
-    )
-    db.commit()
-    db.refresh(cot)
+    try:
+        cot = LeasingFinancieroCotizacion(**data)
+        db.add(cot)
+        db.flush()
 
-    cot = get_cotizacion(db, int(cot.id)) or cot
-    regenerar_proyeccion_contable(db, cot)
-    db.commit()
-    db.refresh(cot)
-    return cot
+        _registrar_historial(
+            db,
+            cotizacion=cot,
+            tipo_evento="CREACION",
+            estado_desde=None,
+            estado_hasta=str(data["estado"]),
+            comentario="Creación de cotización leasing financiero",
+        )
+
+        regenerar_proyeccion_contable(db, cot)
+
+        db.commit()
+        db.refresh(cot)
+        return get_cotizacion(db, int(cot.id)) or cot
+    except Exception:
+        db.rollback()
+        raise
 
 
 def actualizar_cotizacion(
