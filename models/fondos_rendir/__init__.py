@@ -8,6 +8,7 @@ from models.fondos_rendir.fondo_rendir import (
     FondoRendir,
     FondoRendirGasto,
 )
+from models.fondos_rendir.flota_mantencion import FlotaMantencion, TIPOS_MANTENCION
 from models.fondos_rendir.vehiculo_transporte import VehiculoTransporte
 
 __all__ = [
@@ -16,4 +17,6 @@ __all__ = [
     "FondoRendir",
     "FondoRendirGasto",
     "ESTADOS_FONDO",
+    "FlotaMantencion",
+    "TIPOS_MANTENCION",
 ]

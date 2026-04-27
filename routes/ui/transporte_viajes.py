@@ -94,6 +94,7 @@ def transporte_hub(
     sev: str = Query("info"),
 ):
     stats = crud_tv.dashboard_stats(db, dias=120)
+    fuel = crud_tv.indicadores_combustible(db, dias=120)
     choferes = crud_tv.comparativo_choferes(db, dias=120, top=14)
     vehiculos = crud_tv.comparativo_vehiculos(db, dias=120, top=10)
     ultimos = crud_tv.ultimos_viajes_resumen(db, limite=18)
@@ -105,8 +106,8 @@ def transporte_hub(
     }
     chart_flota = {
         "labels": [(v["patente"] or "")[:16] for v in vehiculos],
-        "km_l": [float(v["km_l_promedio"] or 0) for v in vehiculos],
-        "ref_km_l": [float(v["referencial_km_l"] or 0) for v in vehiculos],
+        "l100": [float(v["l100_promedio"] or 0) for v in vehiculos],
+        "ref_l100": [float(v["referencial_l100"] or 0) for v in vehiculos],
     }
     return templates.TemplateResponse(
         "transporte/hub.html",
@@ -119,6 +120,7 @@ def transporte_hub(
             "ultimos_viajes": ultimos,
             "chart_chofer": chart_chofer,
             "chart_flota": chart_flota,
+            "fuel": fuel,
             "msg": msg,
             "sev": sev,
         },
@@ -398,8 +400,18 @@ async def transporte_viaje_cerrar(request: Request, viaje_id: int, db: Session =
             sev="danger",
         )
     lit = _parse_decimal(fd.get("litros_combustible"))
+    motivo_desvio = str(fd.get("motivo_desvio") or "")
+    observaciones_cierre = str(fd.get("observaciones_cierre") or "")
     try:
-        crud_tv.cerrar_viaje(db, v, real_llegada=rl, odometro_fin=of, litros_combustible=lit)
+        crud_tv.cerrar_viaje(
+            db,
+            v,
+            real_llegada=rl,
+            odometro_fin=of,
+            litros_combustible=lit,
+            motivo_desvio=motivo_desvio,
+            observaciones_cierre=observaciones_cierre,
+        )
         db.commit()
     except ValueError as e:
         db.rollback()

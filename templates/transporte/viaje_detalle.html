@@ -74,6 +74,7 @@
           <li class="mb-2"><strong>Vel. media implícita:</strong> {% if metricas.vel_media_kmh is not none %}{{ metricas.vel_media_kmh }} km/h{% else %}—{% endif %}</li>
           <li class="mb-2"><strong>Consumo L/100 km:</strong> {% if metricas.litros_100km is not none %}{{ metricas.litros_100km }}{% else %}—{% endif %}</li>
           <li class="mb-2"><strong>Rendimiento km/L:</strong> {% if metricas.rendimiento_km_l is not none %}100 / {{ metricas.litros_100km }} = {{ metricas.rendimiento_km_l }}{% else %}—{% endif %}</li>
+          <li><strong>Ref. L/100 km:</strong> {% if metricas.referencial_l100km is not none %}{{ metricas.referencial_l100km }}{% else %}—{% endif %}</li>
           <li><strong>Desvío vs referencial:</strong> {% if metricas.desvio_consumo_pct is not none %}{{ metricas.desvio_consumo_pct }}%{% else %}—{% endif %}</li>
         </ul>
         {% else %}
@@ -112,9 +113,17 @@
             <label class="form-label small">Odómetro llegada</label>
             <input type="number" name="odometro_fin" class="form-control form-control-sm" required min="0" step="1">
           </div>
+          <div class="mb-2">
+            <label class="form-label small">Litros cargados {% if viaje.vehiculo %}(obligatorio){% else %}(opcional){% endif %}</label>
+            <input type="text" name="litros_combustible" class="form-control form-control-sm" inputmode="decimal" placeholder="Ej. 180,5" {% if viaje.vehiculo %}required{% endif %}>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Motivo desvío (si aplica)</label>
+            <input type="text" name="motivo_desvio" class="form-control form-control-sm" maxlength="400" placeholder="Ej. tráfico, ruta alternativa, carga extra">
+          </div>
           <div class="mb-3">
-            <label class="form-label small">Litros cargados (opcional)</label>
-            <input type="text" name="litros_combustible" class="form-control form-control-sm" inputmode="decimal" placeholder="Ej. 180,5">
+            <label class="form-label small">Observaciones cierre</label>
+            <textarea name="observaciones_cierre" class="form-control form-control-sm" rows="2"></textarea>
           </div>
           <button type="submit" class="btn btn-success btn-sm w-100">Cerrar y calcular métricas</button>
         </form>

@@ -42,6 +42,10 @@ _FALLBACK_GASTO: tuple[str, ...] = (
     "6.1.02",
     "6.3.01",
 )
+_FALLBACK_COMBUSTIBLE: tuple[str, ...] = ("6.1.02", "5.1.02", "610102")
+_FALLBACK_PEAJES: tuple[str, ...] = ("6.1.03", "5.1.03", "610103")
+_FALLBACK_VIATICOS: tuple[str, ...] = ("6.1.04", "5.1.04", "610104")
+_FALLBACK_MANTENCION: tuple[str, ...] = ("6.2.01", "5.2.01", "620101")
 
 
 def _q(d: Decimal) -> Decimal:
@@ -212,7 +216,7 @@ def contabilizar_liquidacion_rendicion(
         fallbacks_codigo=_FALLBACK_CAJA,
         palabras_nombre=("CAJA", "EFECTIVO"),
     )
-    cuenta_gasto = _resolver_cuenta(
+    cuenta_gasto_default = _resolver_cuenta(
         db,
         rol="Gasto operacional / transporte",
         env_var="FONDO_RENDIR_CUENTA_GASTO",
@@ -235,9 +239,48 @@ def contabilizar_liquidacion_rendicion(
     for rubro, monto in sorted(agg.items(), key=lambda x: x[0]):
         mo = _q(monto)
         if mo > 0:
+            rub = str(rubro or "").strip().lower()
+            if "combust" in rub:
+                cuenta_rubro = _resolver_cuenta(
+                    db,
+                    rol="Gasto combustible",
+                    env_var="FONDO_RENDIR_CUENTA_COMBUSTIBLE",
+                    valor_env=getattr(settings, "fondo_rendir_cuenta_combustible", ""),
+                    fallbacks_codigo=_FALLBACK_COMBUSTIBLE,
+                    palabras_nombre=("COMBUSTIBLE",),
+                )
+            elif "peaje" in rub or "tag" in rub:
+                cuenta_rubro = _resolver_cuenta(
+                    db,
+                    rol="Gasto peajes / tag",
+                    env_var="FONDO_RENDIR_CUENTA_PEAJES",
+                    valor_env=getattr(settings, "fondo_rendir_cuenta_peajes", ""),
+                    fallbacks_codigo=_FALLBACK_PEAJES,
+                    palabras_nombre=("PEAJE", "TAG"),
+                )
+            elif "aliment" in rub or "viatico" in rub:
+                cuenta_rubro = _resolver_cuenta(
+                    db,
+                    rol="Gasto viáticos / alimentación",
+                    env_var="FONDO_RENDIR_CUENTA_VIATICOS",
+                    valor_env=getattr(settings, "fondo_rendir_cuenta_viaticos", ""),
+                    fallbacks_codigo=_FALLBACK_VIATICOS,
+                    palabras_nombre=("VIATICO", "ALIMENT"),
+                )
+            elif "manten" in rub:
+                cuenta_rubro = _resolver_cuenta(
+                    db,
+                    rol="Gasto mantención",
+                    env_var="FONDO_RENDIR_CUENTA_MANTENCION",
+                    valor_env=getattr(settings, "fondo_rendir_cuenta_mantencion", ""),
+                    fallbacks_codigo=_FALLBACK_MANTENCION,
+                    palabras_nombre=("MANTENC", "TALLER"),
+                )
+            else:
+                cuenta_rubro = cuenta_gasto_default
             detalles.append(
                 {
-                    "codigo_cuenta": cuenta_gasto.codigo,
+                    "codigo_cuenta": cuenta_rubro.codigo,
                     "descripcion": f"{rubro} — {fondo.folio}",
                     "debe": mo,
                     "haber": Decimal("0"),

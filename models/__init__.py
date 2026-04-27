@@ -123,6 +123,7 @@ from .fondos_rendir.fondo_rendir import (
     FondoRendir,
     FondoRendirGasto,
 )
+from .fondos_rendir.flota_mantencion import FlotaMantencion, TIPOS_MANTENCION
 
 # ============================================================
 # TRANSPORTE / HOJAS DE RUTA
@@ -194,6 +195,8 @@ __all__ = [
     "ESTADOS_FONDO",
     "FondoRendir",
     "FondoRendirGasto",
+    "FlotaMantencion",
+    "TIPOS_MANTENCION",
     "ESTADOS_VIAJE",
     "TransporteViaje",
 ]

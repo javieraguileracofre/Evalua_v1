@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
@@ -15,7 +15,9 @@ from sqlalchemy.orm import Session, selectinload
 from crud.finanzas.contabilidad_asientos import eliminar_asiento_contable
 from models.fondos_rendir.empleado import Empleado
 from models.fondos_rendir.fondo_rendir import FondoRendir, FondoRendirGasto
+from models.fondos_rendir.flota_mantencion import FlotaMantencion, TIPOS_MANTENCION
 from models.fondos_rendir.vehiculo_transporte import VehiculoTransporte
+from models.transporte.viaje import TransporteViaje
 
 Q2 = Decimal("0.01")
 
@@ -91,9 +93,18 @@ def _parse_dt(value: str | None) -> datetime | None:
     return None
 
 
+def _parse_date(value: str | None) -> date | None:
+    dt = _parse_dt(value)
+    return dt.date() if dt else None
+
+
 def parse_fecha_formulario(value: str | None) -> datetime | None:
     """Expuesto para rutas UI."""
     return _parse_dt(value)
+
+
+def parse_fecha_formulario_date(value: str | None) -> date | None:
+    return _parse_date(value)
 
 
 def normalizar_rut(rut: str) -> str:
@@ -238,6 +249,15 @@ def crear_vehiculo_transporte(
     anio: int | None = None,
     observaciones: str | None = None,
     consumo_referencial_l100km: Decimal | None = None,
+    tipo_vehiculo: str | None = None,
+    capacidad_carga: Decimal | None = None,
+    odometro_actual: int | None = None,
+    estado_operativo: str | None = None,
+    fecha_revision_tecnica: date | None = None,
+    fecha_permiso_circulacion: date | None = None,
+    fecha_seguro: date | None = None,
+    fecha_proxima_mantencion: date | None = None,
+    km_proxima_mantencion: int | None = None,
 ) -> VehiculoTransporte:
     p = patente.strip().upper()
     if len(p) < 5:
@@ -251,6 +271,15 @@ def crear_vehiculo_transporte(
         anio=anio,
         observaciones=(observaciones or "").strip() or None,
         consumo_referencial_l100km=consumo_referencial_l100km,
+        tipo_vehiculo=(tipo_vehiculo or "").strip() or None,
+        capacidad_carga=capacidad_carga,
+        odometro_actual=odometro_actual,
+        estado_operativo=(estado_operativo or "DISPONIBLE").strip() or "DISPONIBLE",
+        fecha_revision_tecnica=fecha_revision_tecnica,
+        fecha_permiso_circulacion=fecha_permiso_circulacion,
+        fecha_seguro=fecha_seguro,
+        fecha_proxima_mantencion=fecha_proxima_mantencion,
+        km_proxima_mantencion=km_proxima_mantencion,
         activo=True,
     )
     db.add(v)
@@ -269,6 +298,15 @@ def actualizar_vehiculo_transporte(
     observaciones: str | None,
     activo: bool,
     consumo_referencial_l100km: Decimal | None = None,
+    tipo_vehiculo: str | None = None,
+    capacidad_carga: Decimal | None = None,
+    odometro_actual: int | None = None,
+    estado_operativo: str | None = None,
+    fecha_revision_tecnica: date | None = None,
+    fecha_permiso_circulacion: date | None = None,
+    fecha_seguro: date | None = None,
+    fecha_proxima_mantencion: date | None = None,
+    km_proxima_mantencion: int | None = None,
 ) -> VehiculoTransporte:
     v = db.get(VehiculoTransporte, vid)
     if not v:
@@ -289,6 +327,15 @@ def actualizar_vehiculo_transporte(
     v.observaciones = (observaciones or "").strip() or None
     v.activo = activo
     v.consumo_referencial_l100km = consumo_referencial_l100km
+    v.tipo_vehiculo = (tipo_vehiculo or "").strip() or None
+    v.capacidad_carga = capacidad_carga
+    v.odometro_actual = odometro_actual
+    v.estado_operativo = (estado_operativo or "DISPONIBLE").strip() or "DISPONIBLE"
+    v.fecha_revision_tecnica = fecha_revision_tecnica
+    v.fecha_permiso_circulacion = fecha_permiso_circulacion
+    v.fecha_seguro = fecha_seguro
+    v.fecha_proxima_mantencion = fecha_proxima_mantencion
+    v.km_proxima_mantencion = km_proxima_mantencion
     return v
 
 
@@ -394,6 +441,9 @@ def crear_fondo(
         raise ValueError("Vehículo no existe.")
     if monto_anticipo <= 0:
         raise ValueError("El monto del anticipo debe ser mayor a cero.")
+    vencidos = fondos_abiertos_antiguos_por_empleado(db, empleado_id=empleado_id, dias_min=15)
+    if vencidos:
+        raise ValueError("El trabajador tiene fondos abiertos con más de 15 días. Regularice antes de generar un nuevo anticipo.")
     f = FondoRendir(
         folio=siguiente_folio(db),
         empleado_id=empleado_id,
@@ -442,8 +492,20 @@ def dashboard_stats(db: Session) -> dict[str, Any]:
         ).all()
     )
     alertas: list[dict[str, Any]] = []
+    abiertos_3 = 0
+    abiertos_7 = 0
+    abiertos_15 = 0
+    abiertos_por_chofer: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     for f in abiertos:
         d = (hoy - f.fecha_entrega.date()).days
+        if d > 3:
+            abiertos_3 += 1
+        if d > 7:
+            abiertos_7 += 1
+        if d > 15:
+            abiertos_15 += 1
+        if f.empleado:
+            abiertos_por_chofer[f.empleado.nombre_completo] += _d(f.monto_anticipo)
         alertas.append(
             {
                 "fondo_id": f.id,
@@ -453,6 +515,7 @@ def dashboard_stats(db: Session) -> dict[str, Any]:
                 "monto": f.monto_anticipo,
             }
         )
+    alertas.sort(key=lambda x: x["dias"], reverse=True)
 
     n_total = db.scalar(select(func.count()).select_from(FondoRendir)) or 0
     monto_total = db.scalar(
@@ -521,6 +584,22 @@ def dashboard_stats(db: Session) -> dict[str, Any]:
         "alertas_rendicion": alertas,
         "n_total": int(n_total),
         "monto_total": _d(monto_total),
+        "abiertos_mas_3_dias": abiertos_3,
+        "abiertos_mas_7_dias": abiertos_7,
+        "abiertos_mas_15_dias": abiertos_15,
+        "monto_abierto_por_chofer": [
+            {"chofer": k, "monto": v}
+            for k, v in sorted(abiertos_por_chofer.items(), key=lambda x: x[1], reverse=True)
+        ][:10],
+        "monto_pendiente_aprobar": _d(sum_pend),
+        "total_rendido": _d(
+            db.scalar(
+                select(func.coalesce(func.sum(FondoRendirGasto.monto), 0))
+                .select_from(FondoRendirGasto)
+                .join(FondoRendir, FondoRendir.id == FondoRendirGasto.fondo_id)
+            )
+        ),
+        "total_anticipado": _d(monto_total),
         "chart": {
             "estado_labels": estado_labels,
             "estado_montos": estado_montos,
@@ -530,6 +609,23 @@ def dashboard_stats(db: Session) -> dict[str, Any]:
             "mes_n": mes_n,
         },
     }
+
+
+def fondos_abiertos_antiguos_por_empleado(
+    db: Session,
+    *,
+    empleado_id: int,
+    dias_min: int,
+) -> list[FondoRendir]:
+    hoy = datetime.utcnow().date()
+    rows = list(
+        db.scalars(
+            select(FondoRendir)
+            .where(FondoRendir.estado == "ABIERTO", FondoRendir.empleado_id == empleado_id)
+            .order_by(FondoRendir.fecha_entrega.asc())
+        ).all()
+    )
+    return [f for f in rows if (hoy - f.fecha_entrega.date()).days > dias_min]
 
 
 def enviar_rendicion(db: Session, fondo_id: int) -> FondoRendir:
@@ -609,3 +705,140 @@ def eliminar_fondo_rendir(db: Session, fondo_id: int) -> None:
         eliminar_asiento_contable(db, int(ent))
     db.delete(f)
     db.flush()
+
+
+def dashboard_conciliacion_transporte(db: Session) -> dict[str, Any]:
+    fondos = list(
+        db.scalars(
+            select(FondoRendir)
+            .options(
+                selectinload(FondoRendir.empleado),
+                selectinload(FondoRendir.vehiculo),
+                selectinload(FondoRendir.lineas_gasto),
+                selectinload(FondoRendir.viajes_transporte).selectinload(TransporteViaje.vehiculo),
+                selectinload(FondoRendir.viajes_transporte).selectinload(TransporteViaje.empleado),
+            )
+        ).all()
+    )
+    gastos_sin_viaje: list[dict[str, Any]] = []
+    rendiciones_inconsistentes: list[dict[str, Any]] = []
+    fondos_chofer_vehiculo_distinto: list[dict[str, Any]] = []
+    viajes_cerrados_sin_fondo = list(
+        db.scalars(
+            select(TransporteViaje)
+            .options(selectinload(TransporteViaje.empleado), selectinload(TransporteViaje.vehiculo))
+            .where(TransporteViaje.estado == "CERRADO", TransporteViaje.fondo_rendir_id.is_(None))
+        ).all()
+    )
+    for f in fondos:
+        viajes = list(f.viajes_transporte or [])
+        has_viajes = len(viajes) > 0
+        for g in f.lineas_gasto:
+            if str(g.rubro or "").strip().lower() != "combustible":
+                continue
+            if not has_viajes:
+                gastos_sin_viaje.append({"folio": f.folio, "fondo_id": f.id, "monto": g.monto})
+                rendiciones_inconsistentes.append({"folio": f.folio, "motivo": "Gasto combustible sin viaje asociado"})
+                continue
+            for v in viajes:
+                if v.odometro_inicio is None or v.odometro_fin is None:
+                    rendiciones_inconsistentes.append({"folio": f.folio, "viaje_id": v.id, "motivo": "No hay odómetro"})
+                if v.litros_combustible is None:
+                    rendiciones_inconsistentes.append({"folio": f.folio, "viaje_id": v.id, "motivo": "No hay litros registrados"})
+                if (
+                    v.litros_combustible
+                    and v.vehiculo
+                    and v.vehiculo.consumo_referencial_l100km
+                    and v.odometro_inicio is not None
+                    and v.odometro_fin is not None
+                    and v.odometro_fin > v.odometro_inicio
+                ):
+                    km = v.odometro_fin - v.odometro_inicio
+                    litros_ref = (Decimal(km) * Decimal(v.vehiculo.consumo_referencial_l100km)) / Decimal(100)
+                    if Decimal(v.litros_combustible) > litros_ref * Decimal("1.10"):
+                        rendiciones_inconsistentes.append({"folio": f.folio, "viaje_id": v.id, "motivo": "Combustible excesivo para km"})
+                if f.empleado_id != v.empleado_id or (
+                    f.vehiculo_transporte_id and v.vehiculo_transporte_id and f.vehiculo_transporte_id != v.vehiculo_transporte_id
+                ):
+                    fondos_chofer_vehiculo_distinto.append(
+                        {"folio": f.folio, "viaje_id": v.id, "chofer_fondo": f.empleado.nombre_completo if f.empleado else "", "chofer_viaje": v.empleado.nombre_completo if v.empleado else ""}
+                    )
+    return {
+        "fondos_vencidos": [a for a in dashboard_stats(db)["alertas_rendicion"] if a["dias"] > 7],
+        "fondos_sin_viaje": [f for f in fondos if not f.viajes_transporte],
+        "gastos_combustible_sin_viaje": gastos_sin_viaje,
+        "viajes_sin_rendicion": viajes_cerrados_sin_fondo,
+        "rendiciones_inconsistentes": rendiciones_inconsistentes,
+        "fondos_chofer_vehiculo_distinto": fondos_chofer_vehiculo_distinto,
+    }
+
+
+def listar_mantenciones(db: Session, *, vehiculo_id: int | None = None, limite: int = 200) -> list[FlotaMantencion]:
+    q = (
+        select(FlotaMantencion)
+        .options(selectinload(FlotaMantencion.vehiculo))
+        .order_by(FlotaMantencion.fecha.desc(), FlotaMantencion.id.desc())
+        .limit(limite)
+    )
+    if vehiculo_id:
+        q = q.where(FlotaMantencion.vehiculo_transporte_id == vehiculo_id)
+    return list(db.scalars(q).all())
+
+
+def crear_mantencion(
+    db: Session,
+    *,
+    vehiculo_transporte_id: int,
+    fecha: date,
+    odometro: int | None,
+    tipo: str,
+    proveedor: str | None,
+    documento: str | None,
+    costo: Decimal | None,
+    observaciones: str | None,
+    proxima_fecha: date | None,
+    proximo_km: int | None,
+) -> FlotaMantencion:
+    if tipo not in TIPOS_MANTENCION:
+        raise ValueError("Tipo de mantención inválido.")
+    m = FlotaMantencion(
+        vehiculo_transporte_id=vehiculo_transporte_id,
+        fecha=fecha,
+        odometro=odometro,
+        tipo=tipo,
+        proveedor=(proveedor or "").strip() or None,
+        documento=(documento or "").strip() or None,
+        costo=costo,
+        observaciones=(observaciones or "").strip() or None,
+        proxima_fecha=proxima_fecha,
+        proximo_km=proximo_km,
+    )
+    db.add(m)
+    db.flush()
+    return m
+
+
+def alertas_mantencion(db: Session, *, dias_aviso: int = 15, km_aviso: int = 500) -> dict[str, Any]:
+    hoy = datetime.utcnow().date()
+    rows = listar_vehiculos_transporte(db, solo_activos=True)
+    proximas: list[VehiculoTransporte] = []
+    vencidas: list[VehiculoTransporte] = []
+    docs_por_vencer: list[VehiculoTransporte] = []
+    for v in rows:
+        if v.fecha_proxima_mantencion:
+            dd = (v.fecha_proxima_mantencion - hoy).days
+            if dd < 0:
+                vencidas.append(v)
+            elif dd <= dias_aviso:
+                proximas.append(v)
+        if v.odometro_actual is not None and v.km_proxima_mantencion is not None:
+            rem = v.km_proxima_mantencion - v.odometro_actual
+            if rem < 0:
+                vencidas.append(v)
+            elif rem <= km_aviso:
+                proximas.append(v)
+        for fd in (v.fecha_revision_tecnica, v.fecha_permiso_circulacion, v.fecha_seguro):
+            if fd and 0 <= (fd - hoy).days <= 30:
+                docs_por_vencer.append(v)
+                break
+    return {"mantenciones_vencidas": vencidas, "mantenciones_proximas": proximas, "documentos_por_vencer": docs_por_vencer}

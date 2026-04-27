@@ -37,6 +37,7 @@ _PATCH_107 = _ROOT / "db" / "psql" / "107_leasing_operativo_contabilidad_base.sq
 _PATCH_109 = _ROOT / "db" / "psql" / "109_leasing_financiero_workflow.sql"
 _PATCH_110 = _ROOT / "db" / "psql" / "110_credito_riesgo_flujos.sql"
 _PATCH_111 = _ROOT / "db" / "psql" / "111_postventa_crm_cases.sql"
+_PATCH_112 = _ROOT / "db" / "psql" / "112_transporte_fondos_control.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -744,3 +745,16 @@ def ensure_postventa_crm_schema(engine: Engine) -> None:
             exc_info=True,
         )
         raise
+
+
+def ensure_transporte_fondos_control_schema(engine: Engine) -> None:
+    """Aplica ampliaciones idempotentes de transporte/fondos y tabla de mantenciones."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_112.is_file():
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_112)
+        logger.info("Parche aplicado/verificado: transporte/fondos control (112).")
+    except Exception as exc:
+        logger.warning("No se pudo aplicar 112_transporte_fondos_control.sql. Detalle: %s", exc)

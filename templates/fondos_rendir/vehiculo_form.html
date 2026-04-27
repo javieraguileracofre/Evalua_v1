@@ -15,11 +15,28 @@
     <div class="col-md-3"><label class="form-label">Modelo</label><input type="text" name="modelo" class="form-control" required value="{{ vehiculo.modelo if vehiculo else '' }}"></div>
     <div class="col-md-3"><label class="form-label">Año</label><input type="number" name="anio" class="form-control" min="1980" max="2100" value="{{ vehiculo.anio if vehiculo and vehiculo.anio else '' }}"></div>
     <div class="col-md-4">
-      <label class="form-label">Rendimiento referencial (km/L)</label>
+      <label class="form-label">Consumo referencial (L/100 km)</label>
       <input type="text" name="consumo_referencial_l100km" class="form-control" inputmode="decimal" placeholder="Ej. 32,5"
         value="{% if vehiculo and vehiculo.consumo_referencial_l100km is not none %}{{ vehiculo.consumo_referencial_l100km }}{% endif %}">
-      <div class="form-text">Ingrese el resultado final esperado en km/L (ej. 2,3). Se comparará contra el km/L real.</div>
+      <div class="form-text">Referencia para comparar contra consumo real del viaje, en la misma unidad.</div>
     </div>
+    <div class="col-md-4"><label class="form-label">Tipo vehículo</label><input type="text" name="tipo_vehiculo" class="form-control" value="{{ vehiculo.tipo_vehiculo if vehiculo and vehiculo.tipo_vehiculo else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Capacidad carga</label><input type="text" name="capacidad_carga" class="form-control" inputmode="decimal" value="{{ vehiculo.capacidad_carga if vehiculo and vehiculo.capacidad_carga is not none else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Odómetro actual</label><input type="number" name="odometro_actual" class="form-control" min="0" step="1" value="{{ vehiculo.odometro_actual if vehiculo and vehiculo.odometro_actual is not none else '' }}"></div>
+    <div class="col-md-4">
+      <label class="form-label">Estado operativo</label>
+      <select name="estado_operativo" class="form-select">
+        {% set eo = vehiculo.estado_operativo if vehiculo and vehiculo.estado_operativo else 'DISPONIBLE' %}
+        {% for st in ['DISPONIBLE','EN_VIAJE','MANTENCION','FUERA_SERVICIO'] %}
+        <option value="{{ st }}" {% if eo == st %}selected{% endif %}>{{ st }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4"><label class="form-label">Próx. mantención (km)</label><input type="number" name="km_proxima_mantencion" class="form-control" min="0" step="1" value="{{ vehiculo.km_proxima_mantencion if vehiculo and vehiculo.km_proxima_mantencion is not none else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Rev. técnica</label><input type="date" name="fecha_revision_tecnica" class="form-control" value="{{ vehiculo.fecha_revision_tecnica.strftime('%Y-%m-%d') if vehiculo and vehiculo.fecha_revision_tecnica else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Permiso circulación</label><input type="date" name="fecha_permiso_circulacion" class="form-control" value="{{ vehiculo.fecha_permiso_circulacion.strftime('%Y-%m-%d') if vehiculo and vehiculo.fecha_permiso_circulacion else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Seguro</label><input type="date" name="fecha_seguro" class="form-control" value="{{ vehiculo.fecha_seguro.strftime('%Y-%m-%d') if vehiculo and vehiculo.fecha_seguro else '' }}"></div>
+    <div class="col-md-4"><label class="form-label">Próx. mantención (fecha)</label><input type="date" name="fecha_proxima_mantencion" class="form-control" value="{{ vehiculo.fecha_proxima_mantencion.strftime('%Y-%m-%d') if vehiculo and vehiculo.fecha_proxima_mantencion else '' }}"></div>
     <div class="col-12"><label class="form-label">Observaciones</label><textarea name="observaciones" class="form-control" rows="2">{{ vehiculo.observaciones if vehiculo else '' }}</textarea></div>
     {% if modo == 'editar' and vehiculo %}
     <div class="col-12">

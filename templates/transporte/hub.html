@@ -141,13 +141,19 @@
   </div>
   <div class="col-6 col-xl-3">
     <div class="tp-dark-card p-3 h-100">
-      <div class="text-uppercase small fw-semibold mb-2" style="color:#c5d3e3;">Rendimiento prom. Km/L</div>
-      <div class="tp-kpi-lg tp-kpi-rose">{% if stats.rendimiento_promedio_km_l is not none %}{{ stats.rendimiento_promedio_km_l }}{% else %}—{% endif %}</div>
+      <div class="text-uppercase small fw-semibold mb-2" style="color:#c5d3e3;">Consumo prom. L/100 km</div>
+      <div class="tp-kpi-lg tp-kpi-rose">{% if stats.consumo_promedio_l100 is not none %}{{ stats.consumo_promedio_l100 }}{% else %}—{% endif %}</div>
       <div class="small text-muted mt-2">
-        {% if stats.consumo_promedio_l100 is not none %}100 / {{ stats.consumo_promedio_l100 }}{% else %}Indique litros al cerrar viajes{% endif %}
+        {% if stats.rendimiento_promedio_km_l is not none %}Equivale a {{ stats.rendimiento_promedio_km_l }} km/L{% else %}Indique litros al cerrar viajes{% endif %}
       </div>
     </div>
   </div>
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-6 col-xl-3"><div class="tp-dark-card p-3 h-100"><div class="small text-uppercase">Litros consumidos</div><div class="tp-kpi-lg">{{ fuel.litros_consumidos }}</div></div></div>
+  <div class="col-12 col-md-6 col-xl-3"><div class="tp-dark-card p-3 h-100"><div class="small text-uppercase">L/100 real</div><div class="tp-kpi-lg">{{ fuel.l100_real if fuel.l100_real is not none else '—' }}</div></div></div>
+  <div class="col-12 col-md-6 col-xl-3"><div class="tp-dark-card p-3 h-100"><div class="small text-uppercase">L/100 referencial</div><div class="tp-kpi-lg">{{ fuel.l100_referencial if fuel.l100_referencial is not none else '—' }}</div></div></div>
+  <div class="col-12 col-md-6 col-xl-3"><div class="tp-dark-card p-3 h-100"><div class="small text-uppercase">Alertas sobreconsumo</div><div class="tp-kpi-lg">{{ fuel.alertas_sobreconsumo|length }}</div></div></div>
 </div>
 
 <div class="row g-3 mb-4">
@@ -181,8 +187,8 @@
   <div class="col-12 col-xl-6">
     <div class="tp-dark-board p-4 h-100">
       <div class="tp-board-badge mb-2"><i class="bi bi-truck-front-fill"></i> Flota · consumo</div>
-      <div class="tp-section-title h5 mb-1">Km/L real vs referencial</div>
-      <div class="tp-section-sub mb-3">Barras: rendimiento final en km/L por patente. Se muestra el valor dentro de cada barra.</div>
+      <div class="tp-section-title h5 mb-1">L/100 real vs referencial</div>
+      <div class="tp-section-sub mb-3">Comparación de consumo real y referencia por patente (misma unidad).</div>
       <div id="chartTpFlotaL100" style="min-height: 320px;"></div>
     </div>
   </div>
@@ -231,7 +237,7 @@
         <table class="table table-sm tp-table-dark align-middle">
           <thead><tr>
             <th>Patente</th><th class="text-end">Viajes</th><th class="text-end">Km tot.</th>
-            <th class="text-end">Ref. Km/L</th><th class="text-end">Real L/100</th><th class="text-end">Real Km/L</th>
+            <th class="text-end">Ref. L/100</th><th class="text-end">Real L/100</th><th class="text-end">Real Km/L</th>
           </tr></thead>
           <tbody>
             {% for v in comparativo_vehiculos %}
@@ -239,7 +245,7 @@
               <td class="fw-semibold">{{ v.patente }}</td>
               <td class="text-end">{{ v.n_viajes }}</td>
               <td class="text-end">{{ "{:,.0f}".format(v.km_total).replace(",", ".") }}</td>
-              <td class="text-end">{% if v.referencial_km_l is not none %}{{ v.referencial_km_l }}{% else %}—{% endif %}</td>
+              <td class="text-end">{% if v.referencial_l100 is not none %}{{ v.referencial_l100 }}{% else %}—{% endif %}</td>
               <td class="text-end">{% if v.l100_promedio is not none %}{{ v.l100_promedio }}{% else %}—{% endif %}</td>
               <td class="text-end">{% if v.km_l_promedio is not none %}{{ v.km_l_promedio }}{% else %}—{% endif %}</td>
             </tr>
@@ -388,8 +394,8 @@
   var flotaOpts = {
     chart: { type: "bar", height: 320, toolbar: { show: false }, foreColor: "#e2e8f0", fontFamily: "Plus Jakarta Sans, system-ui, sans-serif" },
     series: [
-      { name: "Real km/L", data: chFlota.km_l },
-      { name: "Referencial km/L", data: chFlota.ref_km_l }
+      { name: "Real L/100 km", data: chFlota.l100 },
+      { name: "Referencial L/100 km", data: chFlota.ref_l100 }
     ],
     xaxis: { categories: chFlota.labels, labels: { style: { fontWeight: 600 } } },
     yaxis: { labels: { formatter: function(v){ return Number(v || 0).toFixed(2); } } },
@@ -417,7 +423,7 @@
   if (elF && typeof ApexCharts !== "undefined") {
     if (!flOk) {
       flotaOpts.xaxis.categories = ["—"];
-      flotaOpts.series = [{ name: "Real km/L", data: [0] }, { name: "Referencial km/L", data: [0] }];
+      flotaOpts.series = [{ name: "Real L/100 km", data: [0] }, { name: "Referencial L/100 km", data: [0] }];
     }
     new ApexCharts(elF, flotaOpts).render();
   }

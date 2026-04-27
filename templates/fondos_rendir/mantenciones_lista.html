@@ -1,0 +1,34 @@
+{% extends "layout/base.html" %}
+{% block title %}Mantenciones de flota{% endblock %}
+{% block page_title %}Mantenciones de flota{% endblock %}
+{% block content %}
+<div class="d-flex gap-2 mb-3">
+  <a href="{{ request.url_for('fondos_rendir_mantencion_nueva') }}" class="btn btn-primary btn-sm">Nueva mantención</a>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="card p-3">Vencidas: {{ alertas.mantenciones_vencidas|length }}</div></div>
+  <div class="col-md-4"><div class="card p-3">Próximas: {{ alertas.mantenciones_proximas|length }}</div></div>
+  <div class="col-md-4"><div class="card p-3">Docs por vencer: {{ alertas.documentos_por_vencer|length }}</div></div>
+</div>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Fecha</th><th>Patente</th><th>Tipo</th><th>Odómetro</th><th>Costo</th><th>Próxima</th></tr></thead>
+      <tbody>
+        {% for m in mantenciones %}
+        <tr>
+          <td>{{ m.fecha.strftime('%d-%m-%Y') }}</td>
+          <td>{{ m.vehiculo.patente if m.vehiculo else '—' }}</td>
+          <td>{{ m.tipo }}</td>
+          <td>{{ m.odometro or '—' }}</td>
+          <td>{{ m.costo or '—' }}</td>
+          <td>{% if m.proxima_fecha %}{{ m.proxima_fecha.strftime('%d-%m-%Y') }}{% else %}—{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted p-3">Sin mantenciones registradas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

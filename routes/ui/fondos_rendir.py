@@ -103,6 +103,8 @@ def fondos_rendir_hub(
     if (redir := guard_finanzas_consulta(request)) is not None:
         return redir
     stats = crud_fr.dashboard_stats(db)
+    conc = crud_fr.dashboard_conciliacion_transporte(db)
+    mant = crud_fr.alertas_mantencion(db)
     fondos = crud_fr.listar_fondos(db, limite=50)
     setup_contable: dict[str, Any] = {"ok": False, "msg": "", "cuentas": {}}
     try:
@@ -124,6 +126,8 @@ def fondos_rendir_hub(
             "request": request,
             "active_menu": "fondos_rendir",
             "stats": stats,
+            "conc": conc,
+            "mant": mant,
             "fondos": fondos,
             "setup_contable": setup_contable,
         },
@@ -333,6 +337,15 @@ async def fondos_rendir_vehiculo_crear(
             anio=_parse_int(fd.get("anio")),
             observaciones=str(fd.get("observaciones") or "") or None,
             consumo_referencial_l100km=_parse_decimal(fd.get("consumo_referencial_l100km")),
+            tipo_vehiculo=str(fd.get("tipo_vehiculo") or "") or None,
+            capacidad_carga=_parse_decimal(fd.get("capacidad_carga")),
+            odometro_actual=_parse_int(fd.get("odometro_actual")),
+            estado_operativo=str(fd.get("estado_operativo") or "DISPONIBLE"),
+            fecha_revision_tecnica=crud_fr.parse_fecha_formulario_date(str(fd.get("fecha_revision_tecnica") or "") or None),
+            fecha_permiso_circulacion=crud_fr.parse_fecha_formulario_date(str(fd.get("fecha_permiso_circulacion") or "") or None),
+            fecha_seguro=crud_fr.parse_fecha_formulario_date(str(fd.get("fecha_seguro") or "") or None),
+            fecha_proxima_mantencion=crud_fr.parse_fecha_formulario_date(str(fd.get("fecha_proxima_mantencion") or "") or None),
+            km_proxima_mantencion=_parse_int(fd.get("km_proxima_mantencion")),
         )
         db.commit()
     except ValueError as e:
@@ -397,6 +410,15 @@ async def fondos_rendir_vehiculo_actualizar(
             observaciones=str(fd.get("observaciones") or "") or None,
             activo=activo,
             consumo_referencial_l100km=_parse_decimal(fd.get("consumo_referencial_l100km")),
+            tipo_vehiculo=str(fd.get("tipo_vehiculo") or "") or None,
+            capacidad_carga=_parse_decimal(fd.get("capacidad_carga")),
+            odometro_actual=_parse_int(fd.get("odometro_actual")),
+            estado_operativo=str(fd.get("estado_operativo") or "DISPONIBLE"),
+            fecha_revision_tecnica=crud_fr.parse_fecha_formulario_date(str(fd.get("fecha_revision_tecnica") or "") or None),
+            fecha_permiso_circulacion=crud_fr.parse_fecha_formulario_date(str(fd.get("fecha_permiso_circulacion") or "") or None),
+            fecha_seguro=crud_fr.parse_fecha_formulario_date(str(fd.get("fecha_seguro") or "") or None),
+            fecha_proxima_mantencion=crud_fr.parse_fecha_formulario_date(str(fd.get("fecha_proxima_mantencion") or "") or None),
+            km_proxima_mantencion=_parse_int(fd.get("km_proxima_mantencion")),
         )
         db.commit()
     except ValueError as e:
@@ -855,3 +877,75 @@ def fondos_rendir_fondo_reabrir(
         msg="Anticipo reabierto. Ajuste los gastos y vuelva a enviar.",
         sev="success",
     )
+
+
+@router.get("/mantenciones", response_class=HTMLResponse, name="fondos_rendir_mantenciones")
+def fondos_rendir_mantenciones(
+    request: Request,
+    db: Session = Depends(get_db),
+    vehiculo_id: Optional[int] = Query(None),
+):
+    if (redir := guard_finanzas_consulta(request)) is not None:
+        return redir
+    return templates.TemplateResponse(
+        "fondos_rendir/mantenciones_lista.html",
+        {
+            "request": request,
+            "active_menu": "fondos_rendir",
+            "mantenciones": crud_fr.listar_mantenciones(db, vehiculo_id=vehiculo_id),
+            "vehiculos": crud_fr.listar_vehiculos_transporte(db, solo_activos=False),
+            "vehiculo_id": vehiculo_id,
+            "alertas": crud_fr.alertas_mantencion(db),
+        },
+    )
+
+
+@router.get("/mantenciones/nueva", response_class=HTMLResponse, name="fondos_rendir_mantencion_nueva")
+def fondos_rendir_mantencion_nueva(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_finanzas_mutacion(request)) is not None:
+        return redir
+    return templates.TemplateResponse(
+        "fondos_rendir/mantencion_form.html",
+        {
+            "request": request,
+            "active_menu": "fondos_rendir",
+            "vehiculos": crud_fr.listar_vehiculos_transporte(db, solo_activos=True),
+            "tipos": ["PREVENTIVA", "CORRECTIVA", "NEUMATICOS", "ACEITE", "OTRO"],
+            "hoy": datetime.now().strftime("%Y-%m-%d"),
+        },
+    )
+
+
+@router.post("/mantenciones/nueva", name="fondos_rendir_mantencion_crear")
+async def fondos_rendir_mantencion_crear(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_finanzas_mutacion(request)) is not None:
+        return redir
+    fd = _form_to_dict(await request.form())
+    try:
+        vid = _parse_int(fd.get("vehiculo_transporte_id"))
+        if not vid:
+            raise ValueError("Seleccione vehículo.")
+        fecha = crud_fr.parse_fecha_formulario_date(str(fd.get("fecha") or ""))
+        if not fecha:
+            raise ValueError("Fecha inválida.")
+        crud_fr.crear_mantencion(
+            db,
+            vehiculo_transporte_id=vid,
+            fecha=fecha,
+            odometro=_parse_int(fd.get("odometro")),
+            tipo=str(fd.get("tipo") or "PREVENTIVA"),
+            proveedor=str(fd.get("proveedor") or "") or None,
+            documento=str(fd.get("documento") or "") or None,
+            costo=_parse_decimal(fd.get("costo")),
+            observaciones=str(fd.get("observaciones") or "") or None,
+            proxima_fecha=crud_fr.parse_fecha_formulario_date(str(fd.get("proxima_fecha") or "") or None),
+            proximo_km=_parse_int(fd.get("proximo_km")),
+        )
+        db.commit()
+    except ValueError as e:
+        db.rollback()
+        return _redirect(request, "fondos_rendir_mantencion_nueva", msg=public_error_message(e), sev="danger")
+    except SQLAlchemyError:
+        db.rollback()
+        return _redirect(request, "fondos_rendir_mantencion_nueva", msg="No se pudo registrar la mantención.", sev="danger")
+    return _redirect(request, "fondos_rendir_mantenciones", msg="Mantención registrada.", sev="success")

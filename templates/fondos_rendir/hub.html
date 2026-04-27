@@ -229,8 +229,20 @@
     <a href="{{ request.url_for('fondos_rendir_anticipos') }}" class="btn btn-fr-toolbar btn-sm">Listado</a>
     <a href="{{ request.url_for('fondos_rendir_empleados') }}" class="btn btn-fr-toolbar btn-sm">Trabajadores</a>
     <a href="{{ request.url_for('fondos_rendir_vehiculos') }}" class="btn btn-fr-toolbar btn-sm">Vehículos</a>
+    <a href="{{ request.url_for('fondos_rendir_mantenciones') }}" class="btn btn-fr-toolbar btn-sm">Mantenciones</a>
     <a href="{{ request.url_for('transporte_hub') }}" class="btn btn-fr-toolbar btn-sm"><i class="bi bi-signpost-split-fill"></i> Transporte</a>
   </div>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-md-3"><div class="fr-dark-card p-3 h-100"><div class="small text-uppercase">Fondos sin viaje</div><div class="fr-kpi-lg">{{ conc.fondos_sin_viaje|length }}</div></div></div>
+  <div class="col-md-3"><div class="fr-dark-card p-3 h-100"><div class="small text-uppercase">Gasto combustible sin viaje</div><div class="fr-kpi-lg">{{ conc.gastos_combustible_sin_viaje|length }}</div></div></div>
+  <div class="col-md-3"><div class="fr-dark-card p-3 h-100"><div class="small text-uppercase">Viajes sin rendición</div><div class="fr-kpi-lg">{{ conc.viajes_sin_rendicion|length }}</div></div></div>
+  <div class="col-md-3"><div class="fr-dark-card p-3 h-100"><div class="small text-uppercase">Rendición inconsistente</div><div class="fr-kpi-lg">{{ conc.rendiciones_inconsistentes|length }}</div></div></div>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="fr-dark-card p-3 h-100"><div class="small text-uppercase">Abiertos >3d / >7d / >15d</div><div class="fr-kpi-lg">{{ stats.abiertos_mas_3_dias }} / {{ stats.abiertos_mas_7_dias }} / {{ stats.abiertos_mas_15_dias }}</div></div></div>
+  <div class="col-md-4"><div class="fr-dark-card p-3 h-100"><div class="small text-uppercase">Mantenciones vencidas / próximas</div><div class="fr-kpi-lg">{{ mant.mantenciones_vencidas|length }} / {{ mant.mantenciones_proximas|length }}</div></div></div>
+  <div class="col-md-4"><div class="fr-dark-card p-3 h-100"><div class="small text-uppercase">Documentos por vencer</div><div class="fr-kpi-lg">{{ mant.documentos_por_vencer|length }}</div></div></div>
 </div>
 
 <div class="row g-3 mb-3">

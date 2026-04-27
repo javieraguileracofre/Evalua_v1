@@ -88,15 +88,15 @@ def rendimiento_km_l_desde_l100(l100: float | None) -> float | None:
 
 
 def desvio_consumo_pct(v: TransporteViaje) -> float | None:
-    """Desvío porcentual de rendimiento km/L vs referencial del vehículo."""
+    """Desvío porcentual de consumo real L/100km vs referencial L/100km."""
     real_l100 = litros_100km(v)
-    real = rendimiento_km_l_desde_l100(float(real_l100)) if real_l100 is not None else None
-    ref = None
+    real = float(real_l100) if real_l100 is not None else None
+    ref_l100 = None
     if v.vehiculo and v.vehiculo.consumo_referencial_l100km is not None:
-        ref = float(v.vehiculo.consumo_referencial_l100km)
-    if real is None or ref is None or ref <= 0:
+        ref_l100 = float(v.vehiculo.consumo_referencial_l100km)
+    if real is None or ref_l100 is None or ref_l100 <= 0:
         return None
-    return round((real - ref) / ref * 100.0, 1)
+    return round((real - ref_l100) / ref_l100 * 100.0, 1)
 
 
 def metricas_viaje_dict(v: TransporteViaje) -> dict[str, Any]:
@@ -114,6 +114,11 @@ def metricas_viaje_dict(v: TransporteViaje) -> dict[str, Any]:
         "litros_100km": l100_float,
         "rendimiento_km_l": rendimiento_km_l_desde_l100(l100_float),
         "desvio_consumo_pct": desv,
+        "referencial_l100km": (
+            float(v.vehiculo.consumo_referencial_l100km)
+            if v.vehiculo and v.vehiculo.consumo_referencial_l100km is not None
+            else None
+        ),
         "vel_media_kmh": vel_media,
     }
 
@@ -324,6 +329,8 @@ def cerrar_viaje(
     real_llegada: datetime,
     odometro_fin: int,
     litros_combustible: Decimal | None,
+    motivo_desvio: str | None = None,
+    observaciones_cierre: str | None = None,
 ) -> None:
     if v.estado != "EN_CURSO":
         raise ValueError("Solo se cierra un viaje en curso.")
@@ -333,10 +340,16 @@ def cerrar_viaje(
         raise ValueError("La llegada real no puede ser anterior a la llegada programada.")
     if v.odometro_inicio is not None and odometro_fin < v.odometro_inicio:
         raise ValueError("Odómetro final debe ser mayor o igual al inicial.")
+    if v.vehiculo_transporte_id and litros_combustible is None:
+        raise ValueError("Debe registrar litros de combustible para cerrar viaje con vehículo.")
     v.estado = "CERRADO"
     v.real_llegada = real_llegada
     v.odometro_fin = odometro_fin
     v.litros_combustible = litros_combustible
+    v.motivo_desvio = (motivo_desvio or "").strip() or None
+    v.observaciones_cierre = (observaciones_cierre or "").strip() or None
+    d = desvio_consumo_pct(v)
+    v.alerta_consumo = bool(d is not None and d > 10.0)
 
 
 def anular_viaje(db: Session, v: TransporteViaje, *, motivo: str) -> None:
@@ -522,8 +535,9 @@ def comparativo_vehiculos(db: Session, *, dias: int = 120, top: int = 12) -> lis
                 "vehiculo_id": vid,
                 "patente": pat,
                 "referencial_l100": float(ref) if ref is not None else None,
-                # Se captura en maestro como rendimiento final km/L.
-                "referencial_km_l": float(ref) if ref is not None else None,
+                "referencial_km_l": (
+                    rendimiento_km_l_desde_l100(float(ref)) if ref is not None else None
+                ),
                 "n_viajes": len(lst),
                 "km_total": sum(kms_ok),
                 "l100_promedio": round(sum(l100_ok) / len(l100_ok), 2) if l100_ok else None,
@@ -536,6 +550,75 @@ def comparativo_vehiculos(db: Session, *, dias: int = 120, top: int = 12) -> lis
         )
     rows.sort(key=lambda r: r["km_total"], reverse=True)
     return rows[:top]
+
+
+def indicadores_combustible(db: Session, *, dias: int = 120) -> dict[str, Any]:
+    cerrados = _viajes_cerrados_ventana(db, dias=dias)
+    km_total = 0
+    litros_total = Decimal("0")
+    km_con_dato = 0
+    litros_ref_esperados = Decimal("0")
+    litros_excedentes = Decimal("0")
+    alertas: list[dict[str, Any]] = []
+    by_chofer: dict[str, dict[str, float]] = defaultdict(lambda: {"km": 0.0, "litros": 0.0})
+    by_patente: dict[str, dict[str, float]] = defaultdict(lambda: {"km": 0.0, "litros": 0.0})
+    by_ruta: dict[str, dict[str, float]] = defaultdict(lambda: {"km": 0.0, "litros": 0.0})
+
+    for v in cerrados:
+        km = km_recorrido(v)
+        if km is None:
+            continue
+        km_total += km
+        if v.litros_combustible is not None and v.litros_combustible > 0:
+            litros_total += Decimal(v.litros_combustible)
+            km_con_dato += km
+            chofer = v.empleado.nombre_completo if v.empleado else f"#{v.empleado_id}"
+            by_chofer[chofer]["km"] += km
+            by_chofer[chofer]["litros"] += float(v.litros_combustible)
+            pat = v.vehiculo.patente if v.vehiculo else "S/PATENTE"
+            by_patente[pat]["km"] += km
+            by_patente[pat]["litros"] += float(v.litros_combustible)
+            ruta = f"{(v.origen or '').strip()} -> {(v.destino or '').strip()}"
+            by_ruta[ruta]["km"] += km
+            by_ruta[ruta]["litros"] += float(v.litros_combustible)
+        if v.vehiculo and v.vehiculo.consumo_referencial_l100km and km > 0:
+            ref_lit = (Decimal(km) * Decimal(v.vehiculo.consumo_referencial_l100km)) / Decimal(100)
+            litros_ref_esperados += ref_lit
+            if v.litros_combustible and v.litros_combustible > ref_lit:
+                litros_excedentes += Decimal(v.litros_combustible) - ref_lit
+        d = desvio_consumo_pct(v)
+        if d is not None and d > 10:
+            alertas.append({"viaje_id": v.id, "folio": v.folio, "desvio_pct": d})
+
+    l100_real = (float((litros_total / Decimal(km_con_dato)) * Decimal(100)) if km_con_dato > 0 else None)
+    km_l_real = (round(km_con_dato / float(litros_total), 2) if litros_total > 0 else None)
+    l100_ref = (float((litros_ref_esperados / Decimal(km_total)) * Decimal(100)) if km_total > 0 and litros_ref_esperados > 0 else None)
+    desvio = (round((l100_real - l100_ref) / l100_ref * 100, 1) if l100_real is not None and l100_ref and l100_ref > 0 else None)
+
+    def _ranking(src: dict[str, dict[str, float]]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for label, data in src.items():
+            if data["km"] <= 0 or data["litros"] <= 0:
+                continue
+            l100 = (data["litros"] / data["km"]) * 100
+            rows.append({"label": label, "km": round(data["km"], 1), "l100": round(l100, 2), "km_l": round(100 / l100, 2)})
+        rows.sort(key=lambda x: x["l100"], reverse=True)
+        return rows[:10]
+
+    return {
+        "km_recorridos": km_total,
+        "litros_consumidos": float(litros_total),
+        "l100_real": round(l100_real, 2) if l100_real is not None else None,
+        "km_l_real": km_l_real,
+        "l100_referencial": round(l100_ref, 2) if l100_ref is not None else None,
+        "desvio_pct": desvio,
+        "litros_esperados": round(float(litros_ref_esperados), 2),
+        "litros_excedentes": round(float(litros_excedentes), 2),
+        "ranking_chofer": _ranking(by_chofer),
+        "ranking_patente": _ranking(by_patente),
+        "ranking_ruta": _ranking(by_ruta),
+        "alertas_sobreconsumo": alertas,
+    }
 
 
 def ultimos_viajes_resumen(db: Session, *, limite: int = 15) -> list[TransporteViaje]:

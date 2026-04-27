@@ -1,0 +1,26 @@
+{% extends "layout/base.html" %}
+{% block title %}Nueva mantención{% endblock %}
+{% block page_title %}Nueva mantención{% endblock %}
+{% block content %}
+<form method="post" action="{{ request.url_for('fondos_rendir_mantencion_crear') }}" class="card border-0 shadow-sm">
+  <div class="card-body row g-3">
+    <div class="col-md-4">
+      <label class="form-label">Vehículo</label>
+      <select name="vehiculo_transporte_id" class="form-select" required>
+        <option value="">Seleccione</option>
+        {% for v in vehiculos %}<option value="{{ v.id }}">{{ v.patente }} - {{ v.marca }} {{ v.modelo }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2"><label class="form-label">Fecha</label><input type="date" class="form-control" name="fecha" value="{{ hoy }}" required></div>
+    <div class="col-md-2"><label class="form-label">Odómetro</label><input type="number" class="form-control" name="odometro"></div>
+    <div class="col-md-4"><label class="form-label">Tipo</label><select name="tipo" class="form-select">{% for t in tipos %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select></div>
+    <div class="col-md-4"><label class="form-label">Proveedor</label><input type="text" class="form-control" name="proveedor"></div>
+    <div class="col-md-4"><label class="form-label">Documento</label><input type="text" class="form-control" name="documento"></div>
+    <div class="col-md-4"><label class="form-label">Costo</label><input type="text" class="form-control" name="costo"></div>
+    <div class="col-md-3"><label class="form-label">Próxima fecha</label><input type="date" class="form-control" name="proxima_fecha"></div>
+    <div class="col-md-3"><label class="form-label">Próximo km</label><input type="number" class="form-control" name="proximo_km"></div>
+    <div class="col-md-6"><label class="form-label">Observaciones</label><textarea name="observaciones" class="form-control"></textarea></div>
+    <div class="col-12"><button type="submit" class="btn btn-primary">Guardar</button></div>
+  </div>
+</form>
+{% endblock %}
