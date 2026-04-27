@@ -104,8 +104,9 @@
         <td>{{ c.asignado_a.nombre_completo if c.asignado_a else '—' }}</td>
         <td>{{ c.fecha_apertura }}</td>
         <td>
-          <span class="badge {% if c.sla_estado == 'VENCIDO' %}text-bg-danger{% elif c.sla_estado == 'EN_RIESGO' %}text-bg-warning text-dark{% else %}text-bg-success{% endif %}">
-            {{ c.sla_estado }}
+          {% set sla = c.sla_estado if c.sla_estado else 'OK' %}
+          <span class="badge {% if sla == 'VENCIDO' %}text-bg-danger{% elif sla == 'EN_RIESGO' %}text-bg-warning text-dark{% else %}text-bg-success{% endif %}">
+            {{ sla }}
           </span>
         </td>
       </tr>

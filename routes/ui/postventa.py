@@ -210,18 +210,48 @@ def postventa_casos_lista(
         estado = None
     elif vista == "resueltos":
         estado = "RESUELTO"
-    casos = crud_postventa.listar_casos(
-        db,
-        estado=estado,
-        prioridad=prioridad,
-        asignado_a_id=asignado_a_id,
-        cliente_id=cliente_id,
-        q=q,
-    )
-    if vista == "vencidos":
-        casos = [c for c in casos if c.sla_estado == "VENCIDO"]
-    metricas = crud_postventa.metricas_postventa(db)
-    usuarios = crud_usuarios.listar_usuarios(db, limite=200)
+    casos = []
+    metricas = {
+        "casos_abiertos": 0,
+        "casos_nuevos_7d": 0,
+        "casos_nuevos_30d": 0,
+        "casos_resueltos_30d": 0,
+        "promedio_horas_primera_respuesta": 0.0,
+        "promedio_horas_resolucion": 0.0,
+        "casos_vencidos_sla": 0,
+        "casos_por_usuario_asignado": [],
+        "casos_por_estado": [],
+        "casos_por_prioridad": [],
+        "backlog_sin_asignar": 0,
+    }
+    usuarios = []
+    try:
+        casos = crud_postventa.listar_casos(
+            db,
+            estado=estado,
+            prioridad=prioridad,
+            asignado_a_id=asignado_a_id,
+            cliente_id=cliente_id,
+            q=q,
+        )
+        if vista == "vencidos":
+            casos = [c for c in casos if (getattr(c, "sla_estado", "OK") == "VENCIDO")]
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Postventa casos: error listando bandeja")
+        msg = msg or public_error_message(exc, default="Bandeja cargada con datos parciales.")
+        sev = "warning"
+    try:
+        metricas = crud_postventa.metricas_postventa(db)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Postventa casos: error calculando métricas")
+        msg = msg or public_error_message(exc, default="Métricas no disponibles temporalmente.")
+        sev = "warning"
+    try:
+        usuarios = crud_usuarios.listar_usuarios(db, limite=200)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Postventa casos: error listando usuarios")
+        msg = msg or public_error_message(exc, default="No se pudo cargar listado de usuarios.")
+        sev = "warning"
     return templates.TemplateResponse(
         "postventa/casos_lista.html",
         {

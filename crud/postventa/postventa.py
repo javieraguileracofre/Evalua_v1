@@ -605,38 +605,62 @@ def listar_casos(
     q: str | None = None,
     limit: int = 200,
 ) -> list[PostventaSolicitud]:
-    stmt = select(PostventaSolicitud).order_by(
-        PostventaSolicitud.ultimo_movimiento_at.desc().nullslast(),
-        PostventaSolicitud.fecha_apertura.desc(),
-        PostventaSolicitud.id.desc(),
-    )
-    if estado:
-        stmt = stmt.where(PostventaSolicitud.estado == _to_case_status(estado))
-    if prioridad:
-        stmt = stmt.where(PostventaSolicitud.prioridad == _norm(prioridad).upper())
-    if asignado_a_id is not None:
-        if int(asignado_a_id) <= 0:
-            stmt = stmt.where(PostventaSolicitud.asignado_a_id.is_(None))
-        else:
-            stmt = stmt.where(PostventaSolicitud.asignado_a_id == int(asignado_a_id))
-    if cliente_id is not None:
-        stmt = stmt.where(PostventaSolicitud.cliente_id == int(cliente_id))
-    if q:
-        pat = f"%{_norm(q)}%"
-        stmt = stmt.join(Cliente, Cliente.id == PostventaSolicitud.cliente_id).where(
-            or_(
-                PostventaSolicitud.titulo.ilike(pat),
-                PostventaSolicitud.descripcion.ilike(pat),
-                PostventaSolicitud.numero_caso.ilike(pat),
-                Cliente.razon_social.ilike(pat),
-                Cliente.rut.ilike(pat),
-            )
+    try:
+        stmt = select(PostventaSolicitud).order_by(
+            PostventaSolicitud.ultimo_movimiento_at.desc().nullslast(),
+            PostventaSolicitud.fecha_apertura.desc(),
+            PostventaSolicitud.id.desc(),
         )
-    rows = list(db.scalars(stmt.limit(limit)))
-    for row in rows:
-        _ensure_case_compat(row, db)
-    db.commit()
-    return rows
+        if estado:
+            stmt = stmt.where(PostventaSolicitud.estado == _to_case_status(estado))
+        if prioridad:
+            stmt = stmt.where(PostventaSolicitud.prioridad == _norm(prioridad).upper())
+        if asignado_a_id is not None:
+            if int(asignado_a_id) <= 0:
+                stmt = stmt.where(PostventaSolicitud.asignado_a_id.is_(None))
+            else:
+                stmt = stmt.where(PostventaSolicitud.asignado_a_id == int(asignado_a_id))
+        if cliente_id is not None:
+            stmt = stmt.where(PostventaSolicitud.cliente_id == int(cliente_id))
+        if q:
+            pat = f"%{_norm(q)}%"
+            stmt = stmt.join(Cliente, Cliente.id == PostventaSolicitud.cliente_id).where(
+                or_(
+                    PostventaSolicitud.titulo.ilike(pat),
+                    PostventaSolicitud.descripcion.ilike(pat),
+                    PostventaSolicitud.numero_caso.ilike(pat),
+                    Cliente.razon_social.ilike(pat),
+                    Cliente.rut.ilike(pat),
+                )
+            )
+        rows = list(db.scalars(stmt.limit(limit)))
+        for row in rows:
+            _ensure_case_compat(row, db)
+        db.commit()
+        return rows
+    except Exception:
+        # Fallback legacy para bases aún sin columnas CRM.
+        stmt = select(PostventaSolicitud).order_by(PostventaSolicitud.fecha_apertura.desc(), PostventaSolicitud.id.desc())
+        if estado:
+            stmt = stmt.where(PostventaSolicitud.estado == _to_case_status(estado))
+        if prioridad:
+            stmt = stmt.where(PostventaSolicitud.prioridad == _norm(prioridad).upper())
+        if cliente_id is not None:
+            stmt = stmt.where(PostventaSolicitud.cliente_id == int(cliente_id))
+        if q:
+            pat = f"%{_norm(q)}%"
+            stmt = stmt.join(Cliente, Cliente.id == PostventaSolicitud.cliente_id).where(
+                or_(
+                    PostventaSolicitud.titulo.ilike(pat),
+                    PostventaSolicitud.descripcion.ilike(pat),
+                    Cliente.razon_social.ilike(pat),
+                    Cliente.rut.ilike(pat),
+                )
+            )
+        rows = list(db.scalars(stmt.limit(limit)))
+        for row in rows:
+            _ensure_case_compat(row)
+        return rows
 
 
 def crear_caso(
