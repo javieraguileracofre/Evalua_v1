@@ -77,13 +77,13 @@ class TransporteViaje(Base):
     origen: Mapped[str] = mapped_column(String(240), nullable=False, default="")
     destino: Mapped[str] = mapped_column(String(240), nullable=False, default="")
     referencia_carga: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    tipo_carga: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    peso_carga: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    valor_flete: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
-    costo_estimado: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
-    costo_real: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
-    km_vacio: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    km_cargado: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tipo_carga: Mapped[str | None] = mapped_column(String(80), nullable=True, deferred=True)
+    peso_carga: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True, deferred=True)
+    valor_flete: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True, deferred=True)
+    costo_estimado: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True, deferred=True)
+    costo_real: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True, deferred=True)
+    km_vacio: Mapped[int | None] = mapped_column(Integer, nullable=True, deferred=True)
+    km_cargado: Mapped[int | None] = mapped_column(Integer, nullable=True, deferred=True)
 
     programado_salida: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=False),
@@ -101,12 +101,12 @@ class TransporteViaje(Base):
     litros_combustible: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
-    motivo_desvio: Mapped[str | None] = mapped_column(Text, nullable=True)
-    observaciones_cierre: Mapped[str | None] = mapped_column(Text, nullable=True)
-    alerta_consumo: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+    motivo_desvio: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
+    observaciones_cierre: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
+    alerta_consumo: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false", deferred=True)
     motivo_anulacion: Mapped[str | None] = mapped_column(Text, nullable=True)
-    usuario_creacion: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    usuario_modificacion: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    usuario_creacion: Mapped[str | None] = mapped_column(String(120), nullable=True, deferred=True)
+    usuario_modificacion: Mapped[str | None] = mapped_column(String(120), nullable=True, deferred=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
