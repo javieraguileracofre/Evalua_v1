@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 import re
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -18,8 +18,8 @@ _current_tenant_code: ContextVar[str | None] = ContextVar(
 )
 
 
-def set_current_tenant_code(tenant_code: str | None) -> None:
-    _current_tenant_code.set(tenant_code)
+def set_current_tenant_code(tenant_code: str | None) -> Token[str | None]:
+    return _current_tenant_code.set(tenant_code)
 
 
 def get_current_tenant_code() -> str | None:
@@ -57,8 +57,11 @@ class TenantResolutionMiddleware(BaseHTTPMiddleware):
                 tenant_code = auth.get("tenant_code") or settings.default_tenant_code
 
         tenant_code = _normalize_tenant_code(tenant_code)
-        set_current_tenant_code(tenant_code)
-
-        response = await call_next(request)
-        response.headers["X-Resolved-Tenant"] = tenant_code
-        return response
+        token = set_current_tenant_code(tenant_code)
+        try:
+            response = await call_next(request)
+            if settings.app_debug:
+                response.headers["X-Resolved-Tenant"] = tenant_code
+            return response
+        finally:
+            _current_tenant_code.reset(token)

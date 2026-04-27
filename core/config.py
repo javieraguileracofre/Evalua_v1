@@ -184,6 +184,7 @@ class Settings:
     auth_session_max_age_seconds: int
     # Timeout TCP al conectar a PostgreSQL (evita cuelgues indefinidos si el servidor no responde).
     db_connect_timeout_seconds: int
+    auto_migrate_on_startup: bool
 
     # Contabilidad — fondos por rendir (códigos en fin.plan_cuenta)
     fondo_rendir_cuenta_anticipo: str
@@ -267,6 +268,15 @@ class Settings:
             admin_postgres_url = rewrite_supabase_direct_db_url_to_pooler(admin_postgres_url)
             admin_postgres_url = _ensure_sslmode_require_for_supabase(admin_postgres_url)
 
+        auto_migrate_on_startup = _to_bool(
+            os.getenv("AUTO_MIGRATE_ON_STARTUP"),
+            default=is_dev,
+        )
+        if not is_dev and auto_migrate_on_startup:
+            raise RuntimeError(
+                "Configuración insegura: AUTO_MIGRATE_ON_STARTUP=true no está permitido en producción."
+            )
+
         return Settings(
             app_name=os.getenv("APP_NAME", "EvaluaERP").strip(),
             app_env=app_env_raw,
@@ -287,6 +297,7 @@ class Settings:
             auth_cookie_secure=auth_cookie_secure,
             auth_session_max_age_seconds=auth_session_max_age,
             db_connect_timeout_seconds=db_connect_timeout,
+            auto_migrate_on_startup=auto_migrate_on_startup,
             fondo_rendir_cuenta_anticipo=os.getenv("FONDO_RENDIR_CUENTA_ANTICIPO", "").strip(),
             fondo_rendir_cuenta_caja=os.getenv("FONDO_RENDIR_CUENTA_CAJA", "").strip(),
             fondo_rendir_cuenta_gasto=os.getenv("FONDO_RENDIR_CUENTA_GASTO", "").strip(),

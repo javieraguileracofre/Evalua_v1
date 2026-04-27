@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from core.bulk_limits import BULK_CSV_MAX_BYTES, BULK_CSV_MAX_ROWS, LIST_PAGE_DEFAULT, LIST_PAGE_MAX
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
+from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
 from crud.maestros import cliente as crud_cliente
 from db.session import get_db
 from schemas.maestros.cliente import ClienteCreate, ClienteUpdate
@@ -59,6 +60,8 @@ def clientes_list(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     lim = min(max(limit, 1), LIST_PAGE_MAX)
     sk = max(skip, 0)
     clientes, hay_mas = crud_cliente.listar_clientes(
@@ -92,6 +95,8 @@ def clientes_form_nuevo(
     request: Request,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     return templates.TemplateResponse(
         "clientes/form_cliente.html",
         {
@@ -108,6 +113,8 @@ def clientes_form_editar(
     cliente_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     cliente = crud_cliente.get_cliente(db, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -137,6 +144,8 @@ def clientes_create(
     activo: str = Form("true"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     data = ClienteCreate(
         rut=rut,
         razon_social=razon_social,
@@ -172,6 +181,8 @@ def clientes_update(
     activo: str = Form("true"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     cliente = crud_cliente.get_cliente(db, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -207,6 +218,8 @@ def clientes_desactivar(
     cliente_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     cliente = crud_cliente.get_cliente(db, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -221,6 +234,8 @@ def clientes_delete(
     cliente_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     cliente = crud_cliente.get_cliente(db, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -236,6 +251,8 @@ def clientes_delete(
     name="clientes_carga_masiva_form",
 )
 def clientes_carga_masiva_form(request: Request):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     return templates.TemplateResponse(
         "clientes/clientes_carga_masiva.html",
         {
@@ -253,6 +270,8 @@ async def clientes_carga_masiva_upload(
     archivo: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     filename = (archivo.filename or "").lower()
     if not filename.endswith((".csv", ".txt")):
         return _redirect(request, "clientes_list", msg="Formato inválido", sev="warning")

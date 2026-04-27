@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
+from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
 from crud.maestros import cliente as crud_cliente
 from crud.postventa import postventa as crud_postventa
 from db.session import get_db
@@ -90,6 +91,8 @@ def postventa_hub(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     filas = crud_postventa.listar_clientes_resumen_postventa(db, busqueda=q, limit=100)
     stats = crud_postventa.hub_dashboard_stats(db)
     return templates.TemplateResponse(
@@ -114,6 +117,8 @@ def postventa_ficha_cliente(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     cliente = crud_cliente.get_cliente(db, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -152,6 +157,8 @@ def postventa_registrar_interaccion(
     fecha_evento: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     cliente = crud_cliente.get_cliente(db, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404)
@@ -197,6 +204,8 @@ def postventa_registrar_solicitud(
     prioridad: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     cliente = crud_cliente.get_cliente(db, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404)
@@ -236,6 +245,8 @@ def postventa_actualizar_estado_solicitud(
     estado: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     sol = crud_postventa.get_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404)

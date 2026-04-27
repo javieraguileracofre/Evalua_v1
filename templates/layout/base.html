@@ -412,6 +412,49 @@
       box-shadow:0 0 12px rgba(196,163,90,.5);
     }
 
+    .nav-subitem-evalua{
+      display:flex;
+      align-items:center;
+      gap:.45rem;
+      margin:-.05rem 0 .28rem 2.95rem;
+      padding:.22rem .45rem;
+      border-radius:8px;
+      color:var(--sidebar-text-soft);
+      font-size:.78rem;
+      font-weight:600;
+      letter-spacing:-.01em;
+      transition:background .18s ease, color .18s ease;
+    }
+
+    .nav-subitem-dot{
+      width:6px;
+      height:6px;
+      border-radius:999px;
+      background:rgba(196,163,90,.35);
+      flex-shrink:0;
+      transition:background .18s ease, box-shadow .18s ease;
+    }
+
+    .nav-subitem-evalua:hover{
+      color:#fff;
+      background:rgba(255,255,255,.05);
+    }
+
+    .nav-subitem-evalua.active{
+      color:#fff;
+      background:rgba(196,163,90,.14);
+      border:1px solid rgba(196,163,90,.22);
+    }
+
+    .nav-subitem-evalua.active .nav-subitem-dot{
+      background:var(--accent-premium);
+      box-shadow:0 0 10px rgba(196,163,90,.45);
+    }
+
+    body.evalua-sidebar-collapsed .nav-subitem-evalua{
+      display:none;
+    }
+
     .sidebar-footer{
       position:relative;
       z-index:1;
@@ -884,10 +927,12 @@
     </div>
 
     <nav class="sidebar-nav-wrap" aria-label="Módulos del sistema">
+      {{ erp_nav.inicio(request, current_menu, true) }}
+      {{ erp_nav.comercial_clientes(request, current_menu, true) }}
       {{ erp_nav.operaciones(request, current_menu, true) }}
-      {{ erp_nav.maestros(request, current_menu, true) }}
-      {% block sidebar_maestros_extra %}{% endblock %}
       {{ erp_nav.finanzas(request, current_menu, true) }}
+      {{ erp_nav.contabilidad(request, current_menu, true) }}
+      {% block sidebar_maestros_extra %}{% endblock %}
       {% block sidebar_finanzas_extra %}{% endblock %}
       {{ erp_nav.administracion(request, current_menu, true) }}
       {% block sidebar_extra %}{% endblock %}
@@ -916,10 +961,12 @@
 
     <div class="offcanvas-body">
       <nav aria-label="Módulos del sistema">
+        {{ erp_nav.inicio(request, current_menu, false) }}
+        {{ erp_nav.comercial_clientes(request, current_menu, false) }}
         {{ erp_nav.operaciones(request, current_menu, false) }}
-        {{ erp_nav.maestros(request, current_menu, false) }}
-        {% block mobile_sidebar_maestros_extra %}{% endblock %}
         {{ erp_nav.finanzas(request, current_menu, false) }}
+        {{ erp_nav.contabilidad(request, current_menu, false) }}
+        {% block mobile_sidebar_maestros_extra %}{% endblock %}
         {% block mobile_sidebar_finanzas_extra %}{% endblock %}
         {{ erp_nav.administracion(request, current_menu, false) }}
         {% block mobile_sidebar_extra %}{% endblock %}

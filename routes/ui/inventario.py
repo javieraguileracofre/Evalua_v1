@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from core.bulk_limits import BULK_CSV_MAX_BYTES, BULK_CSV_MAX_ROWS, LIST_PAGE_DEFAULT, LIST_PAGE_MAX
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
+from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
 from crud.inventario import inventario as crud_inventario
 from db.session import get_db
 from schemas.inventario.inventario import (
@@ -94,6 +95,8 @@ def producto_buscar_por_codigo_api(
     codigo: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     termino = (codigo or "").strip()
     if not termino:
         return JSONResponse(
@@ -155,6 +158,8 @@ def productos_list(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     lim = min(max(limit, 1), LIST_PAGE_MAX)
     sk = max(skip, 0)
     productos, hay_mas = crud_inventario.listar_productos(
@@ -194,6 +199,8 @@ def producto_form_nuevo(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     categorias = crud_inventario.listar_categorias(db)
     unidades = crud_inventario.listar_unidades_medida(db)
 
@@ -219,6 +226,8 @@ def producto_form_editar(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     producto = crud_inventario.get_producto(db, producto_id)
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -259,6 +268,8 @@ def producto_create(
     activo: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     try:
         data = ProductoCreate(
             codigo=(codigo or "").strip() or None,
@@ -318,6 +329,8 @@ def producto_update(
     activo: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     producto = crud_inventario.get_producto(db, producto_id)
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -371,6 +384,8 @@ def producto_ingresar_stock(
     observacion_ingreso: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     producto = crud_inventario.get_producto(db, producto_id)
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -421,6 +436,8 @@ def producto_deactivate(
     producto_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     producto = crud_inventario.get_producto(db, producto_id)
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -455,6 +472,8 @@ def producto_activate(
     producto_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     producto = crud_inventario.get_producto(db, producto_id)
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -489,6 +508,8 @@ def producto_delete(
     producto_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     producto = crud_inventario.get_producto(db, producto_id)
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -527,6 +548,8 @@ def producto_ajustar_stock(
     observacion: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     producto = crud_inventario.get_producto(db, producto_id)
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -575,6 +598,8 @@ def categorias_list(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     categorias = crud_inventario.listar_categorias(db)
     return templates.TemplateResponse(
         "inventario/categorias.html",
@@ -595,6 +620,8 @@ def categoria_create(
     descripcion: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     try:
         crud_inventario.crear_categoria(
             db,
@@ -633,6 +660,8 @@ def unidades_medida_list(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     unidades = crud_inventario.listar_unidades_medida(db)
     return templates.TemplateResponse(
         "inventario/unidades_medida.html",
@@ -654,6 +683,8 @@ def unidad_medida_create(
     simbolo: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     try:
         crud_inventario.crear_unidad_medida(
             db,
@@ -692,6 +723,8 @@ def productos_carga_masiva_form(
     msg: str | None = Query(None),
     sev: str = Query("info"),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     return templates.TemplateResponse(
         "inventario/productos_carga_masiva.html",
         {
@@ -711,6 +744,8 @@ async def productos_carga_masiva_upload(
     archivo: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     try:
         nombre_archivo = (archivo.filename or "").lower()
         if not nombre_archivo.endswith(".csv"):

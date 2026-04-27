@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
+from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
 from crud.finanzas.proveedor_fin import proveedor_fin as crud_proveedor_fin
 from crud.maestros.proveedor import proveedor as crud_proveedor
 from db.session import get_db
@@ -133,6 +134,8 @@ def proveedor_lista(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     proveedores = crud_proveedor.list_proveedores(
         db,
         q=_clean_optional_str(q),
@@ -163,6 +166,8 @@ def proveedor_nuevo(
     msg: Optional[str] = Query(None),
     sev: str = Query("info"),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     return templates.TemplateResponse(
         "proveedores/form_proveedor.html",
         {
@@ -204,6 +209,8 @@ def proveedor_crear(
     fin_notas: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     try:
         payload = ProveedorCreate(
             **_payload_desde_form(
@@ -260,6 +267,8 @@ def proveedor_editar(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     prov = crud_proveedor.get_proveedor(db, proveedor_id)
     if not prov:
         return _redirect(
@@ -355,6 +364,8 @@ def proveedor_actualizar(
     fin_notas: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     try:
         payload = ProveedorUpdate(
             **_payload_desde_form(
@@ -411,6 +422,8 @@ def proveedor_estado(
     activo: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     try:
         crud_proveedor.cambiar_estado(db, proveedor_id, activo.strip().lower() == "true")
         return _redirect(
@@ -435,6 +448,8 @@ def proveedor_eliminar(
     proveedor_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     try:
         crud_proveedor_fin.delete_by_proveedor_id(db, proveedor_id)
         crud_proveedor.delete_proveedor(db, proveedor_id)

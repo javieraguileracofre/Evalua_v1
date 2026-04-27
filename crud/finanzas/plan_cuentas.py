@@ -2,11 +2,84 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, inspect, or_, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from models.finanzas.plan_cuentas import PlanCuenta
 from schemas.finanzas.plan_cuentas import PlanCuentaCreate, PlanCuentaUpdate
+
+
+TIPOS_PLAN_CUENTA = {"ACTIVO", "PASIVO", "PATRIMONIO", "INGRESO", "COSTO", "GASTO", "ORDEN"}
+NATURALEZAS_PLAN_CUENTA = {"DEUDORA", "ACREEDORA"}
+ESTADOS_PLAN_CUENTA = {"ACTIVO", "INACTIVO"}
+
+
+def _validar_catalogos_plan_cuenta(*, tipo: str, naturaleza: str, estado: str) -> None:
+    if tipo not in TIPOS_PLAN_CUENTA:
+        raise ValueError(f"Tipo de cuenta no permitido: {tipo}")
+    if naturaleza not in NATURALEZAS_PLAN_CUENTA:
+        raise ValueError(f"Naturaleza de cuenta no permitida: {naturaleza}")
+    if estado not in ESTADOS_PLAN_CUENTA:
+        raise ValueError(f"Estado de cuenta no permitido: {estado}")
+
+
+def _tiene_hijos(db: Session, *, cuenta_id: int) -> bool:
+    stmt = select(func.count()).select_from(PlanCuenta).where(PlanCuenta.cuenta_padre_id == cuenta_id)
+    return bool(db.execute(stmt).scalar_one())
+
+
+def _cuenta_esta_en_config_o_asientos(db: Session, *, codigo_cuenta: str) -> bool:
+    inspector = inspect(db.bind)
+    has_cfg = inspector.has_table("config_contable", schema="fin")
+    has_cfg_mod = inspector.has_table("config_contable_detalle_modulo", schema="fin")
+    has_asiento_det = inspector.has_table("asientos_detalle", schema="public")
+
+    if has_cfg:
+        used_cfg = db.execute(
+            text(
+                """
+                SELECT 1
+                FROM fin.config_contable
+                WHERE codigo_cuenta = :codigo AND estado = 'ACTIVO'
+                LIMIT 1
+                """
+            ),
+            {"codigo": codigo_cuenta},
+        ).scalar()
+        if used_cfg:
+            return True
+
+    if has_cfg_mod:
+        used_cfg_mod = db.execute(
+            text(
+                """
+                SELECT 1
+                FROM fin.config_contable_detalle_modulo
+                WHERE codigo_cuenta = :codigo AND estado = 'ACTIVO'
+                LIMIT 1
+                """
+            ),
+            {"codigo": codigo_cuenta},
+        ).scalar()
+        if used_cfg_mod:
+            return True
+
+    if has_asiento_det:
+        used_asientos = db.execute(
+            text(
+                """
+                SELECT 1
+                FROM public.asientos_detalle
+                WHERE codigo_cuenta = :codigo
+                LIMIT 1
+                """
+            ),
+            {"codigo": codigo_cuenta},
+        ).scalar()
+        if used_asientos:
+            return True
+
+    return False
 
 
 def listar_plan_cuentas(
@@ -77,6 +150,7 @@ def crear_plan_cuenta(db: Session, payload: PlanCuentaCreate) -> PlanCuenta:
         estado=payload.estado.strip().upper(),
         descripcion=(payload.descripcion or "").strip() or None,
     )
+    _validar_catalogos_plan_cuenta(tipo=cuenta.tipo, naturaleza=cuenta.naturaleza, estado=cuenta.estado)
 
     db.add(cuenta)
     db.commit()
@@ -118,16 +192,27 @@ def actualizar_plan_cuenta(
         cuenta.naturaleza = data["naturaleza"].strip().upper()
 
     if "acepta_movimiento" in data and data["acepta_movimiento"] is not None:
+        if data["acepta_movimiento"] and _tiene_hijos(db, cuenta_id=cuenta.id):
+            raise ValueError("Una cuenta con hijos no puede aceptar movimiento.")
         cuenta.acepta_movimiento = data["acepta_movimiento"]
 
     if "requiere_centro_costo" in data and data["requiere_centro_costo"] is not None:
         cuenta.requiere_centro_costo = data["requiere_centro_costo"]
 
     if "estado" in data and data["estado"] is not None:
-        cuenta.estado = data["estado"].strip().upper()
+        nuevo_estado = data["estado"].strip().upper()
+        if nuevo_estado == "INACTIVO" and _cuenta_esta_en_config_o_asientos(db, codigo_cuenta=cuenta.codigo):
+            raise ValueError(
+                "No se puede desactivar la cuenta: está en configuración contable activa o tiene asientos."
+            )
+        cuenta.estado = nuevo_estado
 
     if "descripcion" in data:
         cuenta.descripcion = (data["descripcion"] or "").strip() or None
+
+    _validar_catalogos_plan_cuenta(tipo=cuenta.tipo, naturaleza=cuenta.naturaleza, estado=cuenta.estado)
+    if cuenta.acepta_movimiento and _tiene_hijos(db, cuenta_id=cuenta.id):
+        raise ValueError("Una cuenta con hijos no puede aceptar movimiento.")
 
     db.add(cuenta)
     db.commit()
@@ -136,6 +221,10 @@ def actualizar_plan_cuenta(
 
 
 def desactivar_plan_cuenta(db: Session, *, cuenta: PlanCuenta) -> PlanCuenta:
+    if _cuenta_esta_en_config_o_asientos(db, codigo_cuenta=cuenta.codigo):
+        raise ValueError(
+            "No se puede desactivar la cuenta: está en configuración contable activa o tiene asientos."
+        )
     cuenta.estado = "INACTIVO"
     db.add(cuenta)
     db.commit()

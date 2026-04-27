@@ -315,6 +315,12 @@ def _ensure_plan_cuenta_minima_for_contabilidad_seed(engine: Engine) -> None:
         codigo, nombre, nivel, cuenta_padre_id, tipo, clasificacion, naturaleza,
         acepta_movimiento, requiere_centro_costo, estado, descripcion
     ) VALUES
+    ('100000', 'ACTIVO', 1, NULL, 'ACTIVO', 'ACTIVO', 'DEUDORA', FALSE, FALSE, 'ACTIVO', 'Grupo activo'),
+    ('200000', 'PASIVO', 1, NULL, 'PASIVO', 'PASIVO', 'ACREEDORA', FALSE, FALSE, 'ACTIVO', 'Grupo pasivo'),
+    ('400000', 'INGRESOS', 1, NULL, 'INGRESO', 'INGRESOS', 'ACREEDORA', FALSE, FALSE, 'ACTIVO', 'Grupo ingresos'),
+    ('500000', 'COSTOS', 1, NULL, 'COSTO', 'COSTOS', 'DEUDORA', FALSE, FALSE, 'ACTIVO', 'Grupo costos'),
+    ('110000', 'ACTIVO CORRIENTE', 2, NULL, 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', FALSE, FALSE, 'ACTIVO', 'Agrupador activos corrientes'),
+    ('120000', 'ACTIVO NO CORRIENTE', 2, NULL, 'ACTIVO', 'ACTIVO_NO_CORRIENTE', 'DEUDORA', FALSE, FALSE, 'ACTIVO', 'Agrupador activos no corrientes'),
     ('110201', 'CAJA Y BANCOS', 3, NULL, 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', TRUE, FALSE, 'ACTIVO', 'Fondos disponibles'),
     ('110301', 'CLIENTES', 3, NULL, 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', TRUE, FALSE, 'ACTIVO', 'Cuentas por cobrar clientes'),
     ('110401', 'INVENTARIO MERCADERIA', 3, NULL, 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', TRUE, FALSE, 'ACTIVO', 'Inventario valorizado'),
@@ -323,6 +329,7 @@ def _ensure_plan_cuenta_minima_for_contabilidad_seed(engine: Engine) -> None:
     ('210101', 'PROVEEDORES', 3, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'Proveedores por pagar'),
     ('210110', 'PROVEEDORES POR FACTURAR', 3, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'Recepción sin factura'),
     ('210201', 'IVA DEBITO FISCAL', 3, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'IVA débito'),
+    ('410000', 'INGRESOS OPERACIONALES', 2, NULL, 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', FALSE, FALSE, 'ACTIVO', 'Agrupador ingresos operacionales'),
     ('410101', 'VENTAS', 3, NULL, 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', TRUE, TRUE, 'ACTIVO', 'Ingresos por ventas'),
     ('510000', 'COSTOS DE VENTAS', 2, NULL, 'COSTO', 'COSTO_VENTA', 'DEUDORA', FALSE, TRUE, 'ACTIVO', 'Agrupador costos'),
     ('510101', 'COSTO DE VENTAS', 3, NULL, 'COSTO', 'COSTO_VENTA', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Costo mercadería vendida'),
@@ -344,7 +351,43 @@ def _ensure_plan_cuenta_minima_for_contabilidad_seed(engine: Engine) -> None:
     UPDATE fin.plan_cuenta h
        SET cuenta_padre_id = p.id
       FROM fin.plan_cuenta p
+     WHERE h.codigo = '110201'
+       AND p.codigo = '110000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '110301'
+       AND p.codigo = '110000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '110401'
+       AND p.codigo = '110000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '110501'
+       AND p.codigo = '110000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
      WHERE h.codigo = '210110'
+       AND p.codigo = '210000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '210101'
+       AND p.codigo = '210000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '210201'
        AND p.codigo = '210000';
 
     UPDATE fin.plan_cuenta h
@@ -352,6 +395,30 @@ def _ensure_plan_cuenta_minima_for_contabilidad_seed(engine: Engine) -> None:
       FROM fin.plan_cuenta p
      WHERE h.codigo = '510101'
        AND p.codigo = '510000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '410101'
+       AND p.codigo = '410000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '113701'
+       AND p.codigo = '110000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '210701'
+       AND p.codigo = '210000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '410701'
+       AND p.codigo = '410000';
     """
     with engine.connect() as conn:
         conn = conn.execution_options(isolation_level="AUTOCOMMIT")
@@ -405,19 +472,19 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
                         SELECT 1
                         FROM fin.plan_cuenta h
                         JOIN fin.plan_cuenta p ON p.id = h.cuenta_padre_id
-                        WHERE h.codigo = '113701' AND p.codigo = '1.1'
+                        WHERE h.codigo = '113701' AND p.codigo = '110000'
                     )
                     AND EXISTS (
                         SELECT 1
                         FROM fin.plan_cuenta h
                         JOIN fin.plan_cuenta p ON p.id = h.cuenta_padre_id
-                        WHERE h.codigo = '210701' AND p.codigo = '2.1'
+                        WHERE h.codigo = '210701' AND p.codigo = '210000'
                     )
                     AND EXISTS (
                         SELECT 1
                         FROM fin.plan_cuenta h
                         JOIN fin.plan_cuenta p ON p.id = h.cuenta_padre_id
-                        WHERE h.codigo = '410701' AND p.codigo = '4.1'
+                        WHERE h.codigo = '410701' AND p.codigo = '410000'
                     )
                     THEN 1 ELSE 0
                 END

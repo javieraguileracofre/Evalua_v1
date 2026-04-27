@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -28,6 +29,18 @@ class PlanCuenta(Base):
         Index("ix_fin_plan_cuenta_tipo", "tipo"),
         Index("ix_fin_plan_cuenta_clasificacion", "clasificacion"),
         Index("ix_fin_plan_cuenta_estado", "estado"),
+        CheckConstraint(
+            "tipo IN ('ACTIVO', 'PASIVO', 'PATRIMONIO', 'INGRESO', 'COSTO', 'GASTO', 'ORDEN')",
+            name="chk_fin_plan_cuenta_tipo",
+        ),
+        CheckConstraint(
+            "naturaleza IN ('DEUDORA', 'ACREEDORA')",
+            name="chk_fin_plan_cuenta_naturaleza",
+        ),
+        CheckConstraint(
+            "estado IN ('ACTIVO', 'INACTIVO')",
+            name="chk_fin_plan_cuenta_estado",
+        ),
         {"schema": "fin"},
     )
 

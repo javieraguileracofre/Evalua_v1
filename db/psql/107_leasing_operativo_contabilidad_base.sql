@@ -30,6 +30,24 @@ ON CONFLICT (codigo) DO UPDATE SET
     estado = EXCLUDED.estado,
     descripcion = EXCLUDED.descripcion;
 
+UPDATE fin.plan_cuenta h
+SET cuenta_padre_id = p.id
+FROM fin.plan_cuenta p
+WHERE h.codigo = '113801'
+  AND p.codigo = '110000';
+
+UPDATE fin.plan_cuenta h
+SET cuenta_padre_id = p.id
+FROM fin.plan_cuenta p
+WHERE h.codigo = '120801'
+  AND p.codigo = '120000';
+
+UPDATE fin.plan_cuenta h
+SET cuenta_padre_id = p.id
+FROM fin.plan_cuenta p
+WHERE h.codigo = '120899'
+  AND p.codigo = '120000';
+
 -- Eventos contables base para Leasing Operativo (idempotente).
 INSERT INTO fin.config_contable
 (

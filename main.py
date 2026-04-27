@@ -235,21 +235,26 @@ def create_app() -> FastAPI:
     else:
         logger.warning("No se encontró carpeta static: %s", STATIC_DIR)
 
-    try:
-        engine = get_engine(settings.default_tenant_code)
-        Base.metadata.create_all(bind=engine)
-        logger.info("Metadata sincronizada para tenant '%s'", settings.default_tenant_code)
-        ensure_ap_documento_contabilidad_columns(engine)
-        ensure_taller_ordenes_cotizacion_columns(engine)
-        ensure_fondos_rendir_asiento_columns(engine)
-        ensure_vehiculo_transporte_consumo_column(engine)
-        ensure_auth_roles_seed(engine)
-        ensure_fin_config_contable_seed(engine)
-        ensure_comercial_leasing_financiero_schema(engine)
-        ensure_credito_riesgo_schema(engine)
-        ensure_leasing_operativo_schema(engine)
-    except Exception as e:
-        logger.exception("Error creando metadata: %s", e)
+    engine = get_engine(settings.default_tenant_code)
+    if settings.auto_migrate_on_startup:
+        try:
+            Base.metadata.create_all(bind=engine)
+            logger.info("Metadata sincronizada para tenant '%s'", settings.default_tenant_code)
+            ensure_ap_documento_contabilidad_columns(engine)
+            ensure_taller_ordenes_cotizacion_columns(engine)
+            ensure_fondos_rendir_asiento_columns(engine)
+            ensure_vehiculo_transporte_consumo_column(engine)
+            ensure_auth_roles_seed(engine)
+            ensure_fin_config_contable_seed(engine)
+            ensure_comercial_leasing_financiero_schema(engine)
+            ensure_credito_riesgo_schema(engine)
+            ensure_leasing_operativo_schema(engine)
+        except Exception as e:
+            logger.critical("Error crítico ejecutando DDL/migraciones al iniciar: %s", e, exc_info=True)
+            if not settings.is_dev:
+                raise RuntimeError("Fallo de migración automática en arranque.") from e
+    else:
+        logger.info("AUTO_MIGRATE_ON_STARTUP=false: se omiten create_all y ensure_* en arranque.")
 
     include_ui_routers(app)
 

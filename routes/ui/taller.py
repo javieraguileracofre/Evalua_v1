@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
+from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
 from crud.comercial import taller as crud_taller
 from db.session import get_db
 from models import Cliente
@@ -126,6 +127,8 @@ def taller_hub(
     msg: Optional[str] = Query(None),
     sev: str = Query("info"),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     stats = crud_taller.conteos_hub(db)
     ultimas_ordenes = crud_taller.listar_ordenes(db, limit=25)
     return templates.TemplateResponse(
@@ -149,6 +152,8 @@ def taller_ordenes_lista(
     msg: Optional[str] = Query(None),
     sev: str = Query("info"),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     ordenes = crud_taller.listar_ordenes(db, estado=estado)
     return templates.TemplateResponse(
         "taller/orden_lista.html",
@@ -172,6 +177,8 @@ def taller_orden_nueva(
     msg: Optional[str] = Query(None),
     sev: str = Query("info"),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     clientes = db.query(Cliente).filter(Cliente.activo.is_(True)).order_by(Cliente.razon_social).all()
     vehiculos = []
     if cliente_id:
@@ -202,6 +209,8 @@ def taller_orden_nueva(
 
 @router.post("/ordenes/nueva", name="taller_orden_crear")
 async def taller_orden_crear(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     form = await request.form()
     fd = _form_to_dict(form)
 
@@ -326,6 +335,8 @@ def taller_orden_detalle(
     msg: Optional[str] = Query(None),
     sev: str = Query("info"),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     orden = crud_taller.obtener_orden(db, orden_id)
     if not orden:
         return _redirect(
@@ -357,6 +368,8 @@ def taller_orden_editar(
     msg: Optional[str] = Query(None),
     sev: str = Query("info"),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     orden = crud_taller.obtener_orden(db, orden_id)
     if not orden:
         return _redirect(
@@ -397,6 +410,8 @@ async def taller_orden_actualizar(
     orden_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     form = await request.form()
     fd = _form_to_dict(form)
 
@@ -485,6 +500,8 @@ def taller_orden_imprimir(
     orden_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     orden = crud_taller.obtener_orden(db, orden_id)
     if not orden:
         return _redirect(

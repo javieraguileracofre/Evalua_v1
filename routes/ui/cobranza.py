@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
+from core.rbac import guard_finanzas_consulta, guard_finanzas_mutacion
 from crud.cobranza import cobranza as crud_cobranza
 from crud.comunicaciones import email_log as crud_email_log
 from db.session import get_db
@@ -89,6 +90,8 @@ def cobranza_resumen(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_finanzas_consulta(request)) is not None:
+        return redir
     return templates.TemplateResponse(
         "cobranza/cobranza_resumen.html",
         {
@@ -110,6 +113,8 @@ def cobranza_dashboard(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_finanzas_consulta(request)) is not None:
+        return redir
     kpis = crud_cobranza.obtener_kpis_dashboard_cobranza(db)
     top_deudores = crud_cobranza.obtener_top_deudores_dashboard(db, limit=10)
     email_kpis = crud_cobranza.obtener_kpis_email_dashboard(db)
@@ -145,10 +150,13 @@ def cobranza_dashboard(
 
 @router.get("/cobranza/export/cuentas.xlsx", name="cobranza_export_cuentas_excel")
 def cobranza_export_cuentas_excel(
+    request: Request,
     cliente_id: int | None = Query(None),
     solo_con_saldo: bool | None = Query(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_finanzas_consulta(request)) is not None:
+        return redir
     rows = crud_cobranza.export_cuentas_por_cobrar(
         db,
         cliente_id=cliente_id,
@@ -194,12 +202,15 @@ def cobranza_export_cuentas_excel(
 
 @router.get("/cobranza/export/pagos.xlsx", name="cobranza_export_pagos_excel")
 def cobranza_export_pagos_excel(
+    request: Request,
     cliente_id: int | None = Query(None),
     cxc_id: int | None = Query(None),
     desde: date | None = Query(None),
     hasta: date | None = Query(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_finanzas_consulta(request)) is not None:
+        return redir
     rows = crud_cobranza.export_pagos_clientes(
         db,
         cliente_id=cliente_id,
@@ -257,6 +268,8 @@ def cobranza_detalle_cliente(
     cliente_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_finanzas_consulta(request)) is not None:
+        return redir
     cliente = db.get(Cliente, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -287,6 +300,8 @@ def cobranza_gestion(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_finanzas_consulta(request)) is not None:
+        return redir
     cliente = db.get(Cliente, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -322,6 +337,8 @@ def cobranza_enviar_recordatorio(
     comentarios: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_finanzas_mutacion(request)) is not None:
+        return redir
     cliente = db.get(Cliente, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -402,6 +419,8 @@ def cobranza_automatizada_enviar(
     incluir_detalle: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_finanzas_mutacion(request)) is not None:
+        return redir
     if not _en_horario_habil_chile():
         return _redirect(
             request,
@@ -487,6 +506,8 @@ def cobranza_pago_form(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_finanzas_consulta(request)) is not None:
+        return redir
     cxc = crud_cobranza.get_cuenta_por_cobrar(db, cxc_id)
     if not cxc:
         raise HTTPException(status_code=404, detail="Cuenta por cobrar no encontrada")
@@ -522,6 +543,8 @@ def cobranza_registrar_pago(
     observacion: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_finanzas_mutacion(request)) is not None:
+        return redir
     cxc = crud_cobranza.get_cuenta_por_cobrar(db, cxc_id)
     if not cxc:
         raise HTTPException(status_code=404, detail="Cuenta por cobrar no encontrada")

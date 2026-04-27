@@ -2,7 +2,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
+
+TIPOS_PLAN_CUENTA = ("ACTIVO", "PASIVO", "PATRIMONIO", "INGRESO", "COSTO", "GASTO", "ORDEN")
+NATURALEZAS_PLAN_CUENTA = ("DEUDORA", "ACREEDORA")
+ESTADOS_PLAN_CUENTA = ("ACTIVO", "INACTIVO")
 
 
 class PlanCuentaBase(BaseModel):
@@ -10,12 +16,12 @@ class PlanCuentaBase(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=180)
     nivel: int = Field(default=1, ge=1, le=9)
     cuenta_padre_id: int | None = None
-    tipo: str = Field(..., min_length=1, max_length=30)
+    tipo: Literal["ACTIVO", "PASIVO", "PATRIMONIO", "INGRESO", "COSTO", "GASTO", "ORDEN"]
     clasificacion: str = Field(..., min_length=1, max_length=50)
-    naturaleza: str = Field(..., min_length=1, max_length=20)
+    naturaleza: Literal["DEUDORA", "ACREEDORA"]
     acepta_movimiento: bool = True
     requiere_centro_costo: bool = False
-    estado: str = Field(default="ACTIVO", min_length=1, max_length=20)
+    estado: Literal["ACTIVO", "INACTIVO"] = "ACTIVO"
     descripcion: str | None = None
 
 
@@ -35,3 +41,33 @@ class PlanCuentaUpdate(BaseModel):
     requiere_centro_costo: bool | None = None
     estado: str | None = Field(default=None, min_length=1, max_length=20)
     descripcion: str | None = None
+
+    @field_validator("tipo")
+    @classmethod
+    def validar_tipo(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip().upper()
+        if normalized not in TIPOS_PLAN_CUENTA:
+            raise ValueError(f"tipo invalido: {normalized}")
+        return normalized
+
+    @field_validator("naturaleza")
+    @classmethod
+    def validar_naturaleza(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip().upper()
+        if normalized not in NATURALEZAS_PLAN_CUENTA:
+            raise ValueError(f"naturaleza invalida: {normalized}")
+        return normalized
+
+    @field_validator("estado")
+    @classmethod
+    def validar_estado(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = value.strip().upper()
+        if normalized not in ESTADOS_PLAN_CUENTA:
+            raise ValueError(f"estado invalido: {normalized}")
+        return normalized
