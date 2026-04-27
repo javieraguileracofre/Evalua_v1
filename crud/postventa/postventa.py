@@ -867,87 +867,119 @@ def enviar_email_caso(
 
 
 def metricas_postventa(db: Session) -> dict[str, Any]:
-    now = datetime.utcnow()
-    d7 = now - timedelta(days=7)
-    d30 = now - timedelta(days=30)
-    abiertos_filter = PostventaSolicitud.estado.notin_(["RESUELTO", "CERRADO", "CANCELADO", "RESUELTA", "DESCARTADA"])
-    abiertos = int(db.scalar(select(func.count()).select_from(PostventaSolicitud).where(abiertos_filter)) or 0)
-    nuevos_7 = int(
-        db.scalar(select(func.count()).select_from(PostventaSolicitud).where(PostventaSolicitud.fecha_apertura >= d7)) or 0
-    )
-    nuevos_30 = int(
-        db.scalar(select(func.count()).select_from(PostventaSolicitud).where(PostventaSolicitud.fecha_apertura >= d30)) or 0
-    )
-    resueltos_30 = int(
-        db.scalar(
-            select(func.count()).select_from(PostventaSolicitud).where(
-                PostventaSolicitud.fecha_resolucion.is_not(None),
-                PostventaSolicitud.fecha_resolucion >= d30,
-            )
+    try:
+        now = datetime.utcnow()
+        d7 = now - timedelta(days=7)
+        d30 = now - timedelta(days=30)
+        abiertos_filter = PostventaSolicitud.estado.notin_(["RESUELTO", "CERRADO", "CANCELADO", "RESUELTA", "DESCARTADA"])
+        abiertos = int(db.scalar(select(func.count()).select_from(PostventaSolicitud).where(abiertos_filter)) or 0)
+        nuevos_7 = int(
+            db.scalar(select(func.count()).select_from(PostventaSolicitud).where(PostventaSolicitud.fecha_apertura >= d7)) or 0
         )
-        or 0
-    )
-    avg_primera = db.scalar(
-        select(
-            func.avg(
-                func.extract("epoch", PostventaSolicitud.fecha_primer_respuesta - PostventaSolicitud.fecha_apertura) / 3600
+        nuevos_30 = int(
+            db.scalar(select(func.count()).select_from(PostventaSolicitud).where(PostventaSolicitud.fecha_apertura >= d30))
+            or 0
+        )
+        resueltos_30 = int(
+            db.scalar(
+                select(func.count()).select_from(PostventaSolicitud).where(
+                    PostventaSolicitud.fecha_resolucion.is_not(None),
+                    PostventaSolicitud.fecha_resolucion >= d30,
+                )
             )
-        ).where(PostventaSolicitud.fecha_primer_respuesta.is_not(None))
-    )
-    avg_resol = db.scalar(
-        select(
-            func.avg(
-                func.extract("epoch", PostventaSolicitud.fecha_resolucion - PostventaSolicitud.fecha_apertura) / 3600
-            )
-        ).where(PostventaSolicitud.fecha_resolucion.is_not(None))
-    )
-    vencidos = int(
-        db.scalar(
-            select(func.count()).select_from(PostventaSolicitud).where(
-                abiertos_filter,
-                or_(
-                    PostventaSolicitud.sla_estado == "VENCIDO",
-                    and_(
-                        PostventaSolicitud.fecha_vencimiento_sla.is_not(None),
-                        PostventaSolicitud.fecha_vencimiento_sla < now,
+            or 0
+        )
+        avg_primera = db.scalar(
+            select(
+                func.avg(
+                    func.extract("epoch", PostventaSolicitud.fecha_primer_respuesta - PostventaSolicitud.fecha_apertura)
+                    / 3600
+                )
+            ).where(PostventaSolicitud.fecha_primer_respuesta.is_not(None))
+        )
+        avg_resol = db.scalar(
+            select(
+                func.avg(
+                    func.extract("epoch", PostventaSolicitud.fecha_resolucion - PostventaSolicitud.fecha_apertura) / 3600
+                )
+            ).where(PostventaSolicitud.fecha_resolucion.is_not(None))
+        )
+        vencidos = int(
+            db.scalar(
+                select(func.count()).select_from(PostventaSolicitud).where(
+                    abiertos_filter,
+                    or_(
+                        PostventaSolicitud.sla_estado == "VENCIDO",
+                        and_(
+                            PostventaSolicitud.fecha_vencimiento_sla.is_not(None),
+                            PostventaSolicitud.fecha_vencimiento_sla < now,
+                        ),
                     ),
-                ),
+                )
             )
+            or 0
         )
-        or 0
-    )
-    backlog_sin_asignar = int(
-        db.scalar(
-            select(func.count()).select_from(PostventaSolicitud).where(abiertos_filter, PostventaSolicitud.asignado_a_id.is_(None))
+        backlog_sin_asignar = int(
+            db.scalar(
+                select(func.count()).select_from(PostventaSolicitud).where(
+                    abiertos_filter, PostventaSolicitud.asignado_a_id.is_(None)
+                )
+            )
+            or 0
         )
-        or 0
-    )
-    rows_asig = db.execute(
-        select(PostventaSolicitud.asignado_a_id, func.count())
-        .where(abiertos_filter)
-        .group_by(PostventaSolicitud.asignado_a_id)
-    ).all()
-    casos_por_usuario = [
-        {"asignado_a_id": int(uid) if uid else None, "cantidad": int(cnt)} for uid, cnt in rows_asig
-    ]
-    rows_estado = db.execute(
-        select(PostventaSolicitud.estado, func.count()).group_by(PostventaSolicitud.estado)
-    ).all()
-    casos_por_estado = [{"estado": _to_case_status(est), "cantidad": int(cnt)} for est, cnt in rows_estado]
-    rows_prior = db.execute(
-        select(PostventaSolicitud.prioridad, func.count()).group_by(PostventaSolicitud.prioridad)
-    ).all()
-    casos_por_prioridad = [{"prioridad": pri, "cantidad": int(cnt)} for pri, cnt in rows_prior]
-    return {
-        "casos_abiertos": abiertos,
-        "casos_nuevos_7d": nuevos_7,
-        "casos_nuevos_30d": nuevos_30,
-        "casos_resueltos_30d": resueltos_30,
-        "promedio_horas_primera_respuesta": float(avg_primera or 0),
-        "promedio_horas_resolucion": float(avg_resol or 0),
-        "casos_vencidos_sla": vencidos,
-        "casos_por_usuario_asignado": casos_por_usuario,
-        "casos_por_estado": casos_por_estado,
-        "casos_por_prioridad": casos_por_prioridad,
-        "backlog_sin_asignar": backlog_sin_asignar,
-    }
+        rows_asig = db.execute(
+            select(PostventaSolicitud.asignado_a_id, func.count())
+            .where(abiertos_filter)
+            .group_by(PostventaSolicitud.asignado_a_id)
+        ).all()
+        casos_por_usuario = [{"asignado_a_id": int(uid) if uid else None, "cantidad": int(cnt)} for uid, cnt in rows_asig]
+        rows_estado = db.execute(select(PostventaSolicitud.estado, func.count()).group_by(PostventaSolicitud.estado)).all()
+        casos_por_estado = [{"estado": _to_case_status(est), "cantidad": int(cnt)} for est, cnt in rows_estado]
+        rows_prior = db.execute(select(PostventaSolicitud.prioridad, func.count()).group_by(PostventaSolicitud.prioridad)).all()
+        casos_por_prioridad = [{"prioridad": pri, "cantidad": int(cnt)} for pri, cnt in rows_prior]
+        return {
+            "casos_abiertos": abiertos,
+            "casos_nuevos_7d": nuevos_7,
+            "casos_nuevos_30d": nuevos_30,
+            "casos_resueltos_30d": resueltos_30,
+            "promedio_horas_primera_respuesta": float(avg_primera or 0),
+            "promedio_horas_resolucion": float(avg_resol or 0),
+            "casos_vencidos_sla": vencidos,
+            "casos_por_usuario_asignado": casos_por_usuario,
+            "casos_por_estado": casos_por_estado,
+            "casos_por_prioridad": casos_por_prioridad,
+            "backlog_sin_asignar": backlog_sin_asignar,
+        }
+    except Exception:
+        # Compatibilidad defensiva: si la base aún no tiene columnas CRM, evita 500 en /postventa.
+        abiertos = int(
+            db.scalar(
+                select(func.count())
+                .select_from(PostventaSolicitud)
+                .where(PostventaSolicitud.estado.notin_(["RESUELTA", "DESCARTADA"]))
+            )
+            or 0
+        )
+        nuevos_30 = int(
+            db.scalar(
+                select(func.count()).select_from(PostventaSolicitud).where(
+                    PostventaSolicitud.fecha_apertura >= (datetime.utcnow() - timedelta(days=30))
+                )
+            )
+            or 0
+        )
+        rows_estado = db.execute(select(PostventaSolicitud.estado, func.count()).group_by(PostventaSolicitud.estado)).all()
+        rows_prior = db.execute(select(PostventaSolicitud.prioridad, func.count()).group_by(PostventaSolicitud.prioridad)).all()
+        return {
+            "casos_abiertos": abiertos,
+            "casos_nuevos_7d": 0,
+            "casos_nuevos_30d": nuevos_30,
+            "casos_resueltos_30d": 0,
+            "promedio_horas_primera_respuesta": 0.0,
+            "promedio_horas_resolucion": 0.0,
+            "casos_vencidos_sla": 0,
+            "casos_por_usuario_asignado": [],
+            "casos_por_estado": [{"estado": _to_case_status(est), "cantidad": int(cnt)} for est, cnt in rows_estado],
+            "casos_por_prioridad": [{"prioridad": pri, "cantidad": int(cnt)} for pri, cnt in rows_prior],
+            "backlog_sin_asignar": 0,
+        }
