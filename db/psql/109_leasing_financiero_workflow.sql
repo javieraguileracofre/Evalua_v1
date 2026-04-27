@@ -80,6 +80,17 @@ CREATE INDEX IF NOT EXISTS ix_lf_doc_proceso_cot
 
 ALTER TABLE IF EXISTS public.comercial_lf_analisis_credito
     DROP CONSTRAINT IF EXISTS chk_lf_analisis_recomendacion;
+
+UPDATE public.comercial_lf_analisis_credito
+SET recomendacion = CASE
+    WHEN UPPER(TRIM(COALESCE(recomendacion, ''))) IN ('OBSERVACION', 'APROBADO_CON_OBSERVACIONES', 'APROBADA_CON_OBSERVACIONES') THEN 'APROBADA_CONDICIONES'
+    WHEN UPPER(TRIM(COALESCE(recomendacion, ''))) IN ('APROBADO', 'RECHAZADO', 'APROBADA_CONDICIONES') THEN UPPER(TRIM(recomendacion))
+    ELSE 'RECHAZADO'
+END
+WHERE recomendacion IS NULL
+   OR UPPER(TRIM(COALESCE(recomendacion, ''))) NOT IN ('APROBADO', 'RECHAZADO', 'APROBADA_CONDICIONES')
+   OR UPPER(TRIM(COALESCE(recomendacion, ''))) IN ('OBSERVACION', 'APROBADO_CON_OBSERVACIONES', 'APROBADA_CON_OBSERVACIONES');
+
 ALTER TABLE IF EXISTS public.comercial_lf_analisis_credito
     ADD CONSTRAINT chk_lf_analisis_recomendacion
         CHECK (recomendacion IN ('APROBADO', 'RECHAZADO', 'APROBADA_CONDICIONES'));
