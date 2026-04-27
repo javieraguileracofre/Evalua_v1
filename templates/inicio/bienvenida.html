@@ -237,6 +237,30 @@
       transform: none;
     }
   }
+  .exec-panel {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+  .exec-alert-item {
+    border-left: 4px solid #94a3b8;
+    background: var(--surface-soft);
+    border-radius: 8px;
+    padding: .65rem .8rem;
+  }
+  .exec-alert-item[data-level="ALTA"] { border-left-color: #dc2626; }
+  .exec-alert-item[data-level="MEDIA"] { border-left-color: #f59e0b; }
+  .semaforo-pill {
+    border-radius: 999px;
+    padding: .2rem .65rem;
+    font-size: .74rem;
+    font-weight: 700;
+    letter-spacing: .03em;
+  }
+  .semaforo-pill.rojo { background: #fee2e2; color: #991b1b; }
+  .semaforo-pill.amarillo { background: #fef3c7; color: #92400e; }
+  .semaforo-pill.verde { background: #dcfce7; color: #166534; }
 </style>
 {% endblock %}
 
@@ -248,9 +272,9 @@
 
 <section class="home-hero" aria-labelledby="home-hero-heading">
   <div class="home-hero-inner">
-    <h2 id="home-hero-heading">Tu operación en un solo vistazo</h2>
+    <h2 id="home-hero-heading">Centro de Control Ejecutivo</h2>
     <p class="lead-hero">
-      Indicadores del mes, cartera, obligaciones con proveedores e inventario. Accesos directos a ventas, taller, fondos y finanzas.
+      Resultado del negocio, alertas críticas y decisiones sugeridas para actuar hoy. Todo en una sola vista.
     </p>
     <div class="home-hero-badges">
       <span class="home-pill"><i class="bi bi-calendar3"></i> {{ fecha_hoy_largo if fecha_hoy_largo is defined else '' }}</span>
@@ -259,6 +283,64 @@
     </div>
   </div>
 </section>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="exec-panel p-3 h-100">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <div class="small text-uppercase fw-bold text-muted">Salud general del ERP</div>
+        {% set sem = (semaforo_operacion or 'AMARILLO')|lower %}
+        <span class="semaforo-pill {{ sem }}">{{ semaforo_operacion }}</span>
+      </div>
+      <div class="row g-2">
+        {% for s in salud_modulos %}
+        <div class="col-6 col-md-4">
+          {% set m = s.estado|lower %}
+          <div class="d-flex justify-content-between align-items-center border rounded-3 px-2 py-2">
+            <span class="small">{{ s.modulo }}</span>
+            <span class="semaforo-pill {{ m }}">{{ s.estado }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <hr>
+      <div class="small text-uppercase fw-bold text-muted mb-2">Proyección comercial</div>
+      <div class="d-flex flex-wrap gap-3">
+        <div>
+          <div class="small text-muted">30 días</div>
+          <div class="fw-bold">{{ clp(proyeccion_30) }}</div>
+        </div>
+        <div>
+          <div class="small text-muted">60 días</div>
+          <div class="fw-bold">{{ clp(proyeccion_60) }}</div>
+        </div>
+        <div>
+          <div class="small text-muted">90 días</div>
+          <div class="fw-bold">{{ clp(proyeccion_90) }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="exec-panel p-3 h-100">
+      <div class="small text-uppercase fw-bold text-muted mb-2">Alertas críticas</div>
+      <div class="d-flex flex-column gap-2">
+        {% for a in alertas_criticas %}
+        <div class="exec-alert-item" data-level="{{ a.nivel }}">
+          <div class="d-flex justify-content-between align-items-center">
+            <strong class="small">{{ a.titulo }}</strong>
+            <span class="badge text-bg-light border">{{ a.nivel }}</span>
+          </div>
+          <div class="small text-muted">{{ a.detalle }}</div>
+          <a class="small" href="{{ request.url_for(a.ruta) }}">Ver detalle</a>
+        </div>
+        {% else %}
+        <div class="small text-success">Sin alertas críticas hoy.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="home-section-title">Indicadores del mes</div>
 <div class="row g-3 mb-4">
@@ -281,6 +363,7 @@
         <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Cobranza</div>
         <div class="fs-5 fw-bold home-kpi text-success">{{ clp(resumen_cobranza_mes.total_cobrado if resumen_cobranza_mes is defined else 0) }}</div>
         <div class="small text-muted mt-1">{{ resumen_cobranza_mes.documentos if resumen_cobranza_mes is defined else 0 }} pagos</div>
+        <div class="small text-muted">Tasa: {{ "%.1f"|format(tasa_cobranza_mes or 0) }}%</div>
         <a href="{{ request.url_for('cobranza_resumen') }}" class="stretched-link" aria-label="Ir a cobranza"></a>
       </div>
     </div>
@@ -339,6 +422,22 @@
       </div>
     </div>
   </div>
+</div>
+
+<div class="home-section-title">Decisiones sugeridas (CEO)</div>
+<div class="row g-3 mb-4">
+  {% for ac in acciones_sugeridas %}
+  <div class="col-md-4">
+    <div class="exec-panel p-3 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <h3 class="h6 mb-0">{{ ac.titulo }}</h3>
+        <span class="badge {% if ac.impacto == 'Alto' %}text-bg-danger{% else %}text-bg-warning{% endif %}">{{ ac.impacto }}</span>
+      </div>
+      <p class="small text-muted mb-2">{{ ac.detalle }}</p>
+      <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for(ac.ruta) }}">Ejecutar acción</a>
+    </div>
+  </div>
+  {% endfor %}
 </div>
 
 <div class="home-strip mb-4">

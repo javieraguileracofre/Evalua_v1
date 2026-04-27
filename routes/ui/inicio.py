@@ -210,6 +210,96 @@ def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
             "total_saldo": 0,
         }
 
+    ventas_mes_total = Decimal(str(row_ventas_mes["total_ventas"] or 0))
+    cobranza_mes_total = Decimal(str(row_cobranza_mes["total_cobrado"] or 0))
+    por_cobrar_total = Decimal(str(resumen_cobranza_global.get("total_saldo") or 0))
+    cxp_vencido = Decimal(str(resumen_cxp.get("saldo_vencido") if resumen_cxp else 0))
+    cxp_pendiente = Decimal(str(resumen_cxp.get("saldo_pendiente") if resumen_cxp else 0))
+
+    tasa_cobranza_mes = Decimal("0")
+    if ventas_mes_total > 0:
+        tasa_cobranza_mes = ((cobranza_mes_total / ventas_mes_total) * Decimal("100")).quantize(
+            Decimal("0.01")
+        )
+
+    run_rate_mensual = ventas_mes_total
+    proy_30 = run_rate_mensual
+    proy_60 = run_rate_mensual * Decimal("2")
+    proy_90 = run_rate_mensual * Decimal("3")
+
+    alertas_criticas: list[dict[str, str]] = []
+    if por_cobrar_total > Decimal("0"):
+        alertas_criticas.append(
+            {
+                "nivel": "ALTA" if por_cobrar_total > ventas_mes_total else "MEDIA",
+                "titulo": "Cartera por cobrar relevante",
+                "detalle": f"Saldo por cobrar vigente: {float(por_cobrar_total):,.0f}",
+                "ruta": "cobranza_dashboard",
+            }
+        )
+    if cxp_vencido > 0:
+        alertas_criticas.append(
+            {
+                "nivel": "ALTA",
+                "titulo": "Compromisos vencidos con proveedores",
+                "detalle": f"Saldo vencido CxP: {float(cxp_vencido):,.0f}",
+                "ruta": "cxp_lista",
+            }
+        )
+    if (n_productos_alerta_stock or 0) > 0:
+        alertas_criticas.append(
+            {
+                "nivel": "ALTA" if (n_productos_alerta_stock or 0) >= 10 else "MEDIA",
+                "titulo": "Riesgo de quiebre de stock",
+                "detalle": f"Productos en alerta: {int(n_productos_alerta_stock or 0)}",
+                "ruta": "productos_list",
+            }
+        )
+    if periodo_mes_estado == "CERRADO":
+        alertas_criticas.append(
+            {
+                "nivel": "MEDIA",
+                "titulo": "Periodo contable cerrado",
+                "detalle": "Revise apertura para evitar bloqueo operativo.",
+                "ruta": "fin_periodos",
+            }
+        )
+
+    semaforo_operacion = "VERDE"
+    if any(a["nivel"] == "ALTA" for a in alertas_criticas):
+        semaforo_operacion = "ROJO"
+    elif alertas_criticas:
+        semaforo_operacion = "AMARILLO"
+
+    acciones_sugeridas = [
+        {
+            "titulo": "Acelerar cobranza de alto saldo",
+            "detalle": "Priorizar documentos con mayor saldo para mejorar caja de corto plazo.",
+            "impacto": "Alto",
+            "ruta": "cobranza_dashboard",
+        },
+        {
+            "titulo": "Corregir quiebres de inventario",
+            "detalle": "Ejecutar compras/reabastecimiento para proteger continuidad de ventas.",
+            "impacto": "Alto",
+            "ruta": "productos_list",
+        },
+        {
+            "titulo": "Ajustar políticas de crédito",
+            "detalle": "Revisar umbrales de aprobación para controlar riesgo y morosidad esperada.",
+            "impacto": "Medio",
+            "ruta": "credito_riesgo_dashboard",
+        },
+    ]
+
+    salud_modulos = [
+        {"modulo": "Comercial", "estado": "VERDE" if ventas_mes_total > 0 else "AMARILLO"},
+        {"modulo": "Cobranza", "estado": "ROJO" if tasa_cobranza_mes < 55 else ("AMARILLO" if tasa_cobranza_mes < 75 else "VERDE")},
+        {"modulo": "Abastecimiento", "estado": "ROJO" if (n_productos_alerta_stock or 0) >= 10 else ("AMARILLO" if (n_productos_alerta_stock or 0) > 0 else "VERDE")},
+        {"modulo": "Cuentas por pagar", "estado": "ROJO" if cxp_vencido > 0 else ("AMARILLO" if cxp_pendiente > 0 else "VERDE")},
+        {"modulo": "Riesgo crédito", "estado": "VERDE"},
+    ]
+
     return templates.TemplateResponse(
         "inicio/bienvenida.html",
         {
@@ -243,6 +333,14 @@ def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
             "n_productos_alerta_stock": n_productos_alerta_stock,
             "periodo_mes_estado": periodo_mes_estado,
             "productos_stock": productos_stock,
+            "semaforo_operacion": semaforo_operacion,
+            "tasa_cobranza_mes": float(tasa_cobranza_mes),
+            "proyeccion_30": float(proy_30),
+            "proyeccion_60": float(proy_60),
+            "proyeccion_90": float(proy_90),
+            "alertas_criticas": alertas_criticas,
+            "acciones_sugeridas": acciones_sugeridas,
+            "salud_modulos": salud_modulos,
         },
     )
 
