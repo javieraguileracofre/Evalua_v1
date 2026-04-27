@@ -1,0 +1,28 @@
+{% extends "layout/base.html" %}
+{% block title %}Editar cotización {{ cotizacion.id }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1 class="h5 mb-3">Editar cotización #{{ cotizacion.id }}</h1>
+  <form method="post" action="{{ request.url_for('lf_cotizacion_editar_post', cotizacion_id=cotizacion.id) }}" class="card p-3">
+    <div class="row g-3">
+      <div class="col-md-3"><label class="form-label">Monto</label><input class="form-control" name="monto" value="{{ cotizacion.monto or '' }}"></div>
+      <div class="col-md-2"><label class="form-label">Moneda</label><input class="form-control" name="moneda" value="{{ cotizacion.moneda or 'CLP' }}"></div>
+      <div class="col-md-2"><label class="form-label">Tasa</label><input class="form-control" name="tasa" value="{{ cotizacion.tasa or '' }}"></div>
+      <div class="col-md-2"><label class="form-label">Plazo</label><input class="form-control" name="plazo" value="{{ cotizacion.plazo or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Monto financiado</label><input class="form-control" name="monto_financiado" value="{{ cotizacion.monto_financiado or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Fecha inicio</label><input class="form-control" type="date" name="fecha_inicio" value="{{ cotizacion.fecha_inicio or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Estado</label><input class="form-control" name="estado" value="{{ cotizacion.estado or 'BORRADOR' }}"></div>
+      <div class="col-md-3"><label class="form-label">UF</label><input class="form-control" name="uf_valor" value="{{ cotizacion.uf_valor or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">USD</label><input class="form-control" name="dolar_valor" value="{{ cotizacion.dolar_valor or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Opción compra</label><input class="form-control" name="opcion_compra" value="{{ cotizacion.opcion_compra or '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Períodos gracia</label><input class="form-control" name="periodos_gracia" value="{{ cotizacion.periodos_gracia or 0 }}"></div>
+      <div class="col-md-3"><label class="form-label">Valor neto</label><input class="form-control" name="valor_neto" value="{{ cotizacion.valor_neto or '' }}"></div>
+    </div>
+    <div class="mt-3 d-flex gap-2">
+      <button class="btn btn-primary btn-sm" type="submit">Guardar cambios</button>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=cotizacion.id) }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

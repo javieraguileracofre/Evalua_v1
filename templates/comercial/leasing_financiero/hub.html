@@ -1,0 +1,60 @@
+{% extends "layout/base.html" %}
+{% block title %}Hub Leasing Financiero{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h5 mb-0">Hub operativo · Leasing financiero</h1>
+      <p class="small text-muted mb-0">Pipeline: cotización → crédito → formalización → documentación → activación.</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-primary" href="{{ request.url_for('lf_cotizacion_nueva_form') }}">Nueva cotización</a>
+      <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('lf_credito_home') }}">Bandeja crédito</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('lf_cotizaciones_list') }}">Cotizaciones</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">Abiertas</div><div class="h5 mb-0">{{ kpis.abiertas }}</div></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">En crédito</div><div class="h5 mb-0">{{ kpis.en_credito }}</div></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">Aprobadas</div><div class="h5 mb-0">{{ kpis.aprobadas }}</div></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">Formalización</div><div class="h5 mb-0">{{ kpis.formalizacion }}</div></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">Vigentes</div><div class="h5 mb-0">{{ kpis.vigentes }}</div></div></div></div>
+    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">Rechazadas</div><div class="h5 mb-0">{{ kpis.rechazadas }}</div></div></div></div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card"><div class="card-body">
+        <h2 class="h6">Pendientes crédito</h2>
+        <ul class="small mb-0">
+          {% for c in pendientes_credito %}
+          <li><a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}">#{{ c.id }}</a> · {{ c.cliente.razon_social if c.cliente else 'N/D' }}</li>
+          {% else %}<li class="text-muted">Sin pendientes.</li>{% endfor %}
+        </ul>
+      </div></div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card"><div class="card-body">
+        <h2 class="h6">Pendientes documentación</h2>
+        <ul class="small mb-0">
+          {% for c in pendientes_documentacion %}
+          <li><a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}">#{{ c.id }}</a> · {{ c.estado }}</li>
+          {% else %}<li class="text-muted">Sin pendientes.</li>{% endfor %}
+        </ul>
+      </div></div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card"><div class="card-body">
+        <h2 class="h6">Pendientes activación</h2>
+        <ul class="small mb-0">
+          {% for c in pendientes_activacion %}
+          <li><a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}">#{{ c.id }}</a> · {{ c.cliente.razon_social if c.cliente else 'N/D' }}</li>
+          {% else %}<li class="text-muted">Sin pendientes.</li>{% endfor %}
+        </ul>
+      </div></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

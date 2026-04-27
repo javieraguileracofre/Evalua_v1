@@ -6,15 +6,28 @@
   <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
       <h1 class="h5 fw-semibold mb-0">Análisis de crédito · Leasing financiero</h1>
-      <p class="small text-muted mb-0">Evaluación de riesgo para persona natural y jurídica.</p>
+      <p class="small text-muted mb-0">Bandeja de pendientes de crédito de leasing financiero.</p>
     </div>
     <div class="d-flex gap-2">
       <a href="{{ request.url_for('credito_riesgo_dashboard') }}" class="btn btn-outline-info btn-sm">Crédito y riesgo (0–1000)</a>
-      <a href="{{ request.url_for('comercial_hub') }}" class="btn btn-outline-secondary btn-sm">Área comercial</a>
+      <a href="{{ request.url_for('leasing_financiero_hub') }}" class="btn btn-outline-secondary btn-sm">Hub leasing financiero</a>
     </div>
   </div>
 
   <div class="card border-0 shadow-sm">
+    <div class="card-body pb-0">
+      <form class="row g-2">
+        <div class="col-md-3">
+          <input class="form-control form-control-sm" name="estado" value="{{ filtros.estado }}" placeholder="Estado (o TODOS)">
+        </div>
+        <div class="col-md-3">
+          <input class="form-control form-control-sm" name="recomendacion" value="{{ filtros.recomendacion }}" placeholder="Recomendación">
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-sm btn-outline-secondary w-100" type="submit">Filtrar</button>
+        </div>
+      </form>
+    </div>
     <div class="table-responsive">
       <table class="table table-hover mb-0 align-middle">
         <thead class="table-light">
@@ -25,6 +38,8 @@
             <th>Estado cotización</th>
             <th>Rating</th>
             <th>Recomendación</th>
+            <th>Analista</th>
+            <th>Actualizado</th>
             <th class="text-end">Acción</th>
           </tr>
         </thead>
@@ -41,12 +56,14 @@
             <td>{{ c.estado }}</td>
             <td>{{ a.rating if a else '-' }}</td>
             <td>{{ a.recomendacion if a else '-' }}</td>
+            <td>{{ a.analista if a else '-' }}</td>
+            <td>{{ a.actualizado_en if a else '-' }}</td>
             <td class="text-end">
               <a class="btn btn-sm btn-primary" href="{{ request.url_for('lf_credito_form', cotizacion_id=c.id) }}">Evaluar</a>
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="7" class="text-center py-4 text-muted">No hay cotizaciones.</td></tr>
+          <tr><td colspan="9" class="text-center py-4 text-muted">No hay cotizaciones pendientes de crédito.</td></tr>
           {% endfor %}
         </tbody>
       </table>

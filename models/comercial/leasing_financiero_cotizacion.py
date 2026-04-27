@@ -84,12 +84,20 @@ class LeasingFinancieroCotizacion(Base):
 
     uf_valor: Mapped[Decimal | None] = mapped_column(Numeric(14, 4))
     monto_financiado: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    numero_operacion: Mapped[str | None] = mapped_column(String(50))
+    numero_contrato: Mapped[str | None] = mapped_column(String(50))
+    asiento_id: Mapped[int | None] = mapped_column(BigInteger)
+    fecha_aprobacion: Mapped[date | None] = mapped_column(Date)
+    fecha_formalizacion: Mapped[date | None] = mapped_column(Date)
+    fecha_activacion: Mapped[date | None] = mapped_column(Date)
+    fecha_vigencia_desde: Mapped[date | None] = mapped_column(Date)
+    fecha_vigencia_hasta: Mapped[date | None] = mapped_column(Date)
 
     estado: Mapped[str] = mapped_column(
         String(40),
         nullable=False,
-        default="PENDIENTE",
-        server_default=text("'PENDIENTE'"),
+        default="BORRADOR",
+        server_default=text("'BORRADOR'"),
     )
 
     contrato_activo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
@@ -106,6 +114,12 @@ class LeasingFinancieroCotizacion(Base):
         back_populates="cotizacion",
         uselist=False,
         cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    historial: Mapped[list["LeasingFinancieroHistorial"]] = relationship(
+        "LeasingFinancieroHistorial",
+        cascade="all, delete-orphan",
+        order_by="LeasingFinancieroHistorial.created_at",
         lazy="selectin",
     )
 
@@ -168,9 +182,32 @@ class LeasingFinancieroDocumentoProceso(Base):
     )
     modulo: Mapped[str] = mapped_column(String(40), nullable=False)
     version_n: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
-    estado: Mapped[str] = mapped_column(String(20), nullable=False, default="VIGENTE", server_default="VIGENTE")
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default="RECIBIDO", server_default="RECIBIDO")
     payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     usuario: Mapped[str] = mapped_column(String(200), nullable=False, default="sistema", server_default="sistema")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+
+class LeasingFinancieroHistorial(Base):
+    __tablename__ = "comercial_lf_historial"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cotizacion_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("comercial_lf_cotizaciones.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    tipo_evento: Mapped[str] = mapped_column(String(40), nullable=False)
+    estado_desde: Mapped[str | None] = mapped_column(String(40))
+    estado_hasta: Mapped[str | None] = mapped_column(String(40))
+    comentario: Mapped[str | None] = mapped_column(String(1000))
+    usuario: Mapped[str] = mapped_column(String(200), nullable=False, default="sistema", server_default="sistema")
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=datetime.utcnow,

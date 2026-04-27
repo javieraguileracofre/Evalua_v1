@@ -195,7 +195,7 @@ CREATE TABLE IF NOT EXISTS public.comercial_lf_cotizaciones (
     uf_valor            NUMERIC(14, 4) NULL,
     monto_financiado    NUMERIC(18, 2) NULL,
 
-    estado              VARCHAR(40) NOT NULL DEFAULT 'PENDIENTE',
+    estado              VARCHAR(40) NOT NULL DEFAULT 'BORRADOR',
     contrato_activo     BOOLEAN NOT NULL DEFAULT FALSE,
 
     creado_en           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -203,9 +203,9 @@ CREATE TABLE IF NOT EXISTS public.comercial_lf_cotizaciones (
 
     CONSTRAINT chk_comercial_lf_estado CHECK (
         estado IN (
-            'BORRADOR', 'COTIZADA', 'PENDIENTE', 'EN_ANALISIS_COMERCIAL', 'EN_ANALISIS_CREDITO',
-            'PRE_APROBADA', 'APROBADA', 'EN_FORMALIZACION', 'CONTRATADA', 'VIGENTE',
-            'RECHAZADA', 'PERDIDA_CLIENTE', 'ANULADA'
+            'BORRADOR', 'COTIZADA', 'EN_ANALISIS_COMERCIAL', 'EN_ANALISIS_CREDITO',
+            'APROBADA_CONDICIONES', 'APROBADA', 'EN_FORMALIZACION', 'DOCUMENTACION_COMPLETA', 'ACTIVADA',
+            'VIGENTE', 'RECHAZADA', 'PERDIDA_CLIENTE', 'ANULADA'
         )
     )
 );
@@ -279,7 +279,7 @@ CREATE TABLE IF NOT EXISTS public.comercial_lf_analisis_credito (
     CONSTRAINT chk_lf_analisis_comportamiento
         CHECK (comportamiento_pago IN ('BUENO', 'REGULAR', 'MALO', 'SIN_HISTORIAL')),
     CONSTRAINT chk_lf_analisis_recomendacion
-        CHECK (recomendacion IN ('APROBADO', 'RECHAZADO', 'OBSERVACION')),
+        CHECK (recomendacion IN ('APROBADO', 'RECHAZADO', 'APROBADA_CONDICIONES')),
     CONSTRAINT chk_lf_analisis_nivel_riesgo
         CHECK (nivel_riesgo IN ('BAJO', 'MEDIO', 'ALTO')),
     CONSTRAINT chk_lf_analisis_rating

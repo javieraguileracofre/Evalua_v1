@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 TipoPersona = Literal["NATURAL", "JURIDICA"]
 ComportamientoPago = Literal["BUENO", "REGULAR", "MALO", "SIN_HISTORIAL"]
 Rating = Literal["A", "B", "C", "D", "E"]
-Recomendacion = Literal["APROBADO", "RECHAZADO", "OBSERVACION"]
+Recomendacion = Literal["APROBADO", "RECHAZADO", "APROBADA_CONDICIONES"]
 NivelRiesgo = Literal["BAJO", "MEDIO", "ALTO"]
 
 

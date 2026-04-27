@@ -8,6 +8,22 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+ESTADOS_LF = {
+    "BORRADOR",
+    "COTIZADA",
+    "EN_ANALISIS_COMERCIAL",
+    "EN_ANALISIS_CREDITO",
+    "APROBADA_CONDICIONES",
+    "APROBADA",
+    "RECHAZADA",
+    "EN_FORMALIZACION",
+    "DOCUMENTACION_COMPLETA",
+    "ACTIVADA",
+    "VIGENTE",
+    "ANULADA",
+    "PERDIDA_CLIENTE",
+}
+
 
 class LeasingCotizacionBase(BaseModel):
     cliente_id: int
@@ -33,8 +49,16 @@ class LeasingCotizacionBase(BaseModel):
     monto_financiado: Optional[Decimal] = None
     dolar_valor: Optional[Decimal] = None
 
-    estado: str = Field(default="PENDIENTE", max_length=40)
+    estado: str = Field(default="BORRADOR", max_length=40)
     contrato_activo: bool = False
+    numero_operacion: Optional[str] = None
+    numero_contrato: Optional[str] = None
+    asiento_id: Optional[int] = None
+    fecha_aprobacion: Optional[date] = None
+    fecha_formalizacion: Optional[date] = None
+    fecha_activacion: Optional[date] = None
+    fecha_vigencia_desde: Optional[date] = None
+    fecha_vigencia_hasta: Optional[date] = None
 
 
 class LeasingCotizacionCreate(LeasingCotizacionBase):
@@ -63,6 +87,14 @@ class LeasingCotizacionUpdate(BaseModel):
     dolar_valor: Optional[Decimal] = None
     estado: Optional[str] = None
     contrato_activo: Optional[bool] = None
+    numero_operacion: Optional[str] = None
+    numero_contrato: Optional[str] = None
+    asiento_id: Optional[int] = None
+    fecha_aprobacion: Optional[date] = None
+    fecha_formalizacion: Optional[date] = None
+    fecha_activacion: Optional[date] = None
+    fecha_vigencia_desde: Optional[date] = None
+    fecha_vigencia_hasta: Optional[date] = None
 
     model_config = ConfigDict(extra="forbid")
 

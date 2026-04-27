@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
 from core.paths import TEMPLATES_DIR
 from crud.comercial import leasing_credito as crud_credito
 from db.session import get_db
@@ -40,13 +41,23 @@ def _parse_int(raw: str | None, default: int = 0) -> int:
 
 @router.get("/", response_class=HTMLResponse, name="lf_credito_home")
 def lf_credito_home(request: Request, db: Session = Depends(get_db)):
-    cotizaciones = crud_credito.listar_cotizaciones_para_credito(db, limit=250)
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
+    estado = (request.query_params.get("estado") or "EN_ANALISIS_CREDITO").strip().upper()
+    recomendacion = (request.query_params.get("recomendacion") or "").strip().upper() or None
+    cotizaciones = crud_credito.listar_cotizaciones_para_credito(
+        db,
+        limit=250,
+        estado=estado if estado != "TODOS" else None,
+        recomendacion=recomendacion,
+    )
     return templates.TemplateResponse(
         "comercial/leasing_financiero/credito_home.html",
         {
             "request": request,
             "cotizaciones": cotizaciones,
-            "active_menu": "comercial",
+            "filtros": {"estado": estado, "recomendacion": recomendacion or ""},
+            "active_menu": "leasing_financiero",
         },
     )
 
@@ -57,6 +68,8 @@ def lf_credito_form(
     cotizacion_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     cotizacion = crud_credito.get_cotizacion(db, cotizacion_id)
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
@@ -66,7 +79,7 @@ def lf_credito_form(
             "request": request,
             "cotizacion": cotizacion,
             "analisis": cotizacion.analisis_credito,
-            "active_menu": "comercial",
+            "active_menu": "leasing_financiero",
         },
     )
 
@@ -91,6 +104,8 @@ def lf_credito_calcular(
     supuestos: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     cotizacion = crud_credito.get_cotizacion(db, cotizacion_id)
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")

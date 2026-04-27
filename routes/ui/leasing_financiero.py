@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
 from core.paths import TEMPLATES_DIR
 from crud.comercial import leasing_fin as crud_lf
 from crud.maestros import cliente as crud_cliente
@@ -80,24 +81,24 @@ def _parse_bool(value: object) -> bool:
 
 def _normalizar_estado(value: str | None) -> str:
     if not value:
-        return "PENDIENTE"
+        return "BORRADOR"
     v = str(value).strip().upper()
     validos = {
         "BORRADOR",
         "COTIZADA",
-        "PENDIENTE",
         "EN_ANALISIS_COMERCIAL",
         "EN_ANALISIS_CREDITO",
-        "PRE_APROBADA",
+        "APROBADA_CONDICIONES",
         "APROBADA",
         "EN_FORMALIZACION",
-        "CONTRATADA",
+        "DOCUMENTACION_COMPLETA",
+        "ACTIVADA",
         "VIGENTE",
         "RECHAZADA",
         "PERDIDA_CLIENTE",
         "ANULADA",
     }
-    return v if v in validos else "PENDIENTE"
+    return v if v in validos else "BORRADOR"
 
 
 def _normalizar_moneda(value: str | None) -> str:
@@ -112,6 +113,21 @@ def _validar_fx_moneda(moneda: str, uf_valor: Optional[Decimal], dolar_valor: Op
         raise ValueError("Para cotizar en UF debe informar Valor UF mayor a 0.")
 
 
+@router.get("/hub", response_class=HTMLResponse, name="leasing_financiero_hub_internal", include_in_schema=False)
+def leasing_financiero_hub(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
+    resumen = crud_lf.get_hub_resumen(db)
+    return templates.TemplateResponse(
+        "comercial/leasing_financiero/hub.html",
+        {
+            "request": request,
+            **resumen,
+            "active_menu": "leasing_financiero",
+        },
+    )
+
+
 @router.get("/api/rates/today")
 def api_lf_rates_today():
     try:
@@ -122,13 +138,35 @@ def api_lf_rates_today():
 
 @router.get("/", response_class=HTMLResponse, name="lf_cotizaciones_list")
 def lf_cotizaciones_list(request: Request, db: Session = Depends(get_db)):
-    cotizaciones = crud_lf.listar_cotizaciones(db)
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
+    estado = _normalizar_estado(request.query_params.get("estado")) if request.query_params.get("estado") else None
+    moneda = _normalizar_moneda(request.query_params.get("moneda")) if request.query_params.get("moneda") else None
+    ejecutivo = (request.query_params.get("ejecutivo") or "").strip() or None
+    fecha_desde = _parse_date(request.query_params.get("fecha_desde") or "")
+    fecha_hasta = _parse_date(request.query_params.get("fecha_hasta") or "")
+    cotizaciones = crud_lf.get_cotizaciones(
+        db,
+        estado=estado,
+        moneda=moneda,
+        ejecutivo=ejecutivo,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        limit=500,
+    )
     return templates.TemplateResponse(
         "comercial/leasing_financiero/cotizaciones_list.html",
         {
             "request": request,
             "cotizaciones": cotizaciones,
-            "active_menu": "comercial",
+            "filtros": {
+                "estado": estado or "",
+                "moneda": moneda or "",
+                "ejecutivo": ejecutivo or "",
+                "fecha_desde": request.query_params.get("fecha_desde") or "",
+                "fecha_hasta": request.query_params.get("fecha_hasta") or "",
+            },
+            "active_menu": "leasing_financiero",
         },
     )
 
@@ -139,6 +177,8 @@ def lf_cotizacion_nueva_form(
     cliente_id: int | None = None,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     clientes, _hay_mas = crud_cliente.listar_clientes(db, activos_solo=False, busqueda=None, skip=0, limit=500)
     has_clientes = bool(clientes)
 
@@ -157,7 +197,7 @@ def lf_cotizacion_nueva_form(
             "cliente_id": cliente_id,
             "has_clientes": has_clientes,
             "moneda_default": "CLP",
-            "active_menu": "comercial",
+            "active_menu": "leasing_financiero",
         },
     )
 
@@ -187,6 +227,8 @@ def lf_cotizacion_nueva_post(
     monto_financiado: str = Form(""),
     dolar_valor: str = Form(""),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     cliente = crud_cliente.get_cliente(db, cliente_id)
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -217,7 +259,7 @@ def lf_cotizacion_nueva_post(
         uf_valor=uf_val,
         monto_financiado=_parse_decimal(monto_financiado),
         dolar_valor=usd_val,
-        estado=_normalizar_estado("PENDIENTE"),
+        estado=_normalizar_estado("BORRADOR"),
         contrato_activo=False,
     )
 
@@ -275,6 +317,8 @@ def lf_cotizacion_nueva_post_cliente(
     monto_financiado: str = Form(""),
     dolar_valor: str = Form(""),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     return lf_cotizacion_nueva_post(
         request=request,
         db=db,
@@ -369,6 +413,8 @@ def lf_cotizacion_detalle(
     cotizacion_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
@@ -376,6 +422,7 @@ def lf_cotizacion_detalle(
     cotizaciones_cliente = crud_lf.listar_cotizaciones_por_cliente(db, cotizacion.cliente_id)
     workflow = crud_lf.obtener_workflow(cotizacion)
     documentos = crud_lf.listar_documentos_proceso(db, int(cotizacion.id))
+    historial = crud_lf.listar_historial(db, int(cotizacion.id))
 
     return templates.TemplateResponse(
         "comercial/leasing_financiero/cotizacion_detalle.html",
@@ -385,7 +432,8 @@ def lf_cotizacion_detalle(
             "cotizaciones_cliente": cotizaciones_cliente,
             "workflow": workflow,
             "documentos_proceso": documentos,
-            "active_menu": "comercial",
+            "historial": historial,
+            "active_menu": "leasing_financiero",
         },
     )
 
@@ -396,6 +444,8 @@ def lf_cotizacion_workflow_sync_credito(
     cotizacion_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
@@ -414,17 +464,27 @@ def lf_cotizacion_workflow_documento(
     request: Request,
     cotizacion_id: int,
     modulo: str,
+    tipo_documento: str = Form(""),
     numero_documento: str = Form(""),
     fecha_documento: str = Form(""),
+    archivo_nombre: str = Form(""),
+    storage_key: str = Form(""),
+    estado_documento: str = Form("RECIBIDO"),
     observacion: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
     payload = {
+        "tipo_documento": (tipo_documento or "").strip().upper(),
         "numero_documento": (numero_documento or "").strip(),
         "fecha_documento": (fecha_documento or "").strip(),
+        "archivo_nombre": (archivo_nombre or "").strip(),
+        "storage_key": (storage_key or "").strip(),
+        "estado": (estado_documento or "RECIBIDO").strip().upper(),
         "observacion": (observacion or "").strip(),
     }
     try:
@@ -449,6 +509,8 @@ def lf_cotizacion_workflow_activar(
     cotizacion_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
     cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
@@ -472,6 +534,8 @@ def lf_cotizacion_amortizacion_view(
     cotizacion_id: int,
     db: Session = Depends(get_db),
 ):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
     cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
@@ -492,8 +556,76 @@ def lf_cotizacion_amortizacion_view(
             "tabla": tabla,
             "total_interes": total_interes,
             "total_cuotas": total_cuotas,
-            "active_menu": "comercial",
+            "active_menu": "leasing_financiero",
         },
+    )
+
+
+@router.get("/{cotizacion_id}/editar", response_class=HTMLResponse, name="lf_cotizacion_editar_form")
+def lf_cotizacion_editar_form(
+    request: Request,
+    cotizacion_id: int,
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
+    cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
+    if not cotizacion:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    return templates.TemplateResponse(
+        "comercial/leasing_financiero/form_cotizacion_edit.html",
+        {
+            "request": request,
+            "cotizacion": cotizacion,
+            "active_menu": "leasing_financiero",
+        },
+    )
+
+
+@router.post("/{cotizacion_id}/editar", name="lf_cotizacion_editar_post")
+def lf_cotizacion_editar_post(
+    request: Request,
+    cotizacion_id: int,
+    monto: str = Form(""),
+    moneda: str = Form("CLP"),
+    tasa: str = Form(""),
+    plazo: str = Form(""),
+    opcion_compra: str = Form(""),
+    periodos_gracia: str = Form(""),
+    fecha_inicio: str = Form(""),
+    valor_neto: str = Form(""),
+    monto_financiado: str = Form(""),
+    estado: str = Form("BORRADOR"),
+    uf_valor: str = Form(""),
+    dolar_valor: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
+    cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
+    if not cotizacion:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    obj = LeasingCotizacionUpdate(
+        monto=_parse_decimal(monto),
+        moneda=_normalizar_moneda(moneda),
+        tasa=_parse_decimal(tasa),
+        plazo=_parse_int(plazo),
+        opcion_compra=_parse_decimal(opcion_compra),
+        periodos_gracia=_parse_int(periodos_gracia),
+        fecha_inicio=_parse_date(fecha_inicio),
+        valor_neto=_parse_decimal(valor_neto),
+        monto_financiado=_parse_decimal(monto_financiado),
+        estado=_normalizar_estado(estado),
+        uf_valor=_parse_decimal(uf_valor),
+        dolar_valor=_parse_decimal(dolar_valor),
+    )
+    try:
+        crud_lf.actualizar_cotizacion(db, cotizacion=cotizacion, obj_in=obj)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(
+        url=str(request.url_for("lf_cotizacion_detalle", cotizacion_id=cotizacion_id)),
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 

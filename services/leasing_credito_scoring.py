@@ -50,7 +50,7 @@ def _resultado(score: Decimal, motivos: list[str], dscr: Decimal | None, leverag
         recomendacion = "APROBADO"
         riesgo = "BAJO"
     elif s >= Decimal("58"):
-        recomendacion = "OBSERVACION"
+        recomendacion = "APROBADA_CONDICIONES"
         riesgo = "MEDIO"
     else:
         recomendacion = "RECHAZADO"
