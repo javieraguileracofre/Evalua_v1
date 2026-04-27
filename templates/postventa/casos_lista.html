@@ -88,7 +88,7 @@
     <tbody>
       {% for c in casos %}
       <tr>
-        <td><a href="{{ request.url_for('postventa_caso_detalle', caso_id=c.id) }}">{{ c.numero_caso or ('PV-' ~ c.id) }}</a></td>
+        <td><a href="{{ request.url_for('postventa_caso_detalle', caso_id=c.id) }}">{{ c.numero_caso or c.numero_caso_display or ('PV-' ~ c.id) }}</a></td>
         <td>{{ c.cliente.razon_social if c.cliente else c.cliente_id }}</td>
         <td>{{ c.titulo }}</td>
         <td>
@@ -104,7 +104,7 @@
         <td>{{ c.asignado_a.nombre_completo if c.asignado_a else '—' }}</td>
         <td>{{ c.fecha_apertura }}</td>
         <td>
-          {% set sla = c.sla_estado if c.sla_estado else 'OK' %}
+          {% set sla = c.sla_estado if c.sla_estado else (c.sla_estado_display if c.sla_estado_display else 'OK') %}
           <span class="badge {% if sla == 'VENCIDO' %}text-bg-danger{% elif sla == 'EN_RIESGO' %}text-bg-warning text-dark{% else %}text-bg-success{% endif %}">
             {{ sla }}
           </span>

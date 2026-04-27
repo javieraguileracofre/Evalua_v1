@@ -204,13 +204,8 @@ def _present_numero_caso(caso: PostventaSolicitud) -> str:
 
 
 def _ensure_case_compat(caso: PostventaSolicitud) -> PostventaSolicitud:
-    # Solo para presentación en UI; no persiste cambios en lecturas.
-    if not getattr(caso, "numero_caso", None):
-        caso.numero_caso = _present_numero_caso(caso)
-    if not getattr(caso, "ultimo_movimiento_at", None):
-        caso.ultimo_movimiento_at = caso.fecha_actualizacion or caso.fecha_apertura
-    if not getattr(caso, "sla_estado", None):
-        caso.sla_estado = "OK"
+    # Solo para presentación en UI; no persiste ni muta entidades ORM.
+    # Se deja por compatibilidad con llamadas existentes.
     return caso
 
 
@@ -487,6 +482,12 @@ def listar_solicitudes(db: Session, *, cliente_id: int, limit: int = 100) -> lis
         rows = list(db.scalars(stmt))
         for row in rows:
             _ensure_case_compat(row)
+            if not getattr(row, "numero_caso", None):
+                setattr(row, "numero_caso_display", _present_numero_caso(row))
+            if not getattr(row, "sla_estado", None):
+                setattr(row, "sla_estado_display", "OK")
+            if not getattr(row, "ultimo_movimiento_at", None):
+                setattr(row, "ultimo_movimiento_at_display", row.fecha_actualizacion or row.fecha_apertura)
         return rows
     except Exception:
         # Fallback legacy: evita depender de columnas CRM no presentes.
@@ -514,6 +515,9 @@ def listar_solicitudes(db: Session, *, cliente_id: int, limit: int = 100) -> lis
                 fecha_cierre=r["fecha_cierre"],
             )
             _ensure_case_compat(obj)
+            setattr(obj, "numero_caso_display", _present_numero_caso(obj))
+            setattr(obj, "sla_estado_display", "OK")
+            setattr(obj, "ultimo_movimiento_at_display", obj.fecha_actualizacion or obj.fecha_apertura)
             out.append(obj)
         return out
 
@@ -566,6 +570,12 @@ def get_solicitud(db: Session, solicitud_id: int) -> PostventaSolicitud | None:
     row = db.get(PostventaSolicitud, solicitud_id)
     if row:
         _ensure_case_compat(row)
+        if not getattr(row, "numero_caso", None):
+            setattr(row, "numero_caso_display", _present_numero_caso(row))
+        if not getattr(row, "sla_estado", None):
+            setattr(row, "sla_estado_display", "OK")
+        if not getattr(row, "ultimo_movimiento_at", None):
+            setattr(row, "ultimo_movimiento_at_display", row.fecha_actualizacion or row.fecha_apertura)
     return row
 
 
@@ -650,6 +660,12 @@ def listar_casos(
         rows = list(db.scalars(stmt.limit(limit)))
         for row in rows:
             _ensure_case_compat(row)
+            if not getattr(row, "numero_caso", None):
+                setattr(row, "numero_caso_display", _present_numero_caso(row))
+            if not getattr(row, "sla_estado", None):
+                setattr(row, "sla_estado_display", "OK")
+            if not getattr(row, "ultimo_movimiento_at", None):
+                setattr(row, "ultimo_movimiento_at_display", row.fecha_actualizacion or row.fecha_apertura)
         return rows
     except Exception:
         # Fallback legacy para bases aún sin columnas CRM.
@@ -673,6 +689,12 @@ def listar_casos(
         rows = list(db.scalars(stmt.limit(limit)))
         for row in rows:
             _ensure_case_compat(row)
+            if not getattr(row, "numero_caso", None):
+                setattr(row, "numero_caso_display", _present_numero_caso(row))
+            if not getattr(row, "sla_estado", None):
+                setattr(row, "sla_estado_display", "OK")
+            if not getattr(row, "ultimo_movimiento_at", None):
+                setattr(row, "ultimo_movimiento_at_display", row.fecha_actualizacion or row.fecha_apertura)
         return rows
 
 

@@ -11,9 +11,13 @@ from models.comunicaciones.email_log import EmailLog
 from models.maestros.cliente import Cliente
 from models.postventa.postventa import PostventaCasoEvento, PostventaSolicitud
 
+pytestmark = pytest.mark.skip(
+    reason="Requiere backend PostgreSQL real para BIGINT PK autogenerado y FK completas."
+)
+
 
 def _db() -> Session:
-    pytest.skip("Test de integración requiere secuencias PostgreSQL para BIGINT PK.")
+    # Evita dependencia de secuencias en SQLite asignando IDs explícitos en tests.
     engine = create_engine("sqlite:///:memory:", future=True)
     Cliente.__table__.create(bind=engine)
     Usuario.__table__.create(bind=engine)
@@ -30,6 +34,8 @@ def _db() -> Session:
 
 def test_crear_caso_genera_numero_y_evento() -> None:
     db = _db()
+    db.add(PostventaSolicitud(id=1, cliente_id=1, titulo="seed", descripcion="seed", categoria="CONSULTA", estado="NUEVO", prioridad="MEDIA"))
+    db.commit()
     caso = crud_postventa.crear_caso(
         db,
         cliente_id=1,
@@ -45,6 +51,8 @@ def test_crear_caso_genera_numero_y_evento() -> None:
 
 def test_asignar_caso_actualiza_y_crea_evento() -> None:
     db = _db()
+    db.add(PostventaSolicitud(id=1, cliente_id=1, titulo="seed", descripcion="seed", categoria="CONSULTA", estado="NUEVO", prioridad="MEDIA"))
+    db.commit()
     caso = crud_postventa.crear_caso(db, cliente_id=1, titulo="Caso", descripcion="Detalle")
     updated = crud_postventa.asignar_caso(db, caso_id=caso.id, usuario_id=10, actor_id=10)
     assert updated is not None
@@ -55,6 +63,8 @@ def test_asignar_caso_actualiza_y_crea_evento() -> None:
 
 def test_cambiar_estado_actualiza_fechas_resolucion_y_cierre() -> None:
     db = _db()
+    db.add(PostventaSolicitud(id=1, cliente_id=1, titulo="seed", descripcion="seed", categoria="CONSULTA", estado="NUEVO", prioridad="MEDIA"))
+    db.commit()
     caso = crud_postventa.crear_caso(db, cliente_id=1, titulo="Caso", descripcion="Detalle")
     crud_postventa.cambiar_estado_caso(db, caso_id=caso.id, estado="RESUELTO", actor_id=10)
     caso1 = crud_postventa.get_caso(db, caso.id)
@@ -66,6 +76,8 @@ def test_cambiar_estado_actualiza_fechas_resolucion_y_cierre() -> None:
 
 def test_enviar_email_crea_log_y_evento(monkeypatch) -> None:
     db = _db()
+    db.add(PostventaSolicitud(id=1, cliente_id=1, titulo="seed", descripcion="seed", categoria="CONSULTA", estado="NUEVO", prioridad="MEDIA"))
+    db.commit()
     caso = crud_postventa.crear_caso(db, cliente_id=1, titulo="Caso", descripcion="Detalle")
 
     def _fake_send_postventa_caso_email(**kwargs):
@@ -101,6 +113,8 @@ def test_enviar_email_crea_log_y_evento(monkeypatch) -> None:
 
 def test_metricas_y_filtros_bandeja() -> None:
     db = _db()
+    db.add(PostventaSolicitud(id=1, cliente_id=1, titulo="seed", descripcion="seed", categoria="CONSULTA", estado="NUEVO", prioridad="MEDIA"))
+    db.commit()
     c1 = crud_postventa.crear_caso(
         db,
         cliente_id=1,
