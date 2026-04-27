@@ -214,3 +214,36 @@ def test_parse_decimal_money_thousands_dot():
 def test_parse_decimal_rate_keeps_decimal():
     assert lf_routes._parse_decimal("0,1200", money=False) == Decimal("0.1200")
     assert lf_routes._parse_decimal("228.500", money=False) == Decimal("228.500")
+
+
+def test_activar_flujo_permte_tasa_cero_bloquea_menos_099():
+    class _DummyDB:
+        pass
+
+    cot = SimpleNamespace(
+        id=10,
+        analisis_credito=SimpleNamespace(recomendacion="APROBADO"),
+        workflow_json={
+            "hitos": {
+                "analisis_credito": True,
+                "orden_compra": True,
+                "contrato_firmado": True,
+                "acta_recepcion": True,
+                "activacion_contable": False,
+            },
+            "etapa_actual": "ACTA_RECEPCION",
+        },
+        monto_financiado=Decimal("1000"),
+        tasa=Decimal("-1.00"),
+        plazo=12,
+        fecha_inicio="2026-01-01",
+        estado="DOCUMENTACION_COMPLETA",
+        contrato_activo=False,
+        asiento_id=None,
+        fecha_activacion=None,
+        fecha_vigencia_desde=None,
+        numero_operacion=None,
+    )
+
+    with pytest.raises(ValueError):
+        crud_lf.activar_flujo_contable(_DummyDB(), cotizacion=cot)  # type: ignore[arg-type]

@@ -407,8 +407,10 @@ def activar_flujo_contable(
 
     if not cotizacion.monto_financiado or cotizacion.monto_financiado <= 0:
         raise ValueError("Debe informar monto financiado válido antes de activar.")
-    if not cotizacion.tasa or cotizacion.tasa <= 0:
+    if cotizacion.tasa is None:
         raise ValueError("Debe informar tasa válida antes de activar.")
+    if Decimal(str(cotizacion.tasa)) <= Decimal("-0.99"):
+        raise ValueError("La tasa no puede ser -0.99 o menor.")
     if not cotizacion.plazo or cotizacion.plazo <= 0:
         raise ValueError("Debe informar plazo válido antes de activar.")
     if not cotizacion.fecha_inicio:
