@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -9,10 +10,21 @@ from pydantic import BaseModel, Field, field_validator
 TIPOS_PLAN_CUENTA = ("ACTIVO", "PASIVO", "PATRIMONIO", "INGRESO", "COSTO", "GASTO", "ORDEN")
 NATURALEZAS_PLAN_CUENTA = ("DEUDORA", "ACREEDORA")
 ESTADOS_PLAN_CUENTA = ("ACTIVO", "INACTIVO")
+CODIGO_CUENTA_REGEX = re.compile(r"^\d{6}$")
+CODIGO_CUENTA_ERROR = "El código de cuenta debe tener 6 dígitos y no debe incluir puntos."
+
+
+def _validar_codigo_cuenta(value: str | None) -> str | None:
+    if value is None:
+        return value
+    normalized = value.strip()
+    if not CODIGO_CUENTA_REGEX.fullmatch(normalized):
+        raise ValueError(CODIGO_CUENTA_ERROR)
+    return normalized
 
 
 class PlanCuentaBase(BaseModel):
-    codigo: str = Field(..., min_length=1, max_length=30)
+    codigo: str = Field(..., min_length=6, max_length=6)
     nombre: str = Field(..., min_length=1, max_length=180)
     nivel: int = Field(default=1, ge=1, le=9)
     cuenta_padre_id: int | None = None
@@ -24,13 +36,18 @@ class PlanCuentaBase(BaseModel):
     estado: Literal["ACTIVO", "INACTIVO"] = "ACTIVO"
     descripcion: str | None = None
 
+    @field_validator("codigo")
+    @classmethod
+    def validar_codigo(cls, value: str) -> str:
+        return _validar_codigo_cuenta(value) or ""
+
 
 class PlanCuentaCreate(PlanCuentaBase):
     pass
 
 
 class PlanCuentaUpdate(BaseModel):
-    codigo: str | None = Field(default=None, min_length=1, max_length=30)
+    codigo: str | None = Field(default=None, min_length=6, max_length=6)
     nombre: str | None = Field(default=None, min_length=1, max_length=180)
     nivel: int | None = Field(default=None, ge=1, le=9)
     cuenta_padre_id: int | None = None
@@ -41,6 +58,11 @@ class PlanCuentaUpdate(BaseModel):
     requiere_centro_costo: bool | None = None
     estado: str | None = Field(default=None, min_length=1, max_length=20)
     descripcion: str | None = None
+
+    @field_validator("codigo")
+    @classmethod
+    def validar_codigo(cls, value: str | None) -> str | None:
+        return _validar_codigo_cuenta(value)
 
     @field_validator("tipo")
     @classmethod

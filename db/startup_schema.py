@@ -335,7 +335,11 @@ def _ensure_plan_cuenta_minima_for_contabilidad_seed(engine: Engine) -> None:
     ('410101', 'VENTAS', 3, NULL, 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', TRUE, TRUE, 'ACTIVO', 'Ingresos por ventas'),
     ('510000', 'COSTOS DE VENTAS', 2, NULL, 'COSTO', 'COSTO_VENTA', 'DEUDORA', FALSE, TRUE, 'ACTIVO', 'Agrupador costos'),
     ('510101', 'COSTO DE VENTAS', 3, NULL, 'COSTO', 'COSTO_VENTA', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Costo mercadería vendida'),
+    ('610102', 'COMBUSTIBLES', 3, NULL, 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Gasto de combustibles'),
+    ('610103', 'PEAJES Y ESTACIONAMIENTOS', 3, NULL, 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Gasto de peajes y estacionamientos'),
     ('610104', 'GASTOS GENERALES', 3, NULL, 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Gastos de administración'),
+    ('610105', 'VIATICOS Y GASTOS DE VIAJE', 3, NULL, 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Viaticos y gastos de viaje'),
+    ('620101', 'MANTENCION Y REPARACIONES', 3, NULL, 'GASTO', 'GASTO_VENTA', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Mantencion y reparaciones'),
     ('113701', 'CUENTAS POR COBRAR LEASING FINANCIERO', 3, NULL, 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', TRUE, FALSE, 'ACTIVO', 'Principal leasing financiero'),
     ('210701', 'OBLIGACIONES LEASING FINANCIERO', 3, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'Pasivo leasing financiero'),
     ('410701', 'INGRESOS FINANCIEROS LEASING', 3, NULL, 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'Intereses leasing financiero')
@@ -397,6 +401,36 @@ def _ensure_plan_cuenta_minima_for_contabilidad_seed(engine: Engine) -> None:
       FROM fin.plan_cuenta p
      WHERE h.codigo = '510101'
        AND p.codigo = '510000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '610102'
+       AND p.codigo = '610000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '610103'
+       AND p.codigo = '610000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '610104'
+       AND p.codigo = '610000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '610105'
+       AND p.codigo = '610000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
+     WHERE h.codigo = '620101'
+       AND p.codigo = '620000';
 
     UPDATE fin.plan_cuenta h
        SET cuenta_padre_id = p.id

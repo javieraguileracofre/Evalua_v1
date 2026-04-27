@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import func, inspect, or_, select, text
 from sqlalchemy.orm import Session, selectinload
 
@@ -12,6 +14,8 @@ from schemas.finanzas.plan_cuentas import PlanCuentaCreate, PlanCuentaUpdate
 TIPOS_PLAN_CUENTA = {"ACTIVO", "PASIVO", "PATRIMONIO", "INGRESO", "COSTO", "GASTO", "ORDEN"}
 NATURALEZAS_PLAN_CUENTA = {"DEUDORA", "ACREEDORA"}
 ESTADOS_PLAN_CUENTA = {"ACTIVO", "INACTIVO"}
+CODIGO_CUENTA_REGEX = re.compile(r"^\d{6}$")
+CODIGO_CUENTA_ERROR = "El código de cuenta debe tener 6 dígitos y no debe incluir puntos."
 
 
 def _validar_catalogos_plan_cuenta(*, tipo: str, naturaleza: str, estado: str) -> None:
@@ -26,6 +30,17 @@ def _validar_catalogos_plan_cuenta(*, tipo: str, naturaleza: str, estado: str) -
 def _tiene_hijos(db: Session, *, cuenta_id: int) -> bool:
     stmt = select(func.count()).select_from(PlanCuenta).where(PlanCuenta.cuenta_padre_id == cuenta_id)
     return bool(db.execute(stmt).scalar_one())
+
+
+def _normalizar_codigo_payload(codigo: str) -> str:
+    normalized = (codigo or "").strip()
+    if not CODIGO_CUENTA_REGEX.fullmatch(normalized):
+        raise ValueError(CODIGO_CUENTA_ERROR)
+    return normalized
+
+
+def _has_column(inspector, *, schema: str, table: str, column: str) -> bool:
+    return any(col["name"] == column for col in inspector.get_columns(table, schema=schema))
 
 
 def _cuenta_esta_en_config_o_asientos(db: Session, *, codigo_cuenta: str) -> bool:
@@ -65,19 +80,77 @@ def _cuenta_esta_en_config_o_asientos(db: Session, *, codigo_cuenta: str) -> boo
             return True
 
     if has_asiento_det:
-        used_asientos = db.execute(
-            text(
-                """
-                SELECT 1
-                FROM public.asientos_detalle
-                WHERE codigo_cuenta = :codigo
-                LIMIT 1
-                """
-            ),
-            {"codigo": codigo_cuenta},
-        ).scalar()
-        if used_asientos:
-            return True
+        has_codigo_cuenta = _has_column(
+            inspector, schema="public", table="asientos_detalle", column="codigo_cuenta"
+        )
+        has_cuenta_contable = _has_column(
+            inspector, schema="public", table="asientos_detalle", column="cuenta_contable"
+        )
+        if has_codigo_cuenta:
+            used_asientos = db.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM public.asientos_detalle
+                    WHERE codigo_cuenta = :codigo
+                    LIMIT 1
+                    """
+                ),
+                {"codigo": codigo_cuenta},
+            ).scalar()
+            if used_asientos:
+                return True
+        if has_cuenta_contable:
+            used_asientos_alt = db.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM public.asientos_detalle
+                    WHERE cuenta_contable = :codigo
+                    LIMIT 1
+                    """
+                ),
+                {"codigo": codigo_cuenta},
+            ).scalar()
+            if used_asientos_alt:
+                return True
+
+    has_ap_documento = inspector.has_table("ap_documento", schema="fin")
+    if has_ap_documento:
+        has_gasto = _has_column(
+            inspector, schema="fin", table="ap_documento", column="cuenta_gasto_codigo"
+        )
+        has_proveedor = _has_column(
+            inspector, schema="fin", table="ap_documento", column="cuenta_proveedores_codigo"
+        )
+        if has_gasto:
+            used_ap_gasto = db.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM fin.ap_documento
+                    WHERE cuenta_gasto_codigo = :codigo
+                    LIMIT 1
+                    """
+                ),
+                {"codigo": codigo_cuenta},
+            ).scalar()
+            if used_ap_gasto:
+                return True
+        if has_proveedor:
+            used_ap_prov = db.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM fin.ap_documento
+                    WHERE cuenta_proveedores_codigo = :codigo
+                    LIMIT 1
+                    """
+                ),
+                {"codigo": codigo_cuenta},
+            ).scalar()
+            if used_ap_prov:
+                return True
 
     return False
 
@@ -133,12 +206,13 @@ def obtener_plan_cuenta_por_codigo(db: Session, codigo: str) -> PlanCuenta | Non
 
 
 def crear_plan_cuenta(db: Session, payload: PlanCuentaCreate) -> PlanCuenta:
-    existente = obtener_plan_cuenta_por_codigo(db, payload.codigo.strip())
+    codigo = _normalizar_codigo_payload(payload.codigo)
+    existente = obtener_plan_cuenta_por_codigo(db, codigo)
     if existente:
         raise ValueError(f"Ya existe una cuenta con código {payload.codigo}.")
 
     cuenta = PlanCuenta(
-        codigo=payload.codigo.strip(),
+        codigo=codigo,
         nombre=payload.nombre.strip(),
         nivel=payload.nivel,
         cuenta_padre_id=payload.cuenta_padre_id,
@@ -167,10 +241,15 @@ def actualizar_plan_cuenta(
     data = payload.model_dump(exclude_unset=True)
 
     if "codigo" in data and data["codigo"]:
-        nuevo_codigo = data["codigo"].strip()
+        nuevo_codigo = _normalizar_codigo_payload(str(data["codigo"]))
         existente = obtener_plan_cuenta_por_codigo(db, nuevo_codigo)
         if existente and existente.id != cuenta.id:
             raise ValueError(f"Ya existe una cuenta con código {nuevo_codigo}.")
+        if nuevo_codigo != cuenta.codigo and _cuenta_esta_en_config_o_asientos(db, codigo_cuenta=cuenta.codigo):
+            raise ValueError(
+                "No se puede cambiar el código de una cuenta con referencias en asientos o configuración. "
+                "Debe ejecutar una migración explícita."
+            )
         cuenta.codigo = nuevo_codigo
 
     if "nombre" in data and data["nombre"] is not None:

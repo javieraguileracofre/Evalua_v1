@@ -344,7 +344,7 @@ def get_tesoreria_efectivo_bancos_contable(db: Session, *, fecha_hasta: str | No
     """
     Saldos de **activo** en cuentas de caja y bancos según el plan de cuentas y los asientos
     (misma lógica de signo que el balance general). Incluye patrones típicos Chile (1101*, 1102*)
-    y el seed premium (1.1.1, 1.1.2 y subcuentas).
+    usando codigos canonicos del plan (1101* y 1102*).
     Complementa el maestro `public.cajas` (POS) y es independiente de `fin.mov_banco`.
     """
     vacio: dict[str, Any] = {
@@ -371,10 +371,7 @@ def get_tesoreria_efectivo_bancos_contable(db: Session, *, fecha_hasta: str | No
                 WHERE pc.tipo = 'ACTIVO'
                   {extra}
                   AND (
-                        TRIM(pc.codigo) IN ('1.1.1', '1.1.2')
-                     OR pc.codigo LIKE '1.1.1.%'
-                     OR pc.codigo LIKE '1.1.2.%'
-                     OR pc.codigo LIKE '1101%'
+                        pc.codigo LIKE '1101%'
                      OR pc.codigo LIKE '1102%'
                   )
                 GROUP BY 1, 2

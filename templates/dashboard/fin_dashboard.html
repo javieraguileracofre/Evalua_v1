@@ -567,7 +567,7 @@
       <h3 id="fin-tes-title"><i class="bi bi-safe2 me-2 text-primary"></i>Liquidez: caja, bancos (contabilidad) y cartola</h3>
       <p class="lead mb-0">
         <strong>Punto de venta</strong>: maestro <code class="small">public.cajas</code> (cajas activas).
-        <strong>Contabilidad</strong>: saldos del plan en cuentas típicas de efectivo y bancos (p. ej. <code class="small">1101%</code>, <code class="small">1102%</code> o <code class="small">1.1.1</code> / <code class="small">1.1.2</code>), alineado con su balance.
+        <strong>Contabilidad</strong>: saldos del plan en cuentas típicas de efectivo y bancos (p. ej. <code class="small">1101%</code> y <code class="small">1102%</code>), alineado con su balance.
         <strong>Cartola</strong>: movimientos importados en <code class="small">fin.mov_banco</code> (opcional; no sustituye el saldo contable del banco).
       </p>
     </header>
@@ -624,7 +624,7 @@
                   <td class="text-end fw-bold text-nowrap">{{ clp(c.saldo) }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="2" class="text-center text-muted py-3 small">Sin saldo en cuentas 1101/1102 o equivalentes 1.1.1/1.1.2 hasta la fecha.</td></tr>
+                <tr><td colspan="2" class="text-center text-muted py-3 small">Sin saldo en cuentas 1101/1102 hasta la fecha.</td></tr>
                 {% endfor %}
               </tbody>
             </table>

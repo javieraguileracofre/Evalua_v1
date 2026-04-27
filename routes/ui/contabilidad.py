@@ -578,11 +578,12 @@ def contabilidad_plan_cuentas(
 ):
     if (redir := guard_finanzas_consulta(request)) is not None:
         return redir
+    estado_filtro = (estado or "ACTIVO").strip().upper()
     cuentas = crud_plan.listar_plan_cuentas(
         db,
         q=q,
         tipo=tipo,
-        estado=estado,
+        estado=estado_filtro,
         solo_movimiento=solo_movimiento,
     )
     padres = crud_plan.listar_plan_cuentas(db, estado="ACTIVO")
@@ -595,7 +596,7 @@ def contabilidad_plan_cuentas(
             "padres": padres,
             "q": q,
             "tipo": tipo,
-            "estado": estado,
+            "estado": estado_filtro,
             "solo_movimiento": solo_movimiento,
             "msg": msg,
             "sev": sev,

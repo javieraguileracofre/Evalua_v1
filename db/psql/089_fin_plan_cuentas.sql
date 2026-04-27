@@ -153,7 +153,11 @@ FROM (VALUES
     ('410101', 'VENTAS', 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', TRUE, 'Ventas operacionales'),
     ('410701', 'INGRESOS FINANCIEROS LEASING', 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', FALSE, 'Intereses leasing financiero'),
     ('510101', 'COSTO DE VENTAS', 'COSTO', 'COSTO_VENTA', 'DEUDORA', TRUE, 'Costo directo de ventas'),
+    ('610102', 'COMBUSTIBLES', 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, 'Gasto de combustibles'),
+    ('610103', 'PEAJES Y ESTACIONAMIENTOS', 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, 'Gasto de peajes y estacionamientos'),
     ('610104', 'GASTOS GENERALES / ADMINISTRATIVOS', 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, 'Gastos administrativos'),
+    ('610105', 'VIATICOS Y GASTOS DE VIAJE', 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, 'Viaticos y gastos de viaje'),
+    ('620101', 'MANTENCION Y REPARACIONES', 'GASTO', 'GASTO_VENTA', 'DEUDORA', TRUE, 'Mantencion y reparaciones'),
     ('610201', 'DEPRECIACION DEL EJERCICIO', 'GASTO', 'GASTO_ADMINISTRACION', 'DEUDORA', TRUE, 'Depreciación del ejercicio'),
     ('630101', 'INTERESES Y GASTOS FINANCIEROS', 'GASTO', 'GASTO_FINANCIERO', 'DEUDORA', TRUE, 'Intereses y gastos financieros')
 ) AS v(codigo, nombre, tipo, clasificacion, naturaleza, requiere_cc, descripcion)

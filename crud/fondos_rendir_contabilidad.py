@@ -19,33 +19,24 @@ from models.fondos_rendir.fondo_rendir import FondoRendir
 
 Q2 = Decimal("0.01")
 
-# Si .env está vacío, se prueban códigos frecuentes en planillas chilenas (deben existir en fin.plan_cuenta).
+# Si .env está vacío, se prueban códigos canónicos del plan oficial (sin puntos).
 _FALLBACK_ANTICIPO: tuple[str, ...] = (
-    "1.1.05",
-    "1.1.04",
-    "1.01.05",
-    "1.1.03",
-    "1.05.01",
+    "110601",
 )
 _FALLBACK_CAJA: tuple[str, ...] = (
-    "1.1.01",
-    "1.01.01",
-    "1.1.02",
-    "1.02.01",
-    "1.1.00",
+    "110101",
+    "110201",
 )
 _FALLBACK_GASTO: tuple[str, ...] = (
-    "6.1.01",
-    "4.1.01",
-    "5.1.01",
-    "6.2.01",
-    "6.1.02",
-    "6.3.01",
+    "610104",
+    "510101",
+    "620101",
+    "610201",
 )
-_FALLBACK_COMBUSTIBLE: tuple[str, ...] = ("6.1.02", "5.1.02", "610102")
-_FALLBACK_PEAJES: tuple[str, ...] = ("6.1.03", "5.1.03", "610103")
-_FALLBACK_VIATICOS: tuple[str, ...] = ("6.1.04", "5.1.04", "610104")
-_FALLBACK_MANTENCION: tuple[str, ...] = ("6.2.01", "5.2.01", "620101")
+_FALLBACK_COMBUSTIBLE: tuple[str, ...] = ("610102",)
+_FALLBACK_PEAJES: tuple[str, ...] = ("610103",)
+_FALLBACK_VIATICOS: tuple[str, ...] = ("610105",)
+_FALLBACK_MANTENCION: tuple[str, ...] = ("620101",)
 
 
 def _q(d: Decimal) -> Decimal:
@@ -72,7 +63,7 @@ def _normalizar_codigo(codigo: str) -> str:
 
 
 def _buscar_cuenta_por_codigo_tolerante(db: Session, codigo: str) -> PlanCuenta | None:
-    """Resuelve código exacto o equivalente (ej. 11.05 == 1.1.05)."""
+    """Resuelve código exacto o equivalente normalizado."""
     exacta = obtener_plan_cuenta_por_codigo(db, codigo)
     if exacta:
         return exacta
