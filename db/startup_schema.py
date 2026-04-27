@@ -722,3 +722,66 @@ def ensure_fin_config_contable_seed(engine: Engine) -> None:
         logger.info("Seed contable 090/091/092 aplicado correctamente.")
     except Exception as exc:
         logger.warning("No se pudo aplicar seed contable 090/091/092: %s", exc)
+
+
+def ensure_postventa_crm_schema(engine: Engine) -> None:
+    """Evoluciona postventa_solicitudes a casos CRM sin perder datos históricos."""
+    if engine.dialect.name != "postgresql":
+        return
+    stmts = [
+        "ALTER TABLE public.postventa_solicitudes ADD COLUMN IF NOT EXISTS numero_caso VARCHAR(24)",
+        "ALTER TABLE public.postventa_solicitudes ADD COLUMN IF NOT EXISTS asignado_a_id BIGINT REFERENCES public.auth_usuarios(id) ON DELETE SET NULL",
+        "ALTER TABLE public.postventa_solicitudes ADD COLUMN IF NOT EXISTS creado_por_id BIGINT REFERENCES public.auth_usuarios(id) ON DELETE SET NULL",
+        "ALTER TABLE public.postventa_solicitudes ADD COLUMN IF NOT EXISTS origen VARCHAR(20) NOT NULL DEFAULT 'INTERNO'",
+        "ALTER TABLE public.postventa_solicitudes ADD COLUMN IF NOT EXISTS fecha_primer_respuesta TIMESTAMP NULL",
+        "ALTER TABLE public.postventa_solicitudes ADD COLUMN IF NOT EXISTS fecha_vencimiento_sla TIMESTAMP NULL",
+        "ALTER TABLE public.postventa_solicitudes ADD COLUMN IF NOT EXISTS fecha_resolucion TIMESTAMP NULL",
+        "ALTER TABLE public.postventa_solicitudes ADD COLUMN IF NOT EXISTS sla_estado VARCHAR(20) NOT NULL DEFAULT 'OK'",
+        "ALTER TABLE public.postventa_solicitudes ADD COLUMN IF NOT EXISTS ultimo_movimiento_at TIMESTAMP NULL",
+        "ALTER TABLE public.email_log ADD COLUMN IF NOT EXISTS caso_id INTEGER REFERENCES public.postventa_solicitudes(id)",
+        """
+        CREATE TABLE IF NOT EXISTS public.postventa_caso_eventos (
+            id BIGSERIAL PRIMARY KEY,
+            caso_id BIGINT NOT NULL REFERENCES public.postventa_solicitudes(id) ON DELETE CASCADE,
+            cliente_id BIGINT NOT NULL REFERENCES public.clientes(id) ON DELETE RESTRICT,
+            usuario_id BIGINT NULL REFERENCES public.auth_usuarios(id) ON DELETE SET NULL,
+            tipo VARCHAR(30) NOT NULL DEFAULT 'COMENTARIO',
+            visibilidad VARCHAR(20) NOT NULL DEFAULT 'INTERNA',
+            contenido TEXT NOT NULL DEFAULT '',
+            metadata_json TEXT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT now()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_pv_evt_caso_created ON public.postventa_caso_eventos(caso_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_pv_evt_cliente_created ON public.postventa_caso_eventos(cliente_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_pv_sol_numero_caso ON public.postventa_solicitudes(numero_caso)",
+        """
+        UPDATE public.postventa_solicitudes
+           SET estado = CASE
+               WHEN estado = 'ABIERTA' THEN 'NUEVO'
+               WHEN estado = 'RESUELTA' THEN 'RESUELTO'
+               WHEN estado = 'DESCARTADA' THEN 'CANCELADO'
+               ELSE estado
+           END
+         WHERE estado IN ('ABIERTA','RESUELTA','DESCARTADA')
+        """,
+        """
+        UPDATE public.postventa_solicitudes
+           SET numero_caso = (
+               'PV-' || EXTRACT(YEAR FROM COALESCE(fecha_apertura, now()))::text || '-' ||
+               LPAD(id::text, 6, '0')
+           )
+         WHERE numero_caso IS NULL OR btrim(numero_caso) = ''
+        """,
+        "UPDATE public.postventa_solicitudes SET ultimo_movimiento_at = COALESCE(ultimo_movimiento_at, fecha_actualizacion, fecha_apertura, now())",
+        "UPDATE public.postventa_solicitudes SET sla_estado = COALESCE(NULLIF(sla_estado, ''), 'OK')",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_pv_sol_numero_caso ON public.postventa_solicitudes(numero_caso)",
+    ]
+    try:
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level='AUTOCOMMIT')
+            for stmt in stmts:
+                conn.exec_driver_sql(stmt)
+        logger.info("Postventa CRM schema verificado/aplicado.")
+    except Exception as exc:
+        logger.warning("No se pudo aplicar evolución de esquema Postventa CRM: %s", exc)

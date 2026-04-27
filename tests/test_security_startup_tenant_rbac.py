@@ -186,6 +186,7 @@ def test_create_app_no_ejecuta_migraciones_si_flag_off(monkeypatch: pytest.Monke
     monkeypatch.setattr(main_module, "ensure_comercial_leasing_financiero_schema", _mark_ensure)
     monkeypatch.setattr(main_module, "ensure_credito_riesgo_schema", _mark_ensure)
     monkeypatch.setattr(main_module, "ensure_leasing_operativo_schema", _mark_ensure)
+    monkeypatch.setattr(main_module, "ensure_postventa_crm_schema", _mark_ensure)
     monkeypatch.setattr(main_module, "get_engine", lambda tenant: object())
     monkeypatch.setattr(main_module, "include_ui_routers", lambda app: None)
     monkeypatch.setattr(

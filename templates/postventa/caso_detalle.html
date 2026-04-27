@@ -1,0 +1,158 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Caso {{ caso.numero_caso or caso.id }} · Postventa{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('postventa_hub') }}">Postventa</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('postventa_casos_lista') }}">Casos</a></li>
+<li class="breadcrumb-item active" aria-current="page">{{ caso.numero_caso or caso.id }}</li>
+{% endblock %}
+
+{% block page_title %}{{ caso.numero_caso or ('Caso #' ~ caso.id) }}{% endblock %}
+
+{% block head %}
+<style>
+  .pv-shell {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.04), rgba(15, 23, 42, 0.01));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1rem;
+  }
+  .pv-kv {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 0.35rem 0.75rem;
+    font-size: 0.92rem;
+    margin: 0;
+  }
+  .pv-kv dt {
+    color: var(--text-soft);
+    margin: 0;
+    font-weight: 600;
+  }
+  .pv-kv dd {
+    margin: 0;
+    font-weight: 600;
+  }
+  .pv-wall-item {
+    border: 1px solid var(--border);
+    border-left: 3px solid #3b82f6;
+    border-radius: 10px;
+    padding: 0.65rem 0.75rem;
+    background: var(--surface);
+  }
+  .pv-wall-item.email { border-left-color: #8b5cf6; }
+  .pv-wall-item.assign { border-left-color: #0ea5e9; }
+  .pv-wall-item.state { border-left-color: #f59e0b; }
+  .pv-wall-item.note { border-left-color: #64748b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pv-shell">
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+        <span>Datos del caso</span>
+        <span class="badge {% if caso.estado in ['RESUELTO','CERRADO'] %}text-bg-success{% elif caso.estado=='CANCELADO' %}text-bg-secondary{% elif caso.estado=='ESCALADO' %}text-bg-danger{% else %}text-bg-primary{% endif %}">
+          {{ caso.estado }}
+        </span>
+      </div>
+      <div class="card-body">
+        <dl class="pv-kv">
+          <dt>Cliente</dt><dd>{{ cliente.razon_social if cliente else caso.cliente_id }}</dd>
+          <dt>Prioridad</dt>
+          <dd>
+            <span class="badge {% if caso.prioridad == 'URGENTE' %}text-bg-danger{% elif caso.prioridad == 'ALTA' %}text-bg-warning text-dark{% elif caso.prioridad == 'MEDIA' %}text-bg-info text-dark{% else %}text-bg-secondary{% endif %}">
+              {{ caso.prioridad }}
+            </span>
+          </dd>
+          <dt>Origen</dt><dd>{{ caso.origen }}</dd>
+          <dt>SLA</dt>
+          <dd>
+            <span class="badge {% if caso.sla_estado == 'VENCIDO' %}text-bg-danger{% elif caso.sla_estado == 'EN_RIESGO' %}text-bg-warning text-dark{% else %}text-bg-success{% endif %}">
+              {{ caso.sla_estado }}
+            </span>
+          </dd>
+          <dt>Asignado</dt><dd>{{ caso.asignado_a.nombre_completo if caso.asignado_a else '—' }}</dd>
+          <dt>Creado</dt><dd>{{ caso.fecha_apertura }}</dd>
+          <dt>Últ. mov.</dt><dd>{{ caso.ultimo_movimiento_at or '—' }}</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-semibold">Asignación</div>
+      <div class="card-body">
+        <form method="post" action="{{ request.url_for('postventa_caso_asignar', caso_id=caso.id) }}" class="d-grid gap-2">
+          <select class="form-select mb-2" name="usuario_id">
+            <option value="">Sin asignar</option>
+            {% for u in usuarios %}
+            <option value="{{ u.id }}" {% if caso.asignado_a_id==u.id %}selected{% endif %}>{{ u.nombre_completo }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-primary btn-sm"><i class="bi bi-person-check"></i> Guardar asignación</button>
+        </form>
+      </div>
+    </div>
+    <div class="card shadow-sm">
+      <div class="card-header fw-semibold">Cambio de estado</div>
+      <div class="card-body">
+        <form method="post" action="{{ request.url_for('postventa_caso_estado', caso_id=caso.id) }}" class="d-grid gap-2">
+          <select class="form-select mb-2" name="estado">
+            {% for st in estados %}
+            <option value="{{ st }}" {% if caso.estado==st %}selected{% endif %}>{{ st }}</option>
+            {% endfor %}
+          </select>
+          <textarea class="form-control mb-2" name="comentario" rows="2" placeholder="Comentario opcional"></textarea>
+          <button class="btn btn-outline-primary btn-sm"><i class="bi bi-arrow-repeat"></i> Actualizar estado</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-semibold">Enviar correo desde caso</div>
+      <div class="card-body">
+        <form method="post" action="{{ request.url_for('postventa_caso_email', caso_id=caso.id) }}" class="d-grid gap-2">
+          <input class="form-control mb-2" name="to" placeholder="destinatario@correo.cl" required>
+          <input class="form-control mb-2" name="subject" placeholder="Asunto" required>
+          <textarea class="form-control mb-2" name="body" rows="3" placeholder="Mensaje" required></textarea>
+          <button class="btn btn-primary btn-sm"><i class="bi bi-envelope-paper"></i> Enviar correo</button>
+        </form>
+      </div>
+    </div>
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-semibold">Muro del caso</div>
+      <div class="card-body">
+        <form method="post" action="{{ request.url_for('postventa_caso_comentario', caso_id=caso.id) }}" class="mb-3">
+          <textarea class="form-control mb-2" name="contenido" rows="3" placeholder="Escribe un comentario..." required></textarea>
+          <div class="d-flex gap-2">
+            <select class="form-select form-select-sm" name="visibilidad" style="max-width: 180px;">
+              <option value="INTERNA">Interna</option>
+              <option value="PUBLICA">Pública</option>
+            </select>
+            <button class="btn btn-outline-primary btn-sm"><i class="bi bi-chat-left-text"></i> Publicar</button>
+          </div>
+        </form>
+        {% for e in eventos %}
+        <div class="pv-wall-item mb-2 {% if e.tipo == 'EMAIL_ENVIADO' %}email{% elif e.tipo == 'ASIGNACION' %}assign{% elif e.tipo == 'CAMBIO_ESTADO' %}state{% elif e.tipo in ['NOTA_INTERNA','SISTEMA'] %}note{% endif %}">
+          <div class="small text-muted d-flex justify-content-between">
+            <span>
+              <span class="badge text-bg-light border">{{ e.tipo }}</span>
+              <span class="badge {% if e.visibilidad == 'PUBLICA' %}text-bg-info text-dark{% else %}text-bg-secondary{% endif %}">{{ e.visibilidad }}</span>
+            </span>
+            <span>{{ e.created_at }}</span>
+          </div>
+          <div>{{ e.contenido }}</div>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Sin eventos aún.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}

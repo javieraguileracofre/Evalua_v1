@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.base_class import Base
 
 if TYPE_CHECKING:
+    from models.auth.usuario import Usuario
     from models.maestros.cliente import Cliente
 
 
@@ -65,6 +66,9 @@ class PostventaSolicitud(Base):
     __table_args__ = (
         Index("ix_pv_sol_cliente_estado", "cliente_id", "estado"),
         Index("ix_pv_sol_fecha", "fecha_apertura"),
+        Index("ix_pv_sol_numero_caso", "numero_caso", unique=True),
+        Index("ix_pv_sol_asignado_estado", "asignado_a_id", "estado"),
+        Index("ix_pv_sol_sla", "sla_estado", "fecha_vencimiento_sla"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -80,6 +84,23 @@ class PostventaSolicitud(Base):
     categoria: Mapped[str] = mapped_column(String(50), nullable=False, default="CONSULTA")
     estado: Mapped[str] = mapped_column(String(30), nullable=False, default="ABIERTA")
     prioridad: Mapped[str] = mapped_column(String(20), nullable=False, default="MEDIA")
+    numero_caso: Mapped[str | None] = mapped_column(String(24), nullable=True, unique=True)
+    origen: Mapped[str] = mapped_column(String(20), nullable=False, default="INTERNO")
+    asignado_a_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("auth_usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    creado_por_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("auth_usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    fecha_primer_respuesta: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    fecha_vencimiento_sla: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    fecha_resolucion: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    sla_estado: Mapped[str] = mapped_column(String(20), nullable=False, default="OK")
+    ultimo_movimiento_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
 
     fecha_apertura: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
@@ -99,3 +120,52 @@ class PostventaSolicitud(Base):
     fecha_cierre: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
 
     cliente: Mapped["Cliente"] = relationship("Cliente", back_populates="postventa_solicitudes")
+    asignado_a: Mapped["Usuario | None"] = relationship("Usuario", foreign_keys=[asignado_a_id])
+    creado_por: Mapped["Usuario | None"] = relationship("Usuario", foreign_keys=[creado_por_id])
+    eventos: Mapped[list["PostventaCasoEvento"]] = relationship(
+        "PostventaCasoEvento",
+        back_populates="caso",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class PostventaCasoEvento(Base):
+    __tablename__ = "postventa_caso_eventos"
+
+    __table_args__ = (
+        Index("ix_pv_evt_caso_created", "caso_id", "created_at"),
+        Index("ix_pv_evt_cliente_created", "cliente_id", "created_at"),
+        Index("ix_pv_evt_tipo", "tipo"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    caso_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("postventa_solicitudes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    cliente_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("clientes.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    usuario_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("auth_usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    tipo: Mapped[str] = mapped_column(String(30), nullable=False, default="COMENTARIO")
+    visibilidad: Mapped[str] = mapped_column(String(20), nullable=False, default="INTERNA")
+    contenido: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        nullable=False,
+        default=datetime.utcnow,
+        server_default=func.now(),
+    )
+
+    caso: Mapped["PostventaSolicitud"] = relationship("PostventaSolicitud", back_populates="eventos")
+    cliente: Mapped["Cliente"] = relationship("Cliente")
+    usuario: Mapped["Usuario | None"] = relationship("Usuario")

@@ -36,6 +36,7 @@ from db.startup_schema import (
     ensure_leasing_operativo_schema,
     ensure_fin_config_contable_seed,
     ensure_fondos_rendir_asiento_columns,
+    ensure_postventa_crm_schema,
     ensure_taller_ordenes_cotizacion_columns,
     ensure_vehiculo_transporte_consumo_column,
 )
@@ -249,6 +250,7 @@ def create_app() -> FastAPI:
             ensure_comercial_leasing_financiero_schema(engine)
             ensure_credito_riesgo_schema(engine)
             ensure_leasing_operativo_schema(engine)
+            ensure_postventa_crm_schema(engine)
         except Exception as e:
             logger.critical("Error crítico ejecutando DDL/migraciones al iniciar: %s", e, exc_info=True)
             if not settings.is_dev:

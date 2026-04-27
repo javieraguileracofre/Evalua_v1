@@ -14,6 +14,12 @@
 {% block hero %}{% endblock %}
 
 {% block page_actions %}
+<a class="btn btn-primary btn-sm" href="{{ request.url_for('postventa_casos_lista') }}">
+  <i class="bi bi-briefcase"></i> Bandeja de casos
+</a>
+<a class="btn btn-outline-primary btn-sm" href="{{ request.url_for('postventa_caso_nuevo') }}">
+  <i class="bi bi-plus-lg"></i> Nuevo caso
+</a>
 <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('clientes_list') }}">
   <i class="bi bi-people"></i> Maestro clientes
 </a>
@@ -145,7 +151,7 @@
 <section class="pv-hero" aria-labelledby="pv-hero-title">
   <h2 id="pv-hero-title">Seguimiento y relación con clientes</h2>
   <p>
-    Actividad de contacto, casos por estado y tendencia mensual. Luego buscá la ficha para registrar interacciones o solicitudes.
+    Actividad de contacto, métricas operativas y acceso rápido a la bandeja CRM de casos.
   </p>
 </section>
 

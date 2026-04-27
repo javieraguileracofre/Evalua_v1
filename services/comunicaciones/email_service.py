@@ -207,6 +207,7 @@ class EmailService:
         reply_to: str | None = None,
         cliente_id: int | None = None,
         cxc_id: int | None = None,
+        caso_id: int | None = None,
         include_detalle: bool = True,
         meta: dict[str, Any] | None = None,
     ) -> Any:
@@ -222,6 +223,7 @@ class EmailService:
             evento=evento,
             cliente_id=cliente_id,
             cxc_id=cxc_id,
+            caso_id=caso_id,
             to_email=primary_to,
             subject=subject,
             include_detalle=include_detalle,
@@ -418,6 +420,63 @@ class EmailService:
             cliente_id=cliente_id,
             cxc_id=cxc_id,
             include_detalle=incluir_detalle,
+            meta=meta,
+        )
+
+    def send_postventa_caso_email(
+        self,
+        *,
+        db: Session,
+        caso: Any,
+        to: AddressLike | None,
+        subject: str,
+        body: str,
+        actor: Any | None = None,
+    ) -> Any:
+        to_list = _normalize_recipients(to)
+        if not to_list:
+            raise ValueError("Debe indicar al menos un correo destinatario válido.")
+        primary_to = (to_list[0] or "").strip()
+        if "@" not in primary_to:
+            raise ValueError("Correo del cliente inválido para envío.")
+
+        cliente_id = getattr(caso, "cliente_id", None)
+        caso_id = getattr(caso, "id", None)
+        numero_caso = getattr(caso, "numero_caso", None) or f"CASO-{caso_id}"
+
+        html = f"""
+        <html>
+          <body style="font-family:Arial,sans-serif;line-height:1.45;color:#0f172a;">
+            <p>Hola,</p>
+            <p>{escape(body or '').replace(chr(10), '<br>')}</p>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;">
+            <p style="font-size:12px;color:#475569;">
+              Caso postventa: <strong>{escape(str(numero_caso))}</strong>
+            </p>
+          </body>
+        </html>
+        """
+        actor_uid = None
+        if isinstance(actor, dict):
+            actor_uid = actor.get("uid")
+        elif actor is not None:
+            actor_uid = getattr(actor, "id", None)
+        meta = {
+            "caso_id": caso_id,
+            "numero_caso": numero_caso,
+            "actor_uid": actor_uid,
+        }
+        return self.send_and_log(
+            db=db,
+            modulo="POSTVENTA",
+            evento="CASO_EMAIL",
+            to=to_list,
+            subject=subject,
+            html_body=html,
+            text_body=body,
+            cliente_id=cliente_id,
+            caso_id=caso_id,
+            include_detalle=True,
             meta=meta,
         )
 

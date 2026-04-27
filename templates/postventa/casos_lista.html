@@ -1,0 +1,118 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Postventa · Casos{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('postventa_hub') }}">Postventa</a></li>
+<li class="breadcrumb-item active" aria-current="page">Casos</li>
+{% endblock %}
+
+{% block page_title %}Bandeja de casos{% endblock %}
+
+{% block page_actions %}
+<a class="btn btn-primary btn-sm" href="{{ request.url_for('postventa_caso_nuevo') }}">
+  <i class="bi bi-plus-lg"></i> Nuevo caso
+</a>
+{% endblock %}
+
+{% block head %}
+<style>
+  .pv-kpi {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 0.75rem 0.85rem;
+  }
+  .pv-kpi .lbl { color: var(--text-soft); font-size: 0.78rem; text-transform: uppercase; font-weight: 700; }
+  .pv-kpi .num { font-size: 1.4rem; font-weight: 800; line-height: 1.1; }
+  .pv-table th { font-size: 0.74rem; text-transform: uppercase; color: var(--text-soft); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-3">
+  <div class="col-md-2"><div class="pv-kpi"><div class="lbl">Abiertos</div><div class="num">{{ metricas.casos_abiertos }}</div></div></div>
+  <div class="col-md-2"><div class="pv-kpi"><div class="lbl">Nuevos 7d</div><div class="num">{{ metricas.casos_nuevos_7d }}</div></div></div>
+  <div class="col-md-2"><div class="pv-kpi"><div class="lbl">Nuevos 30d</div><div class="num">{{ metricas.casos_nuevos_30d }}</div></div></div>
+  <div class="col-md-2"><div class="pv-kpi"><div class="lbl">Resueltos 30d</div><div class="num">{{ metricas.casos_resueltos_30d }}</div></div></div>
+  <div class="col-md-2"><div class="pv-kpi"><div class="lbl">Vencidos SLA</div><div class="num text-danger">{{ metricas.casos_vencidos_sla }}</div></div></div>
+  <div class="col-md-2"><div class="pv-kpi"><div class="lbl">Sin asignar</div><div class="num text-warning">{{ metricas.backlog_sin_asignar }}</div></div></div>
+</div>
+
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a class="btn btn-outline-primary btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=mis_casos">Mis casos</a>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=sin_asignar">Sin asignar</a>
+  <a class="btn btn-outline-danger btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=urgentes">Urgentes</a>
+  <a class="btn btn-outline-warning btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=vencidos">Vencidos</a>
+  <a class="btn btn-outline-success btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=resueltos">Resueltos</a>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+  <div class="col-md-2"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="Buscar..."></div>
+  <div class="col-md-2">
+    <select class="form-select" name="estado">
+      <option value="">Estado</option>
+      {% for st in ['NUEVO','ASIGNADO','EN_PROCESO','ESPERA_CLIENTE','ESCALADO','RESUELTO','CERRADO','CANCELADO'] %}
+      <option value="{{ st }}" {% if estado==st %}selected{% endif %}>{{ st }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select class="form-select" name="prioridad">
+      <option value="">Prioridad</option>
+      {% for p in ['URGENTE','ALTA','MEDIA','BAJA'] %}
+      <option value="{{ p }}" {% if prioridad==p %}selected{% endif %}>{{ p }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <select class="form-select" name="asignado_a_id">
+      <option value="">Asignado</option>
+      <option value="0" {% if asignado_a_id==0 %}selected{% endif %}>Sin asignar</option>
+      {% for u in usuarios %}
+      <option value="{{ u.id }}" {% if asignado_a_id==u.id %}selected{% endif %}>{{ u.nombre_completo }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3 d-grid"><button class="btn btn-primary">Filtrar</button></div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-hover align-middle pv-table">
+    <thead>
+      <tr>
+        <th>Caso</th><th>Cliente</th><th>Título</th><th>Prioridad</th><th>Estado</th><th>Asignado</th><th>Antigüedad</th><th>SLA</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in casos %}
+      <tr>
+        <td><a href="{{ request.url_for('postventa_caso_detalle', caso_id=c.id) }}">{{ c.numero_caso or ('PV-' ~ c.id) }}</a></td>
+        <td>{{ c.cliente.razon_social if c.cliente else c.cliente_id }}</td>
+        <td>{{ c.titulo }}</td>
+        <td>
+          <span class="badge {% if c.prioridad == 'URGENTE' %}text-bg-danger{% elif c.prioridad == 'ALTA' %}text-bg-warning text-dark{% elif c.prioridad == 'MEDIA' %}text-bg-info text-dark{% else %}text-bg-secondary{% endif %}">
+            {{ c.prioridad }}
+          </span>
+        </td>
+        <td>
+          <span class="badge {% if c.estado in ['RESUELTO','CERRADO'] %}text-bg-success{% elif c.estado == 'CANCELADO' %}text-bg-secondary{% elif c.estado == 'ESCALADO' %}text-bg-danger{% else %}text-bg-primary{% endif %}">
+            {{ c.estado }}
+          </span>
+        </td>
+        <td>{{ c.asignado_a.nombre_completo if c.asignado_a else '—' }}</td>
+        <td>{{ c.fecha_apertura }}</td>
+        <td>
+          <span class="badge {% if c.sla_estado == 'VENCIDO' %}text-bg-danger{% elif c.sla_estado == 'EN_RIESGO' %}text-bg-warning text-dark{% else %}text-bg-success{% endif %}">
+            {{ c.sla_estado }}
+          </span>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="text-center text-muted py-4">Sin casos para los filtros actuales.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
+import json
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from models import Cliente, PostventaInteraccion, PostventaSolicitud
+from models import Cliente, PostventaCasoEvento, PostventaInteraccion, PostventaSolicitud, Usuario
+from services.comunicaciones.email_service import email_service
 
 TIPOS_INTERACCION = {"LLAMADA", "EMAIL", "WHATSAPP", "VISITA", "REUNION", "OTRO"}
 RESULTADOS_INTERACCION = {
@@ -24,6 +26,27 @@ RESULTADOS_INTERACCION = {
 CATEGORIAS_SOLICITUD = {"RECLAMO", "CONSULTA", "GARANTIA", "MEJORA", "PEDIDO", "OTRO"}
 ESTADOS_SOLICITUD = {"ABIERTA", "EN_PROCESO", "ESPERA_CLIENTE", "RESUELTA", "DESCARTADA"}
 PRIORIDADES_SOLICITUD = {"BAJA", "MEDIA", "ALTA", "URGENTE"}
+ORIGENES_CASO = {"WEB", "EMAIL", "TELEFONO", "WHATSAPP", "INTERNO", "OTRO"}
+ESTADOS_CASO = {
+    "NUEVO",
+    "ASIGNADO",
+    "EN_PROCESO",
+    "ESPERA_CLIENTE",
+    "ESCALADO",
+    "RESUELTO",
+    "CERRADO",
+    "CANCELADO",
+}
+SLA_ESTADOS = {"OK", "EN_RIESGO", "VENCIDO"}
+TIPOS_EVENTO_CASO = {
+    "COMENTARIO",
+    "NOTA_INTERNA",
+    "CAMBIO_ESTADO",
+    "ASIGNACION",
+    "EMAIL_ENVIADO",
+    "SISTEMA",
+}
+VISIBILIDAD_EVENTO = {"INTERNA", "PUBLICA"}
 
 TIPOS_INTERACCION_ORDEN: tuple[str, ...] = tuple(sorted(TIPOS_INTERACCION))
 
@@ -33,6 +56,16 @@ ESTADOS_SOLICITUD_ORDEN: tuple[str, ...] = (
     "ESPERA_CLIENTE",
     "RESUELTA",
     "DESCARTADA",
+)
+ESTADOS_CASO_ORDEN: tuple[str, ...] = (
+    "NUEVO",
+    "ASIGNADO",
+    "EN_PROCESO",
+    "ESPERA_CLIENTE",
+    "ESCALADO",
+    "RESUELTO",
+    "CERRADO",
+    "CANCELADO",
 )
 
 PRIORIDAD_ORDEN: tuple[str, ...] = ("URGENTE", "ALTA", "MEDIA", "BAJA")
@@ -59,6 +92,24 @@ PRIORIDAD_LABEL_ES: dict[str, str] = {
     "ALTA": "Alta",
     "MEDIA": "Media",
     "BAJA": "Baja",
+}
+ESTADO_CASO_LABEL_ES: dict[str, str] = {
+    "NUEVO": "Nuevo",
+    "ASIGNADO": "Asignado",
+    "EN_PROCESO": "En proceso",
+    "ESPERA_CLIENTE": "Espera cliente",
+    "ESCALADO": "Escalado",
+    "RESUELTO": "Resuelto",
+    "CERRADO": "Cerrado",
+    "CANCELADO": "Cancelado",
+}
+ORIGEN_LABEL_ES: dict[str, str] = {
+    "WEB": "Web",
+    "EMAIL": "Email",
+    "TELEFONO": "Teléfono",
+    "WHATSAPP": "WhatsApp",
+    "INTERNO": "Interno",
+    "OTRO": "Otro",
 }
 
 _MESES_CORTO = (
@@ -98,6 +149,80 @@ def _months_span(n: int) -> list[tuple[int, int]]:
 
 def _norm(s: str | None, *, default: str = "") -> str:
     return (s or default).strip()
+
+
+def _json_meta(data: dict[str, Any] | None) -> str | None:
+    if not data:
+        return None
+    return json.dumps(data, ensure_ascii=False, default=str)
+
+
+def _to_case_status(estado_legacy: str | None) -> str:
+    e = _norm(estado_legacy).upper()
+    if e in ESTADOS_CASO:
+        return e
+    return {
+        "ABIERTA": "NUEVO",
+        "RESUELTA": "RESUELTO",
+        "DESCARTADA": "CANCELADO",
+    }.get(e, "EN_PROCESO" if e == "EN_PROCESO" else "NUEVO")
+
+
+def _is_closed_status(estado: str) -> bool:
+    return estado in {"RESUELTO", "CERRADO", "CANCELADO"}
+
+
+def _build_numero_caso(db: Session, now: datetime | None = None) -> str:
+    ts = now or datetime.utcnow()
+    year = ts.year
+    prefix = f"PV-{year}-"
+    last_num = (
+        db.scalar(
+            select(func.max(PostventaSolicitud.numero_caso)).where(
+                PostventaSolicitud.numero_caso.like(f"{prefix}%")
+            )
+        )
+        or ""
+    )
+    seq = 1
+    if last_num and str(last_num).startswith(prefix):
+        tail = str(last_num)[len(prefix) :]
+        if tail.isdigit():
+            seq = int(tail) + 1
+    return f"{prefix}{seq:06d}"
+
+
+def _touch_case(caso: PostventaSolicitud) -> None:
+    caso.fecha_actualizacion = datetime.utcnow()
+    caso.ultimo_movimiento_at = datetime.utcnow()
+
+
+def _next_pk(db: Session, model: Any) -> int:
+    last = db.scalar(select(func.max(model.id))) or 0
+    return int(last) + 1
+
+
+def _ensure_case_compat(caso: PostventaSolicitud, db: Session | None = None) -> PostventaSolicitud:
+    changed = False
+    status = _to_case_status(caso.estado)
+    if caso.estado != status:
+        caso.estado = status
+        changed = True
+    if not caso.numero_caso:
+        if db is not None:
+            caso.numero_caso = _build_numero_caso(db, caso.fecha_apertura or datetime.utcnow())
+        else:
+            caso.numero_caso = f"PV-{datetime.utcnow().year}-{int(caso.id):06d}"
+        changed = True
+    if not caso.ultimo_movimiento_at:
+        caso.ultimo_movimiento_at = caso.fecha_actualizacion or caso.fecha_apertura or datetime.utcnow()
+        changed = True
+    if not caso.sla_estado:
+        caso.sla_estado = "OK"
+        changed = True
+    if changed and db is not None:
+        db.add(caso)
+    return caso
 
 
 def listar_clientes_resumen_postventa(
@@ -183,7 +308,7 @@ def hub_dashboard_stats(db: Session) -> dict[str, Any]:
         db.scalar(
             select(func.count())
             .select_from(PostventaSolicitud)
-            .where(PostventaSolicitud.estado.notin_(["RESUELTA", "DESCARTADA"]))
+            .where(PostventaSolicitud.estado.notin_(["RESUELTO", "CERRADO", "CANCELADO", "RESUELTA", "DESCARTADA"]))
         )
         or 0
     )
@@ -305,7 +430,7 @@ def contar_por_cliente(db: Session, cliente_id: int) -> dict[str, int]:
         db.scalar(
             select(func.count()).select_from(PostventaSolicitud).where(
                 PostventaSolicitud.cliente_id == cliente_id,
-                PostventaSolicitud.estado.notin_(["RESUELTA", "DESCARTADA"]),
+                PostventaSolicitud.estado.notin_(["RESUELTO", "CERRADO", "CANCELADO", "RESUELTA", "DESCARTADA"]),
             )
         )
         or 0
@@ -369,7 +494,11 @@ def listar_solicitudes(db: Session, *, cliente_id: int, limit: int = 100) -> lis
         .order_by(PostventaSolicitud.fecha_apertura.desc(), PostventaSolicitud.id.desc())
         .limit(limit)
     )
-    return list(db.scalars(stmt))
+    rows = list(db.scalars(stmt))
+    for row in rows:
+        _ensure_case_compat(row, db)
+    db.commit()
+    return rows
 
 
 def crear_solicitud(
@@ -389,21 +518,41 @@ def crear_solicitud(
         pri = "MEDIA"
 
     row = PostventaSolicitud(
+        id=_next_pk(db, PostventaSolicitud),
         cliente_id=cliente_id,
         titulo=_norm(titulo) or "Sin título",
         descripcion=_norm(descripcion) or "—",
         categoria=cat,
-        estado="ABIERTA",
+        estado="NUEVO",
         prioridad=pri,
+        origen="INTERNO",
+        numero_caso=_build_numero_caso(db),
+        sla_estado="OK",
+        ultimo_movimiento_at=datetime.utcnow(),
     )
     db.add(row)
+    db.flush()
+    agregar_evento_caso(
+        db,
+        caso_id=row.id,
+        cliente_id=row.cliente_id,
+        usuario_id=None,
+        tipo="SISTEMA",
+        visibilidad="INTERNA",
+        contenido="Caso creado desde ficha de cliente.",
+    )
     db.commit()
     db.refresh(row)
     return row
 
 
 def get_solicitud(db: Session, solicitud_id: int) -> PostventaSolicitud | None:
-    return db.get(PostventaSolicitud, solicitud_id)
+    row = db.get(PostventaSolicitud, solicitud_id)
+    if row:
+        _ensure_case_compat(row, db)
+        db.commit()
+        db.refresh(row)
+    return row
 
 
 def actualizar_estado_solicitud(
@@ -415,16 +564,390 @@ def actualizar_estado_solicitud(
     sol = get_solicitud(db, solicitud_id)
     if not sol:
         return None
-    est = _norm(nuevo_estado).upper()
-    if est not in ESTADOS_SOLICITUD:
+    est = _to_case_status(nuevo_estado)
+    if est not in ESTADOS_CASO:
         return None
+    prev = _to_case_status(sol.estado)
     sol.estado = est
-    sol.fecha_actualizacion = datetime.utcnow()
-    if est in ("RESUELTA", "DESCARTADA"):
+    _touch_case(sol)
+    if est in ("RESUELTO", "CERRADO"):
+        sol.fecha_resolucion = sol.fecha_resolucion or datetime.utcnow()
+        if est == "CERRADO":
+            sol.fecha_cierre = sol.fecha_cierre or datetime.utcnow()
+    elif est == "CANCELADO":
         sol.fecha_cierre = datetime.utcnow()
     else:
         sol.fecha_cierre = None
+        if est not in ("RESUELTO", "CERRADO"):
+            sol.fecha_resolucion = None
+    agregar_evento_caso(
+        db,
+        caso_id=sol.id,
+        cliente_id=sol.cliente_id,
+        usuario_id=None,
+        tipo="CAMBIO_ESTADO",
+        visibilidad="INTERNA",
+        contenido=f"Estado actualizado: {prev} → {est}.",
+    )
     db.add(sol)
     db.commit()
     db.refresh(sol)
     return sol
+
+
+def listar_casos(
+    db: Session,
+    *,
+    estado: str | None = None,
+    prioridad: str | None = None,
+    asignado_a_id: int | None = None,
+    cliente_id: int | None = None,
+    q: str | None = None,
+    limit: int = 200,
+) -> list[PostventaSolicitud]:
+    stmt = select(PostventaSolicitud).order_by(
+        PostventaSolicitud.ultimo_movimiento_at.desc().nullslast(),
+        PostventaSolicitud.fecha_apertura.desc(),
+        PostventaSolicitud.id.desc(),
+    )
+    if estado:
+        stmt = stmt.where(PostventaSolicitud.estado == _to_case_status(estado))
+    if prioridad:
+        stmt = stmt.where(PostventaSolicitud.prioridad == _norm(prioridad).upper())
+    if asignado_a_id is not None:
+        if int(asignado_a_id) <= 0:
+            stmt = stmt.where(PostventaSolicitud.asignado_a_id.is_(None))
+        else:
+            stmt = stmt.where(PostventaSolicitud.asignado_a_id == int(asignado_a_id))
+    if cliente_id is not None:
+        stmt = stmt.where(PostventaSolicitud.cliente_id == int(cliente_id))
+    if q:
+        pat = f"%{_norm(q)}%"
+        stmt = stmt.join(Cliente, Cliente.id == PostventaSolicitud.cliente_id).where(
+            or_(
+                PostventaSolicitud.titulo.ilike(pat),
+                PostventaSolicitud.descripcion.ilike(pat),
+                PostventaSolicitud.numero_caso.ilike(pat),
+                Cliente.razon_social.ilike(pat),
+                Cliente.rut.ilike(pat),
+            )
+        )
+    rows = list(db.scalars(stmt.limit(limit)))
+    for row in rows:
+        _ensure_case_compat(row, db)
+    db.commit()
+    return rows
+
+
+def crear_caso(
+    db: Session,
+    *,
+    cliente_id: int,
+    titulo: str,
+    descripcion: str,
+    categoria: str = "CONSULTA",
+    prioridad: str = "MEDIA",
+    origen: str = "INTERNO",
+    creado_por_id: int | None = None,
+    fecha_vencimiento_sla: datetime | None = None,
+) -> PostventaSolicitud:
+    cat = _norm(categoria, default="CONSULTA").upper()
+    if cat not in CATEGORIAS_SOLICITUD:
+        cat = "CONSULTA"
+    pri = _norm(prioridad, default="MEDIA").upper()
+    if pri not in PRIORIDADES_SOLICITUD:
+        pri = "MEDIA"
+    ori = _norm(origen, default="INTERNO").upper()
+    if ori not in ORIGENES_CASO:
+        ori = "OTRO"
+    caso = PostventaSolicitud(
+        id=_next_pk(db, PostventaSolicitud),
+        cliente_id=cliente_id,
+        titulo=_norm(titulo) or "Sin título",
+        descripcion=_norm(descripcion) or "—",
+        categoria=cat,
+        estado="NUEVO",
+        prioridad=pri,
+        origen=ori,
+        creado_por_id=creado_por_id,
+        numero_caso=_build_numero_caso(db),
+        fecha_vencimiento_sla=fecha_vencimiento_sla,
+        sla_estado="OK",
+        ultimo_movimiento_at=datetime.utcnow(),
+    )
+    db.add(caso)
+    db.flush()
+    agregar_evento_caso(
+        db,
+        caso_id=caso.id,
+        cliente_id=cliente_id,
+        usuario_id=creado_por_id,
+        tipo="SISTEMA",
+        visibilidad="INTERNA",
+        contenido=f"Caso creado ({caso.numero_caso}).",
+    )
+    db.commit()
+    db.refresh(caso)
+    return caso
+
+
+def get_caso(db: Session, caso_id: int) -> PostventaSolicitud | None:
+    return get_solicitud(db, caso_id)
+
+
+def agregar_evento_caso(
+    db: Session,
+    *,
+    caso_id: int,
+    cliente_id: int,
+    usuario_id: int | None,
+    tipo: str,
+    visibilidad: str = "INTERNA",
+    contenido: str,
+    metadata: dict[str, Any] | None = None,
+) -> PostventaCasoEvento:
+    tipo_norm = _norm(tipo, default="SISTEMA").upper()
+    if tipo_norm not in TIPOS_EVENTO_CASO:
+        tipo_norm = "SISTEMA"
+    vis = _norm(visibilidad, default="INTERNA").upper()
+    if vis not in VISIBILIDAD_EVENTO:
+        vis = "INTERNA"
+    row = PostventaCasoEvento(
+        id=_next_pk(db, PostventaCasoEvento),
+        caso_id=caso_id,
+        cliente_id=cliente_id,
+        usuario_id=usuario_id,
+        tipo=tipo_norm,
+        visibilidad=vis,
+        contenido=_norm(contenido) or "—",
+        metadata_json=_json_meta(metadata),
+    )
+    db.add(row)
+    caso = db.get(PostventaSolicitud, caso_id)
+    if caso:
+        _touch_case(caso)
+        db.add(caso)
+    return row
+
+
+def listar_eventos_caso(db: Session, caso_id: int, *, limit: int = 300) -> list[PostventaCasoEvento]:
+    stmt = (
+        select(PostventaCasoEvento)
+        .where(PostventaCasoEvento.caso_id == int(caso_id))
+        .order_by(PostventaCasoEvento.created_at.asc(), PostventaCasoEvento.id.asc())
+        .limit(limit)
+    )
+    return list(db.scalars(stmt))
+
+
+def asignar_caso(
+    db: Session,
+    *,
+    caso_id: int,
+    usuario_id: int | None,
+    actor_id: int | None,
+) -> PostventaSolicitud | None:
+    caso = get_caso(db, caso_id)
+    if not caso:
+        return None
+    prev = caso.asignado_a_id
+    caso.asignado_a_id = usuario_id
+    if usuario_id and _to_case_status(caso.estado) == "NUEVO":
+        caso.estado = "ASIGNADO"
+    _touch_case(caso)
+    user_name = "Sin asignar"
+    if usuario_id:
+        u = db.get(Usuario, int(usuario_id))
+        user_name = u.nombre_completo if u else f"Usuario {usuario_id}"
+    agregar_evento_caso(
+        db,
+        caso_id=caso.id,
+        cliente_id=caso.cliente_id,
+        usuario_id=actor_id,
+        tipo="ASIGNACION",
+        visibilidad="INTERNA",
+        contenido=f"Asignación actualizada: {prev or 'Sin asignar'} → {user_name}.",
+        metadata={"prev_asignado_a_id": prev, "asignado_a_id": usuario_id},
+    )
+    db.add(caso)
+    db.commit()
+    db.refresh(caso)
+    return caso
+
+
+def cambiar_estado_caso(
+    db: Session,
+    *,
+    caso_id: int,
+    estado: str,
+    actor_id: int | None,
+    comentario: str | None = None,
+) -> PostventaSolicitud | None:
+    caso = get_caso(db, caso_id)
+    if not caso:
+        return None
+    nuevo = _to_case_status(estado)
+    if nuevo not in ESTADOS_CASO:
+        return None
+    previo = _to_case_status(caso.estado)
+    caso.estado = nuevo
+    now = datetime.utcnow()
+    if not caso.fecha_primer_respuesta:
+        caso.fecha_primer_respuesta = now
+    if nuevo in {"RESUELTO", "CERRADO"} and not caso.fecha_resolucion:
+        caso.fecha_resolucion = now
+    if nuevo in {"CERRADO", "CANCELADO"} and not caso.fecha_cierre:
+        caso.fecha_cierre = now
+    if not _is_closed_status(nuevo):
+        caso.fecha_cierre = None
+    _touch_case(caso)
+    agregar_evento_caso(
+        db,
+        caso_id=caso.id,
+        cliente_id=caso.cliente_id,
+        usuario_id=actor_id,
+        tipo="CAMBIO_ESTADO",
+        visibilidad="INTERNA",
+        contenido=f"Estado actualizado: {previo} → {nuevo}.",
+        metadata={"comentario": _norm(comentario) or None},
+    )
+    if comentario and _norm(comentario):
+        agregar_evento_caso(
+            db,
+            caso_id=caso.id,
+            cliente_id=caso.cliente_id,
+            usuario_id=actor_id,
+            tipo="NOTA_INTERNA",
+            visibilidad="INTERNA",
+            contenido=_norm(comentario),
+        )
+    db.add(caso)
+    db.commit()
+    db.refresh(caso)
+    return caso
+
+
+def enviar_email_caso(
+    db: Session,
+    *,
+    caso_id: int,
+    to: str | None,
+    subject: str,
+    body: str,
+    actor: dict[str, Any] | None,
+) -> dict[str, Any]:
+    caso = get_caso(db, caso_id)
+    if not caso:
+        raise ValueError("Caso no encontrado.")
+    log = email_service.send_postventa_caso_email(
+        db=db,
+        caso=caso,
+        to=to,
+        subject=subject,
+        body=body,
+        actor=actor,
+    )
+    actor_id = int(actor.get("uid")) if actor and actor.get("uid") else None
+    agregar_evento_caso(
+        db,
+        caso_id=caso.id,
+        cliente_id=caso.cliente_id,
+        usuario_id=actor_id,
+        tipo="EMAIL_ENVIADO",
+        visibilidad="PUBLICA",
+        contenido=f"Correo enviado: {subject}",
+        metadata={"to": to, "email_log_id": getattr(log, "id", None)},
+    )
+    if not caso.fecha_primer_respuesta:
+        caso.fecha_primer_respuesta = datetime.utcnow()
+    _touch_case(caso)
+    db.add(caso)
+    db.commit()
+    return {"ok": True, "email_log_id": getattr(log, "id", None)}
+
+
+def metricas_postventa(db: Session) -> dict[str, Any]:
+    now = datetime.utcnow()
+    d7 = now - timedelta(days=7)
+    d30 = now - timedelta(days=30)
+    abiertos_filter = PostventaSolicitud.estado.notin_(["RESUELTO", "CERRADO", "CANCELADO", "RESUELTA", "DESCARTADA"])
+    abiertos = int(db.scalar(select(func.count()).select_from(PostventaSolicitud).where(abiertos_filter)) or 0)
+    nuevos_7 = int(
+        db.scalar(select(func.count()).select_from(PostventaSolicitud).where(PostventaSolicitud.fecha_apertura >= d7)) or 0
+    )
+    nuevos_30 = int(
+        db.scalar(select(func.count()).select_from(PostventaSolicitud).where(PostventaSolicitud.fecha_apertura >= d30)) or 0
+    )
+    resueltos_30 = int(
+        db.scalar(
+            select(func.count()).select_from(PostventaSolicitud).where(
+                PostventaSolicitud.fecha_resolucion.is_not(None),
+                PostventaSolicitud.fecha_resolucion >= d30,
+            )
+        )
+        or 0
+    )
+    avg_primera = db.scalar(
+        select(
+            func.avg(
+                func.extract("epoch", PostventaSolicitud.fecha_primer_respuesta - PostventaSolicitud.fecha_apertura) / 3600
+            )
+        ).where(PostventaSolicitud.fecha_primer_respuesta.is_not(None))
+    )
+    avg_resol = db.scalar(
+        select(
+            func.avg(
+                func.extract("epoch", PostventaSolicitud.fecha_resolucion - PostventaSolicitud.fecha_apertura) / 3600
+            )
+        ).where(PostventaSolicitud.fecha_resolucion.is_not(None))
+    )
+    vencidos = int(
+        db.scalar(
+            select(func.count()).select_from(PostventaSolicitud).where(
+                abiertos_filter,
+                or_(
+                    PostventaSolicitud.sla_estado == "VENCIDO",
+                    and_(
+                        PostventaSolicitud.fecha_vencimiento_sla.is_not(None),
+                        PostventaSolicitud.fecha_vencimiento_sla < now,
+                    ),
+                ),
+            )
+        )
+        or 0
+    )
+    backlog_sin_asignar = int(
+        db.scalar(
+            select(func.count()).select_from(PostventaSolicitud).where(abiertos_filter, PostventaSolicitud.asignado_a_id.is_(None))
+        )
+        or 0
+    )
+    rows_asig = db.execute(
+        select(PostventaSolicitud.asignado_a_id, func.count())
+        .where(abiertos_filter)
+        .group_by(PostventaSolicitud.asignado_a_id)
+    ).all()
+    casos_por_usuario = [
+        {"asignado_a_id": int(uid) if uid else None, "cantidad": int(cnt)} for uid, cnt in rows_asig
+    ]
+    rows_estado = db.execute(
+        select(PostventaSolicitud.estado, func.count()).group_by(PostventaSolicitud.estado)
+    ).all()
+    casos_por_estado = [{"estado": _to_case_status(est), "cantidad": int(cnt)} for est, cnt in rows_estado]
+    rows_prior = db.execute(
+        select(PostventaSolicitud.prioridad, func.count()).group_by(PostventaSolicitud.prioridad)
+    ).all()
+    casos_por_prioridad = [{"prioridad": pri, "cantidad": int(cnt)} for pri, cnt in rows_prior]
+    return {
+        "casos_abiertos": abiertos,
+        "casos_nuevos_7d": nuevos_7,
+        "casos_nuevos_30d": nuevos_30,
+        "casos_resueltos_30d": resueltos_30,
+        "promedio_horas_primera_respuesta": float(avg_primera or 0),
+        "promedio_horas_resolucion": float(avg_resol or 0),
+        "casos_vencidos_sla": vencidos,
+        "casos_por_usuario_asignado": casos_por_usuario,
+        "casos_por_estado": casos_por_estado,
+        "casos_por_prioridad": casos_por_prioridad,
+        "backlog_sin_asignar": backlog_sin_asignar,
+    }

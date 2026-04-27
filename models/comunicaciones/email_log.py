@@ -20,6 +20,7 @@ class EmailLog(Base):
 
     cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=True)
     cxc_id = Column(Integer, ForeignKey("cuentas_por_cobrar.id"), nullable=True)
+    caso_id = Column(Integer, ForeignKey("postventa_solicitudes.id"), nullable=True)
 
     to_email = Column(String(255), nullable=False)
     subject = Column(String(255), nullable=False)

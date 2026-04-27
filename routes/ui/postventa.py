@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
 from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
+from crud.auth import usuarios as crud_usuarios
 from crud.maestros import cliente as crud_cliente
 from crud.postventa import postventa as crud_postventa
 from db.session import get_db
@@ -83,6 +84,31 @@ def _construir_timeline(
     return items
 
 
+def _actor_uid(request: Request) -> int | None:
+    auth = getattr(request.state, "auth_user", None) or {}
+    uid = auth.get("uid") if isinstance(auth, dict) else None
+    try:
+        return int(uid) if uid is not None else None
+    except Exception:
+        return None
+
+
+def _redirect_caso(
+    request: Request,
+    caso_id: int,
+    *,
+    msg: str | None = None,
+    sev: str = "info",
+) -> RedirectResponse:
+    return _redirect(
+        request,
+        "postventa_caso_detalle",
+        caso_id=caso_id,
+        msg=msg,
+        sev=sev,
+    )
+
+
 @router.get("/postventa", response_class=HTMLResponse, name="postventa_hub")
 def postventa_hub(
     request: Request,
@@ -95,6 +121,7 @@ def postventa_hub(
         return redir
     filas = crud_postventa.listar_clientes_resumen_postventa(db, busqueda=q, limit=100)
     stats = crud_postventa.hub_dashboard_stats(db)
+    metricas = crud_postventa.metricas_postventa(db)
     return templates.TemplateResponse(
         "postventa/hub.html",
         {
@@ -102,11 +129,262 @@ def postventa_hub(
             "q": q,
             "filas": filas,
             "stats": stats,
+            "metricas": metricas,
             "msg": msg,
             "sev": sev,
             "active_menu": "postventa",
         },
     )
+
+
+@router.get("/postventa/casos", response_class=HTMLResponse, name="postventa_casos_lista")
+def postventa_casos_lista(
+    request: Request,
+    estado: str | None = Query(None),
+    prioridad: str | None = Query(None),
+    asignado_a_id: int | None = Query(None),
+    cliente_id: int | None = Query(None),
+    q: str | None = Query(None),
+    vista: str | None = Query(None),
+    msg: str | None = Query(None),
+    sev: str = Query("info"),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
+    actor = getattr(request.state, "auth_user", None) or {}
+    uid = _actor_uid(request)
+    if vista == "mis_casos" and uid:
+        asignado_a_id = uid
+    elif vista == "sin_asignar":
+        asignado_a_id = 0
+    elif vista == "urgentes":
+        prioridad = "URGENTE"
+    elif vista == "vencidos":
+        estado = None
+    elif vista == "resueltos":
+        estado = "RESUELTO"
+    casos = crud_postventa.listar_casos(
+        db,
+        estado=estado,
+        prioridad=prioridad,
+        asignado_a_id=asignado_a_id,
+        cliente_id=cliente_id,
+        q=q,
+    )
+    if vista == "vencidos":
+        casos = [c for c in casos if c.sla_estado == "VENCIDO"]
+    metricas = crud_postventa.metricas_postventa(db)
+    usuarios = crud_usuarios.listar_usuarios(db, limite=200)
+    return templates.TemplateResponse(
+        "postventa/casos_lista.html",
+        {
+            "request": request,
+            "casos": casos,
+            "metricas": metricas,
+            "estado": estado,
+            "prioridad": prioridad,
+            "asignado_a_id": asignado_a_id,
+            "cliente_id": cliente_id,
+            "q": q,
+            "vista": vista,
+            "usuarios": usuarios,
+            "auth_user": actor,
+            "msg": msg,
+            "sev": sev,
+            "active_menu": "postventa",
+        },
+    )
+
+
+@router.get("/postventa/casos/nuevo", response_class=HTMLResponse, name="postventa_caso_nuevo")
+def postventa_caso_nuevo_form(
+    request: Request,
+    cliente_id: int | None = Query(None),
+    msg: str | None = Query(None),
+    sev: str = Query("info"),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
+    clientes, _ = crud_cliente.listar_clientes(db, skip=0, limit=150)
+    return templates.TemplateResponse(
+        "postventa/caso_form.html",
+        {
+            "request": request,
+            "clientes": clientes,
+            "cliente_id": cliente_id,
+            "msg": msg,
+            "sev": sev,
+            "active_menu": "postventa",
+        },
+    )
+
+
+@router.post("/postventa/casos/nuevo", name="postventa_caso_nuevo_post")
+def postventa_caso_nuevo_post(
+    request: Request,
+    cliente_id: int = Form(...),
+    titulo: str = Form(...),
+    descripcion: str = Form(...),
+    categoria: str = Form("CONSULTA"),
+    prioridad: str = Form("MEDIA"),
+    origen: str = Form("INTERNO"),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
+    try:
+        caso = crud_postventa.crear_caso(
+            db,
+            cliente_id=cliente_id,
+            titulo=titulo,
+            descripcion=descripcion,
+            categoria=categoria,
+            prioridad=prioridad,
+            origen=origen,
+            creado_por_id=_actor_uid(request),
+        )
+    except Exception as exc:
+        logger.exception("Crear caso postventa cliente_id=%s", cliente_id)
+        return _redirect(
+            request,
+            "postventa_caso_nuevo",
+            msg=public_error_message(exc, default="No se pudo crear el caso."),
+            sev="danger",
+        )
+    return _redirect_caso(request, caso.id, msg="Caso creado correctamente.", sev="success")
+
+
+@router.get("/postventa/casos/{caso_id}", response_class=HTMLResponse, name="postventa_caso_detalle")
+def postventa_caso_detalle(
+    request: Request,
+    caso_id: int,
+    msg: str | None = Query(None),
+    sev: str = Query("info"),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
+    caso = crud_postventa.get_caso(db, caso_id)
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    cliente = crud_cliente.get_cliente(db, caso.cliente_id)
+    eventos = crud_postventa.listar_eventos_caso(db, caso_id)
+    usuarios = crud_usuarios.listar_usuarios(db, limite=200)
+    return templates.TemplateResponse(
+        "postventa/caso_detalle.html",
+        {
+            "request": request,
+            "caso": caso,
+            "cliente": cliente,
+            "eventos": eventos,
+            "usuarios": usuarios,
+            "estados": list(crud_postventa.ESTADOS_CASO_ORDEN),
+            "msg": msg,
+            "sev": sev,
+            "active_menu": "postventa",
+        },
+    )
+
+
+@router.post("/postventa/casos/{caso_id}/comentario", name="postventa_caso_comentario")
+def postventa_caso_comentario(
+    request: Request,
+    caso_id: int,
+    contenido: str = Form(...),
+    visibilidad: str = Form("INTERNA"),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
+    caso = crud_postventa.get_caso(db, caso_id)
+    if not caso:
+        raise HTTPException(status_code=404)
+    crud_postventa.agregar_evento_caso(
+        db,
+        caso_id=caso.id,
+        cliente_id=caso.cliente_id,
+        usuario_id=_actor_uid(request),
+        tipo="COMENTARIO" if (visibilidad or "").upper() == "PUBLICA" else "NOTA_INTERNA",
+        visibilidad=visibilidad,
+        contenido=contenido,
+    )
+    db.commit()
+    return _redirect_caso(request, caso_id, msg="Comentario agregado.", sev="success")
+
+
+@router.post("/postventa/casos/{caso_id}/asignar", name="postventa_caso_asignar")
+def postventa_caso_asignar(
+    request: Request,
+    caso_id: int,
+    usuario_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
+    updated = crud_postventa.asignar_caso(
+        db,
+        caso_id=caso_id,
+        usuario_id=usuario_id,
+        actor_id=_actor_uid(request),
+    )
+    if not updated:
+        raise HTTPException(status_code=404)
+    return _redirect_caso(request, caso_id, msg="Caso asignado.", sev="success")
+
+
+@router.post("/postventa/casos/{caso_id}/estado", name="postventa_caso_estado")
+def postventa_caso_estado(
+    request: Request,
+    caso_id: int,
+    estado: str = Form(...),
+    comentario: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
+    updated = crud_postventa.cambiar_estado_caso(
+        db,
+        caso_id=caso_id,
+        estado=estado,
+        actor_id=_actor_uid(request),
+        comentario=comentario,
+    )
+    if not updated:
+        return _redirect_caso(request, caso_id, msg="Estado no válido.", sev="warning")
+    return _redirect_caso(request, caso_id, msg="Estado actualizado.", sev="success")
+
+
+@router.post("/postventa/casos/{caso_id}/email", name="postventa_caso_email")
+def postventa_caso_email(
+    request: Request,
+    caso_id: int,
+    to: str = Form(...),
+    subject: str = Form(...),
+    body: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
+    try:
+        crud_postventa.enviar_email_caso(
+            db,
+            caso_id=caso_id,
+            to=to,
+            subject=subject,
+            body=body,
+            actor=getattr(request.state, "auth_user", None) or {},
+        )
+    except Exception as exc:
+        logger.exception("Enviar email caso_id=%s", caso_id)
+        return _redirect_caso(
+            request,
+            caso_id,
+            msg=public_error_message(exc, default="No se pudo enviar el correo del caso."),
+            sev="danger",
+        )
+    return _redirect_caso(request, caso_id, msg="Correo enviado y trazado en muro.", sev="success")
 
 
 @router.get("/postventa/cliente/{cliente_id}", response_class=HTMLResponse, name="postventa_ficha_cliente")

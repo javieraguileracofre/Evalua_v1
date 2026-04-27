@@ -70,7 +70,7 @@ from .comunicaciones.email_log import EmailLog
 # POSTVENTA / CRM
 # ============================================================
 
-from .postventa.postventa import PostventaInteraccion, PostventaSolicitud
+from .postventa.postventa import PostventaCasoEvento, PostventaInteraccion, PostventaSolicitud
 
 # ============================================================
 # INVENTARIO
@@ -170,6 +170,7 @@ __all__ = [
     "EmailLog",
     "PostventaInteraccion",
     "PostventaSolicitud",
+    "PostventaCasoEvento",
     "CategoriaProducto",
     "UnidadMedida",
     "Producto",
