@@ -968,15 +968,47 @@ def fondos_rendir_mantenciones(
 ):
     if (redir := guard_finanzas_consulta(request)) is not None:
         return redir
+    mantenciones: list[Any] = []
+    vehiculos: list[Any] = []
+    alertas: dict[str, Any] = {
+        "mantenciones_vencidas": [],
+        "mantenciones_proximas": [],
+        "documentos_por_vencer": [],
+    }
+    msg_q = request.query_params.get("msg")
+    sev_q = request.query_params.get("sev", "info")
+    try:
+        mantenciones = crud_fr.listar_mantenciones(db, vehiculo_id=vehiculo_id)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Fondos rendir mantenciones: error en listar_mantenciones")
+        if not msg_q:
+            msg_q = public_error_message(exc, default="Listado de mantenciones no disponible temporalmente.")
+            sev_q = "warning"
+    try:
+        vehiculos = crud_fr.listar_vehiculos_transporte(db, solo_activos=False)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Fondos rendir mantenciones: error en listar_vehiculos_transporte")
+        if not msg_q:
+            msg_q = public_error_message(exc, default="Listado de vehículos no disponible temporalmente.")
+            sev_q = "warning"
+    try:
+        alertas = crud_fr.alertas_mantencion(db)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Fondos rendir mantenciones: error en alertas_mantencion")
+        if not msg_q:
+            msg_q = public_error_message(exc, default="Alertas de mantención no disponibles temporalmente.")
+            sev_q = "warning"
     return templates.TemplateResponse(
         "fondos_rendir/mantenciones_lista.html",
         {
             "request": request,
             "active_menu": "fondos_rendir",
-            "mantenciones": crud_fr.listar_mantenciones(db, vehiculo_id=vehiculo_id),
-            "vehiculos": crud_fr.listar_vehiculos_transporte(db, solo_activos=False),
+            "mantenciones": mantenciones,
+            "vehiculos": vehiculos,
             "vehiculo_id": vehiculo_id,
-            "alertas": crud_fr.alertas_mantencion(db),
+            "alertas": alertas,
+            "msg": msg_q,
+            "sev": sev_q,
         },
     )
 
