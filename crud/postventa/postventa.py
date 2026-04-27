@@ -7,7 +7,7 @@ from datetime import date, datetime, time, timedelta
 import json
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from models import Cliente, PostventaCasoEvento, PostventaInteraccion, PostventaSolicitud, Usuario
@@ -197,31 +197,20 @@ def _touch_case(caso: PostventaSolicitud) -> None:
     caso.ultimo_movimiento_at = datetime.utcnow()
 
 
-def _next_pk(db: Session, model: Any) -> int:
-    last = db.scalar(select(func.max(model.id))) or 0
-    return int(last) + 1
+def _present_numero_caso(caso: PostventaSolicitud) -> str:
+    if getattr(caso, "numero_caso", None):
+        return str(caso.numero_caso)
+    return f"PV-{(caso.fecha_apertura or datetime.utcnow()).year}-{int(caso.id):06d}"
 
 
-def _ensure_case_compat(caso: PostventaSolicitud, db: Session | None = None) -> PostventaSolicitud:
-    changed = False
-    status = _to_case_status(caso.estado)
-    if caso.estado != status:
-        caso.estado = status
-        changed = True
-    if not caso.numero_caso:
-        if db is not None:
-            caso.numero_caso = _build_numero_caso(db, caso.fecha_apertura or datetime.utcnow())
-        else:
-            caso.numero_caso = f"PV-{datetime.utcnow().year}-{int(caso.id):06d}"
-        changed = True
-    if not caso.ultimo_movimiento_at:
-        caso.ultimo_movimiento_at = caso.fecha_actualizacion or caso.fecha_apertura or datetime.utcnow()
-        changed = True
-    if not caso.sla_estado:
+def _ensure_case_compat(caso: PostventaSolicitud) -> PostventaSolicitud:
+    # Solo para presentación en UI; no persiste cambios en lecturas.
+    if not getattr(caso, "numero_caso", None):
+        caso.numero_caso = _present_numero_caso(caso)
+    if not getattr(caso, "ultimo_movimiento_at", None):
+        caso.ultimo_movimiento_at = caso.fecha_actualizacion or caso.fecha_apertura
+    if not getattr(caso, "sla_estado", None):
         caso.sla_estado = "OK"
-        changed = True
-    if changed and db is not None:
-        db.add(caso)
     return caso
 
 
@@ -488,17 +477,45 @@ def crear_interaccion(
 
 
 def listar_solicitudes(db: Session, *, cliente_id: int, limit: int = 100) -> list[PostventaSolicitud]:
-    stmt = (
-        select(PostventaSolicitud)
-        .where(PostventaSolicitud.cliente_id == cliente_id)
-        .order_by(PostventaSolicitud.fecha_apertura.desc(), PostventaSolicitud.id.desc())
-        .limit(limit)
-    )
-    rows = list(db.scalars(stmt))
-    for row in rows:
-        _ensure_case_compat(row, db)
-    db.commit()
-    return rows
+    try:
+        stmt = (
+            select(PostventaSolicitud)
+            .where(PostventaSolicitud.cliente_id == cliente_id)
+            .order_by(PostventaSolicitud.fecha_apertura.desc(), PostventaSolicitud.id.desc())
+            .limit(limit)
+        )
+        rows = list(db.scalars(stmt))
+        for row in rows:
+            _ensure_case_compat(row)
+        return rows
+    except Exception:
+        # Fallback legacy: evita depender de columnas CRM no presentes.
+        sql = """
+        SELECT id, cliente_id, titulo, descripcion, categoria, estado, prioridad,
+               fecha_apertura, fecha_actualizacion, fecha_cierre
+        FROM public.postventa_solicitudes
+        WHERE cliente_id = :cliente_id
+        ORDER BY fecha_apertura DESC, id DESC
+        LIMIT :lim
+        """
+        rows = db.execute(text(sql), {"cliente_id": int(cliente_id), "lim": int(limit)}).mappings().all()
+        out: list[PostventaSolicitud] = []
+        for r in rows:
+            obj = PostventaSolicitud(
+                id=r["id"],
+                cliente_id=r["cliente_id"],
+                titulo=r["titulo"],
+                descripcion=r["descripcion"],
+                categoria=r["categoria"],
+                estado=r["estado"],
+                prioridad=r["prioridad"],
+                fecha_apertura=r["fecha_apertura"],
+                fecha_actualizacion=r["fecha_actualizacion"],
+                fecha_cierre=r["fecha_cierre"],
+            )
+            _ensure_case_compat(obj)
+            out.append(obj)
+        return out
 
 
 def crear_solicitud(
@@ -518,7 +535,6 @@ def crear_solicitud(
         pri = "MEDIA"
 
     row = PostventaSolicitud(
-        id=_next_pk(db, PostventaSolicitud),
         cliente_id=cliente_id,
         titulo=_norm(titulo) or "Sin título",
         descripcion=_norm(descripcion) or "—",
@@ -549,9 +565,7 @@ def crear_solicitud(
 def get_solicitud(db: Session, solicitud_id: int) -> PostventaSolicitud | None:
     row = db.get(PostventaSolicitud, solicitud_id)
     if row:
-        _ensure_case_compat(row, db)
-        db.commit()
-        db.refresh(row)
+        _ensure_case_compat(row)
     return row
 
 
@@ -635,8 +649,7 @@ def listar_casos(
             )
         rows = list(db.scalars(stmt.limit(limit)))
         for row in rows:
-            _ensure_case_compat(row, db)
-        db.commit()
+            _ensure_case_compat(row)
         return rows
     except Exception:
         # Fallback legacy para bases aún sin columnas CRM.
@@ -685,7 +698,6 @@ def crear_caso(
     if ori not in ORIGENES_CASO:
         ori = "OTRO"
     caso = PostventaSolicitud(
-        id=_next_pk(db, PostventaSolicitud),
         cliente_id=cliente_id,
         titulo=_norm(titulo) or "Sin título",
         descripcion=_norm(descripcion) or "—",
@@ -737,7 +749,6 @@ def agregar_evento_caso(
     if vis not in VISIBILIDAD_EVENTO:
         vis = "INTERNA"
     row = PostventaCasoEvento(
-        id=_next_pk(db, PostventaCasoEvento),
         caso_id=caso_id,
         cliente_id=cliente_id,
         usuario_id=usuario_id,

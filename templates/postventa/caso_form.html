@@ -14,12 +14,20 @@
 {% block content %}
 <div class="card shadow-sm">
   <div class="card-body">
+    {% if msg %}
+    <div class="alert alert-{{ sev or 'info' }} mb-3">{{ msg }}</div>
+    {% endif %}
+    {% if not clientes %}
+    <div class="alert alert-warning mb-3">
+      No hay clientes disponibles para crear casos. Verifica la carga de maestros.
+    </div>
+    {% endif %}
     <form method="post" action="{{ request.url_for('postventa_caso_nuevo_post') }}">
       <div class="row g-2">
         <div class="col-md-6">
           <label class="form-label">Cliente</label>
-          <select class="form-select" name="cliente_id" required>
-            <option value="">Seleccione...</option>
+          <select class="form-select" name="cliente_id" required {% if not clientes %}disabled{% endif %}>
+            <option value="" disabled {% if not cliente_id %}selected{% endif %}>Seleccione...</option>
             {% for c in clientes %}
             <option value="{{ c.id }}" {% if cliente_id==c.id %}selected{% endif %}>{{ c.razon_social }}</option>
             {% endfor %}
@@ -29,7 +37,7 @@
           <label class="form-label">Origen</label>
           <select class="form-select" name="origen">
             {% for o in ['WEB','EMAIL','TELEFONO','WHATSAPP','INTERNO','OTRO'] %}
-            <option value="{{ o }}">{{ o }}</option>
+            <option value="{{ o }}" {% if origen == o %}selected{% endif %}>{{ o }}</option>
             {% endfor %}
           </select>
         </div>
@@ -37,7 +45,7 @@
           <label class="form-label">Categoría</label>
           <select class="form-select" name="categoria">
             {% for c in ['CONSULTA','RECLAMO','GARANTIA','MEJORA','PEDIDO','OTRO'] %}
-            <option value="{{ c }}">{{ c }}</option>
+            <option value="{{ c }}" {% if categoria == c %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
           </select>
         </div>
@@ -45,16 +53,16 @@
           <label class="form-label">Prioridad</label>
           <select class="form-select" name="prioridad">
             {% for p in ['BAJA','MEDIA','ALTA','URGENTE'] %}
-            <option value="{{ p }}" {% if p=='MEDIA' %}selected{% endif %}>{{ p }}</option>
+            <option value="{{ p }}" {% if prioridad==p %}selected{% endif %}>{{ p }}</option>
             {% endfor %}
           </select>
         </div>
       </div>
       <label class="form-label mt-2">Título</label>
-      <input class="form-control mb-2" name="titulo" required maxlength="250">
+      <input class="form-control mb-2" name="titulo" required maxlength="250" value="{{ titulo or '' }}">
       <label class="form-label">Descripción</label>
-      <textarea class="form-control mb-3" name="descripcion" rows="5" required></textarea>
-      <button class="btn btn-primary">Crear caso</button>
+      <textarea class="form-control mb-3" name="descripcion" rows="5" required>{{ descripcion or '' }}</textarea>
+      <button class="btn btn-primary" {% if not clientes %}disabled{% endif %}>Crear caso</button>
     </form>
   </div>
 </div>

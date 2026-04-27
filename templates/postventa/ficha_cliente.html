@@ -222,22 +222,26 @@
               <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
                 <div>
                   <span class="badge text-bg-dark">{{ sol.categoria }}</span>
-                  <span class="badge {% if sol.estado == 'ABIERTA' %}text-bg-danger{% elif sol.estado == 'EN_PROCESO' %}text-bg-primary{% elif sol.estado == 'ESPERA_CLIENTE' %}text-bg-info text-dark{% elif sol.estado == 'RESUELTA' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ sol.estado }}</span>
+                  <span class="badge {% if sol.estado in ['ABIERTA','NUEVO','ABIERTO'] %}text-bg-danger{% elif sol.estado in ['EN_PROCESO','EN_GESTION'] %}text-bg-primary{% elif sol.estado in ['ESPERA_CLIENTE','ESPERANDO_CLIENTE'] %}text-bg-info text-dark{% elif sol.estado in ['RESUELTA','RESUELTO','CERRADO'] %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ sol.estado }}</span>
                   <span class="badge text-bg-light border">{{ sol.prioridad }}</span>
                 </div>
                 <small class="text-muted">{{ sol.fecha_apertura }}</small>
               </div>
-              <div class="fw-semibold mt-1">{{ sol.titulo }}</div>
+              <div class="fw-semibold mt-1">
+                <a href="{{ request.url_for('postventa_caso_detalle', caso_id=sol.id) }}" class="text-decoration-none">
+                  {{ sol.titulo }}
+                </a>
+              </div>
               <div class="mt-1 small" style="white-space:pre-wrap;">{{ sol.descripcion }}</div>
-              {% if sol.estado not in ['RESUELTA', 'DESCARTADA'] %}
+              {% if sol.estado not in ['RESUELTA', 'RESUELTO', 'CERRADO', 'DESCARTADA'] %}
               <form class="row g-2 align-items-end mt-3" method="post" action="{{ request.url_for('postventa_actualizar_estado_solicitud', solicitud_id=sol.id) }}">
                 <div class="col-auto">
                   <label class="form-label small mb-0" for="estado-{{ sol.id }}">Cambiar estado</label>
                   <select class="form-select form-select-sm" id="estado-{{ sol.id }}" name="estado">
-                    <option value="ABIERTA" {% if sol.estado == 'ABIERTA' %}selected{% endif %}>Abierta</option>
-                    <option value="EN_PROCESO" {% if sol.estado == 'EN_PROCESO' %}selected{% endif %}>En proceso</option>
-                    <option value="ESPERA_CLIENTE" {% if sol.estado == 'ESPERA_CLIENTE' %}selected{% endif %}>Espera cliente</option>
-                    <option value="RESUELTA" {% if sol.estado == 'RESUELTA' %}selected{% endif %}>Resuelta</option>
+                    <option value="ABIERTA" {% if sol.estado in ['ABIERTA','NUEVO','ABIERTO'] %}selected{% endif %}>Abierta</option>
+                    <option value="EN_PROCESO" {% if sol.estado in ['EN_PROCESO','EN_GESTION'] %}selected{% endif %}>En proceso</option>
+                    <option value="ESPERA_CLIENTE" {% if sol.estado in ['ESPERA_CLIENTE','ESPERANDO_CLIENTE'] %}selected{% endif %}>Espera cliente</option>
+                    <option value="RESUELTA" {% if sol.estado in ['RESUELTA','RESUELTO','CERRADO'] %}selected{% endif %}>Resuelta</option>
                     <option value="DESCARTADA" {% if sol.estado == 'DESCARTADA' %}selected{% endif %}>Descartada</option>
                   </select>
                 </div>

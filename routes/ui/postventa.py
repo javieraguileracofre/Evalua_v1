@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -31,12 +32,21 @@ def _redirect(
     msg: str | None = None,
     sev: str = "info",
     status_code: int = status.HTTP_303_SEE_OTHER,
+    query_params: dict[str, Any] | None = None,
     **path_params: Any,
 ) -> RedirectResponse:
     url = str(request.url_for(route_name, **path_params))
+    qp: dict[str, Any] = {}
     if msg:
+        qp["msg"] = msg
+        qp["sev"] = sev
+    if query_params:
+        for k, v in query_params.items():
+            if v is not None:
+                qp[k] = v
+    if qp:
         sep = "&" if "?" in url else "?"
-        url = f"{url}{sep}msg={msg}&sev={sev}"
+        url = f"{url}{sep}{urlencode(qp)}"
     return RedirectResponse(url=url, status_code=status_code)
 
 
@@ -277,6 +287,11 @@ def postventa_casos_lista(
 def postventa_caso_nuevo_form(
     request: Request,
     cliente_id: int | None = Query(None),
+    titulo: str | None = Query(None),
+    descripcion: str | None = Query(None),
+    categoria: str | None = Query(None),
+    prioridad: str | None = Query(None),
+    origen: str | None = Query(None),
     msg: str | None = Query(None),
     sev: str = Query("info"),
     db: Session = Depends(get_db),
@@ -290,6 +305,11 @@ def postventa_caso_nuevo_form(
             "request": request,
             "clientes": clientes,
             "cliente_id": cliente_id,
+            "titulo": titulo or "",
+            "descripcion": descripcion or "",
+            "categoria": categoria or "CONSULTA",
+            "prioridad": prioridad or "MEDIA",
+            "origen": origen or "INTERNO",
             "msg": msg,
             "sev": sev,
             "active_menu": "postventa",
@@ -310,6 +330,35 @@ def postventa_caso_nuevo_post(
 ):
     if (redir := guard_operacion_mutacion(request)) is not None:
         return redir
+    if not cliente_id:
+        return _redirect(
+            request,
+            "postventa_caso_nuevo",
+            msg="Debe seleccionar un cliente.",
+            sev="warning",
+            query_params={
+                "titulo": titulo,
+                "descripcion": descripcion,
+                "categoria": categoria,
+                "prioridad": prioridad,
+                "origen": origen,
+            },
+        )
+    cliente = crud_cliente.get_cliente(db, cliente_id)
+    if not cliente:
+        return _redirect(
+            request,
+            "postventa_caso_nuevo",
+            msg="Debe seleccionar un cliente.",
+            sev="warning",
+            query_params={
+                "titulo": titulo,
+                "descripcion": descripcion,
+                "categoria": categoria,
+                "prioridad": prioridad,
+                "origen": origen,
+            },
+        )
     try:
         caso = crud_postventa.crear_caso(
             db,
@@ -326,8 +375,16 @@ def postventa_caso_nuevo_post(
         return _redirect(
             request,
             "postventa_caso_nuevo",
-            msg=public_error_message(exc, default="No se pudo crear el caso."),
+            msg="No se pudo crear el caso. Verifique que la migración Postventa CRM esté aplicada.",
             sev="danger",
+            query_params={
+                "cliente_id": cliente_id,
+                "titulo": titulo,
+                "descripcion": descripcion,
+                "categoria": categoria,
+                "prioridad": prioridad,
+                "origen": origen,
+            },
         )
     return _redirect_caso(request, caso.id, msg="Caso creado correctamente.", sev="success")
 
