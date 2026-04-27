@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import TYPE_CHECKING, List, Optional
 
 from schemas.comercial.leasing_amortizacion import AmortizacionCuota
@@ -11,10 +11,38 @@ from schemas.comercial.leasing_amortizacion import AmortizacionCuota
 if TYPE_CHECKING:
     from models.comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion
 
+# Límite contractual razonable (evita overflow en fechas: año máximo 9999 en datetime.date).
+MAX_PLAZO_MESES = 1200
+
+
+def _int_meses(valor: object, etiqueta: str, *, minimo: int, maximo: int) -> int:
+    if isinstance(valor, bool):
+        raise ValueError(f"{etiqueta} no es válido.")
+    if valor is None:
+        raise ValueError(f"{etiqueta} es requerido.")
+    if isinstance(valor, int):
+        n = valor
+    else:
+        try:
+            n = int(Decimal(str(valor)))
+        except (InvalidOperation, ValueError, TypeError, ArithmeticError) as exc:
+            raise ValueError(f"{etiqueta} debe ser un número entero válido.") from exc
+    if n < minimo:
+        raise ValueError(f"{etiqueta} debe ser mayor o igual a {minimo}.")
+    if n > maximo:
+        raise ValueError(f"{etiqueta} excede el máximo permitido ({maximo} meses). Revise el dato guardado.")
+    return n
+
 
 def _sumar_meses(fecha: date, meses: int) -> date:
     if fecha is None:
         raise ValueError("fecha_inicio es requerida para calcular fechas de cuotas.")
+
+    if isinstance(meses, bool):
+        raise ValueError("El desplazamiento en meses no es válido.")
+    meses = int(meses)
+    if meses < 0:
+        raise ValueError("El desplazamiento en meses no puede ser negativo.")
 
     year = fecha.year + (fecha.month - 1 + meses) // 12
     month = (fecha.month - 1 + meses) % 12 + 1
@@ -38,7 +66,13 @@ def _sumar_meses(fecha: date, meses: int) -> date:
     if day > max_day:
         day = max_day
 
-    return date(year, month, day)
+    try:
+        return date(year, month, day)
+    except ValueError as exc:
+        raise ValueError(
+            "Las fechas de la tabla de amortización salen del rango permitido. "
+            "Revise plazo, períodos de gracia y fecha de inicio."
+        ) from exc
 
 
 def _q(v: Decimal | float | int) -> Decimal:
@@ -55,7 +89,7 @@ def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> Li
     """
     Tabla de amortización leasing financiero (tasa nominal anual / 12, cuotas mensuales).
     """
-    if cotizacion.plazo is None or cotizacion.plazo <= 0:
+    if cotizacion.plazo is None:
         raise ValueError("La cotización debe tener un plazo > 0.")
 
     monto_base = cotizacion.monto_financiado or cotizacion.valor_neto or cotizacion.monto
@@ -67,10 +101,18 @@ def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> Li
     tasa_anual = Decimal(str(cotizacion.tasa)) if cotizacion.tasa is not None else Decimal("0")
     i = _q4(tasa_anual / Decimal("12")) if tasa_anual > 0 else Decimal("0")
 
-    total_periodos = cotizacion.plazo
-    periodos_gracia = cotizacion.periodos_gracia or 0
-    if periodos_gracia < 0:
-        periodos_gracia = 0
+    total_periodos = _int_meses(
+        cotizacion.plazo,
+        "El plazo",
+        minimo=1,
+        maximo=MAX_PLAZO_MESES,
+    )
+    periodos_gracia = _int_meses(
+        cotizacion.periodos_gracia if cotizacion.periodos_gracia is not None else 0,
+        "Los períodos de gracia",
+        minimo=0,
+        maximo=MAX_PLAZO_MESES,
+    )
 
     residual = _q(cotizacion.opcion_compra or 0)
     if residual < 0:

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -61,3 +62,17 @@ def test_validaciones_amortizacion(kwargs, mensaje):
     cotizacion = _cotizacion_base(**kwargs)
     with pytest.raises(ValueError, match=mensaje):
         calcular_tabla_amortizacion(cotizacion)
+
+
+def test_plazo_extremo_con_fecha_no_provoca_year_out_of_range():
+    """Evita error críptico tipo 'year 10000 is out of range' en producción."""
+    cotizacion = _cotizacion_base(plazo=50_000, fecha_inicio=date(2026, 4, 1))
+    with pytest.raises(ValueError, match="excede el máximo permitido"):
+        calcular_tabla_amortizacion(cotizacion)
+
+
+def test_fechas_amortizacion_contrato_tipico():
+    cotizacion = _cotizacion_base(fecha_inicio=date(2026, 1, 31))
+    tabla = calcular_tabla_amortizacion(cotizacion)
+    assert tabla[0].fecha_cuota == date(2026, 2, 28)
+    assert tabla[-1].fecha_cuota == date(2026, 9, 30)
