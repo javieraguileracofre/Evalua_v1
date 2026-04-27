@@ -183,6 +183,22 @@ def fondos_rendir_hub(
             "msg": public_error_message(e),
             "cuentas": {},
         }
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Fondos rendir hub: error en diagnosticar_setup_contable")
+        setup_contable = {
+            "ok": False,
+            "msg": "Diagnóstico contable no disponible temporalmente.",
+            "cuentas": {},
+        }
+        if not msg_q:
+            msg_q = public_error_message(
+                exc,
+                default=(
+                    "Hub cargado con datos parciales. Verifique la migración de transporte/fondos "
+                    "(112/113) y la consistencia de esquema."
+                ),
+            )
+            sev_q = "warning"
     return templates.TemplateResponse(
         "fondos_rendir/hub.html",
         {
