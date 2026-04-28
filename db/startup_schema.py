@@ -342,6 +342,7 @@ def _ensure_plan_cuenta_minima_for_contabilidad_seed(engine: Engine) -> None:
     ('620101', 'MANTENCION Y REPARACIONES', 3, NULL, 'GASTO', 'GASTO_VENTA', 'DEUDORA', TRUE, TRUE, 'ACTIVO', 'Mantencion y reparaciones'),
     ('113701', 'CUENTAS POR COBRAR LEASING FINANCIERO', 3, NULL, 'ACTIVO', 'ACTIVO_CORRIENTE', 'DEUDORA', TRUE, FALSE, 'ACTIVO', 'Principal leasing financiero'),
     ('210701', 'OBLIGACIONES LEASING FINANCIERO', 3, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'Pasivo leasing financiero'),
+    ('210702', 'INTERESES DIFERIDOS LEASING FINANCIERO', 3, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'Intereses financieros por devengar de leasing financiero'),
     ('410701', 'INGRESOS FINANCIEROS LEASING', 3, NULL, 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', TRUE, FALSE, 'ACTIVO', 'Intereses leasing financiero')
     ON CONFLICT (codigo) DO UPDATE SET
         nombre = EXCLUDED.nombre,
@@ -453,6 +454,12 @@ def _ensure_plan_cuenta_minima_for_contabilidad_seed(engine: Engine) -> None:
     UPDATE fin.plan_cuenta h
        SET cuenta_padre_id = p.id
       FROM fin.plan_cuenta p
+     WHERE h.codigo = '210702'
+       AND p.codigo = '210000';
+
+    UPDATE fin.plan_cuenta h
+       SET cuenta_padre_id = p.id
+      FROM fin.plan_cuenta p
      WHERE h.codigo = '410701'
        AND p.codigo = '410000';
     """
@@ -515,6 +522,12 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
                         FROM fin.plan_cuenta h
                         JOIN fin.plan_cuenta p ON p.id = h.cuenta_padre_id
                         WHERE h.codigo = '210701' AND p.codigo = '210000'
+                    )
+                    AND EXISTS (
+                        SELECT 1
+                        FROM fin.plan_cuenta h
+                        JOIN fin.plan_cuenta p ON p.id = h.cuenta_padre_id
+                        WHERE h.codigo = '210702' AND p.codigo = '210000'
                     )
                     AND EXISTS (
                         SELECT 1

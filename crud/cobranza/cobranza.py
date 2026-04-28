@@ -7,7 +7,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import case, func, inspect, select
+from sqlalchemy import case, func, inspect, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from models import Cliente, CuentaPorCobrar, PagoCliente

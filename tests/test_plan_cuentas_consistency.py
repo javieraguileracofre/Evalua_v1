@@ -79,6 +79,7 @@ def test_seed_089_contiene_cuentas_minimas_requeridas() -> None:
         "210110",
         "210201",
         "210701",
+        "210702",
         "310101",
         "310201",
         "310301",

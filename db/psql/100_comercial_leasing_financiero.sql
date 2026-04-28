@@ -19,6 +19,8 @@ FROM (VALUES
      'Principal / saldo arrendamiento financiero por cobrar al cliente.'),
     ('210701', 'OBLIGACIONES LEASING FINANCIERO', 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', '210000',
      'Reconocimiento inicial (espejo contable) / ajustes de pasivo según política interna.'),
+    ('210702', 'INTERESES DIFERIDOS LEASING FINANCIERO', 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA', '210000',
+     'Intereses financieros por devengar hasta el cobro o devengo de cada cuota.'),
     ('410701', 'INGRESOS FINANCIEROS LEASING', 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA', '410000',
      'Intereses devengados / cobrados en operaciones de leasing financiero.')
 ) AS v(codigo, nombre, tipo, clasificacion, naturaleza, parent_codigo, descripcion)
@@ -46,6 +48,14 @@ INSERT INTO fin.plan_cuenta (
     codigo, nombre, nivel, cuenta_padre_id, tipo, clasificacion, naturaleza,
     acepta_movimiento, requiere_centro_costo, estado, descripcion
 )
+SELECT '210702', 'INTERESES DIFERIDOS LEASING FINANCIERO', 3, NULL, 'PASIVO', 'PASIVO_CORRIENTE', 'ACREEDORA',
+       TRUE, FALSE, 'ACTIVO', 'Intereses financieros por devengar de leasing financiero'
+WHERE NOT EXISTS (SELECT 1 FROM fin.plan_cuenta WHERE codigo = '210702');
+
+INSERT INTO fin.plan_cuenta (
+    codigo, nombre, nivel, cuenta_padre_id, tipo, clasificacion, naturaleza,
+    acepta_movimiento, requiere_centro_costo, estado, descripcion
+)
 SELECT '410701', 'INGRESOS FINANCIEROS LEASING', 3, NULL, 'INGRESO', 'INGRESO_OPERACIONAL', 'ACREEDORA',
        TRUE, FALSE, 'ACTIVO', 'Intereses leasing financiero'
 WHERE NOT EXISTS (SELECT 1 FROM fin.plan_cuenta WHERE codigo = '410701');
@@ -61,6 +71,12 @@ UPDATE fin.plan_cuenta h
 SET cuenta_padre_id = p.id
 FROM fin.plan_cuenta p
 WHERE h.codigo = '210701'
+  AND p.codigo = '210000';
+
+UPDATE fin.plan_cuenta h
+SET cuenta_padre_id = p.id
+FROM fin.plan_cuenta p
+WHERE h.codigo = '210702'
   AND p.codigo = '210000';
 
 UPDATE fin.plan_cuenta h
@@ -95,9 +111,27 @@ INSERT INTO fin.config_contable (
     codigo_evento, nombre_evento, lado, codigo_cuenta, orden,
     requiere_centro_costo, requiere_documento, estado, descripcion
 )
+SELECT 'LEASING_FIN_ORIGINACION', 'Originacion leasing financiero', 'HABER', '210702', 2,
+       FALSE, TRUE, 'ACTIVO', 'Intereses financieros diferidos por devengar'
+WHERE EXISTS (SELECT 1 FROM fin.plan_cuenta WHERE codigo = '210702')
+ON CONFLICT (codigo_evento, lado, orden) DO NOTHING;
+
+INSERT INTO fin.config_contable (
+    codigo_evento, nombre_evento, lado, codigo_cuenta, orden,
+    requiere_centro_costo, requiere_documento, estado, descripcion
+)
 SELECT 'LEASING_FIN_COBRO_CUOTA', 'Cobro cuota leasing', 'DEBE', '110201', 1,
        FALSE, TRUE, 'ACTIVO', 'Ingreso efectivo / banco'
 WHERE EXISTS (SELECT 1 FROM fin.plan_cuenta WHERE codigo = '110201')
+ON CONFLICT (codigo_evento, lado, orden) DO NOTHING;
+
+INSERT INTO fin.config_contable (
+    codigo_evento, nombre_evento, lado, codigo_cuenta, orden,
+    requiere_centro_costo, requiere_documento, estado, descripcion
+)
+SELECT 'LEASING_FIN_COBRO_CUOTA', 'Cobro cuota leasing', 'DEBE', '210702', 2,
+       FALSE, TRUE, 'ACTIVO', 'Liberacion de intereses financieros diferidos'
+WHERE EXISTS (SELECT 1 FROM fin.plan_cuenta WHERE codigo = '210702')
 ON CONFLICT (codigo_evento, lado, orden) DO NOTHING;
 
 INSERT INTO fin.config_contable (
@@ -140,9 +174,27 @@ INSERT INTO fin.config_contable_detalle_modulo (
     modulo, submodulo, tipo_documento, codigo_evento, nombre_evento, lado, codigo_cuenta, orden,
     requiere_centro_costo, requiere_documento, requiere_cliente, requiere_proveedor, estado, descripcion
 )
+SELECT 'COMERCIAL', 'LEASING_FIN', 'ORIGINACION', 'LEASING_FIN_ORIGINACION', 'Originacion leasing', 'HABER', '210702', 2,
+       FALSE, TRUE, TRUE, FALSE, 'ACTIVO', 'Haber intereses diferidos leasing'
+WHERE EXISTS (SELECT 1 FROM fin.plan_cuenta WHERE codigo = '210702')
+ON CONFLICT (modulo, submodulo, tipo_documento, codigo_evento, lado, orden) DO NOTHING;
+
+INSERT INTO fin.config_contable_detalle_modulo (
+    modulo, submodulo, tipo_documento, codigo_evento, nombre_evento, lado, codigo_cuenta, orden,
+    requiere_centro_costo, requiere_documento, requiere_cliente, requiere_proveedor, estado, descripcion
+)
 SELECT 'COMERCIAL', 'LEASING_FIN', 'COBRO_CUOTA', 'LEASING_FIN_COBRO_CUOTA', 'Cobro cuota leasing', 'DEBE', '110201', 1,
        FALSE, TRUE, TRUE, FALSE, 'ACTIVO', 'Entrada tesorería'
 WHERE EXISTS (SELECT 1 FROM fin.plan_cuenta WHERE codigo = '110201')
+ON CONFLICT (modulo, submodulo, tipo_documento, codigo_evento, lado, orden) DO NOTHING;
+
+INSERT INTO fin.config_contable_detalle_modulo (
+    modulo, submodulo, tipo_documento, codigo_evento, nombre_evento, lado, codigo_cuenta, orden,
+    requiere_centro_costo, requiere_documento, requiere_cliente, requiere_proveedor, estado, descripcion
+)
+SELECT 'COMERCIAL', 'LEASING_FIN', 'COBRO_CUOTA', 'LEASING_FIN_COBRO_CUOTA', 'Cobro cuota leasing', 'DEBE', '210702', 2,
+       FALSE, TRUE, TRUE, FALSE, 'ACTIVO', 'Liberacion intereses diferidos'
+WHERE EXISTS (SELECT 1 FROM fin.plan_cuenta WHERE codigo = '210702')
 ON CONFLICT (modulo, submodulo, tipo_documento, codigo_evento, lado, orden) DO NOTHING;
 
 INSERT INTO fin.config_contable_detalle_modulo (

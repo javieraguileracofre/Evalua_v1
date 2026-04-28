@@ -83,6 +83,79 @@ def _en_horario_habil_chile(now: datetime | None = None) -> bool:
     return 9 <= now.hour < 18
 
 
+def _safe_read(db: Session, label: str, fallback: Any, fn):
+    try:
+        return fn()
+    except Exception:
+        logger.exception("Cobranza: falló %s; se usa fallback para mantener la vista operativa.", label)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return fallback
+
+
+def _resumen_global_vacio() -> dict[str, Any]:
+    return {
+        "total_documentos": 0,
+        "total_monto": 0,
+        "total_saldo": 0,
+        "total_saldo_contable": 0,
+    }
+
+
+def _kpis_cobranza_vacios() -> dict[str, Any]:
+    return {
+        "saldo_total_num": 0,
+        "saldo_total_fmt": "$ 0",
+        "docs_con_saldo": 0,
+        "clientes_con_saldo": 0,
+        "docs_vencidos": 0,
+    }
+
+
+def _email_kpis_vacios() -> dict[str, int]:
+    return {"enviados_24h": 0, "errores_24h": 0, "enviados_7d": 0, "errores_7d": 0}
+
+
+def _aging_vacio() -> dict[str, Any]:
+    return {
+        "saldo_corriente": 0,
+        "saldo_corriente_fmt": "$ 0",
+        "docs_corriente": 0,
+        "saldo_proximos_7": 0,
+        "saldo_proximos_7_fmt": "$ 0",
+        "docs_proximos_7": 0,
+        "saldo_venc_1_30": 0,
+        "saldo_venc_1_30_fmt": "$ 0",
+        "docs_venc_1_30": 0,
+        "saldo_venc_31_60": 0,
+        "saldo_venc_31_60_fmt": "$ 0",
+        "docs_venc_31_60": 0,
+        "saldo_venc_61_90": 0,
+        "saldo_venc_61_90_fmt": "$ 0",
+        "docs_venc_61_90": 0,
+        "saldo_venc_mas_90": 0,
+        "saldo_venc_mas_90_fmt": "$ 0",
+        "docs_venc_mas_90": 0,
+        "saldo_vencido_total": 0,
+        "saldo_vencido_total_fmt": "$ 0",
+        "docs_vencidos_total": 0,
+    }
+
+
+def _recuperacion_vacia() -> dict[str, Any]:
+    return {
+        "recuperado_monto": 0,
+        "recuperado_monto_fmt": "$ 0",
+        "recuperado_cant_pagos": 0,
+        "recuperado_prev_monto": 0,
+        "recuperado_prev_monto_fmt": "$ 0",
+        "recuperado_variacion_pct": 0,
+        "recuperado_dias": 30,
+    }
+
+
 @router.get("/cobranza", response_class=HTMLResponse, name="cobranza_resumen")
 def cobranza_resumen(
     request: Request,
@@ -92,12 +165,24 @@ def cobranza_resumen(
 ):
     if (redir := guard_finanzas_consulta(request)) is not None:
         return redir
+    resumen_clientes = _safe_read(
+        db,
+        "resumen_cobranza_por_cliente",
+        [],
+        lambda: crud_cobranza.resumen_cobranza_por_cliente(db),
+    )
+    resumen_global = _safe_read(
+        db,
+        "resumen_cobranza_general",
+        _resumen_global_vacio(),
+        lambda: crud_cobranza.resumen_cobranza_general(db),
+    )
     return templates.TemplateResponse(
         "cobranza/cobranza_resumen.html",
         {
             "request": request,
-            "resumen_clientes": crud_cobranza.resumen_cobranza_por_cliente(db),
-            "resumen_global": crud_cobranza.resumen_cobranza_general(db),
+            "resumen_clientes": resumen_clientes,
+            "resumen_global": resumen_global,
             "has_dashboard": True,
             "msg": msg,
             "sev": sev,
@@ -115,13 +200,48 @@ def cobranza_dashboard(
 ):
     if (redir := guard_finanzas_consulta(request)) is not None:
         return redir
-    kpis = crud_cobranza.obtener_kpis_dashboard_cobranza(db)
-    top_deudores = crud_cobranza.obtener_top_deudores_dashboard(db, limit=10)
-    email_kpis = crud_cobranza.obtener_kpis_email_dashboard(db)
-    ultimos_emails = crud_cobranza.obtener_ultimos_emails_dashboard(db, limit=12)
-    aging = crud_cobranza.obtener_aging_saldos_dashboard(db)
-    recuperacion = crud_cobranza.obtener_recuperacion_reciente_dashboard(db)
-    proximos_venc = crud_cobranza.obtener_proximos_vencimientos_dashboard(db, limit=14)
+    kpis = _safe_read(
+        db,
+        "obtener_kpis_dashboard_cobranza",
+        _kpis_cobranza_vacios(),
+        lambda: crud_cobranza.obtener_kpis_dashboard_cobranza(db),
+    )
+    top_deudores = _safe_read(
+        db,
+        "obtener_top_deudores_dashboard",
+        [],
+        lambda: crud_cobranza.obtener_top_deudores_dashboard(db, limit=10),
+    )
+    email_kpis = _safe_read(
+        db,
+        "obtener_kpis_email_dashboard",
+        _email_kpis_vacios(),
+        lambda: crud_cobranza.obtener_kpis_email_dashboard(db),
+    )
+    ultimos_emails = _safe_read(
+        db,
+        "obtener_ultimos_emails_dashboard",
+        [],
+        lambda: crud_cobranza.obtener_ultimos_emails_dashboard(db, limit=12),
+    )
+    aging = _safe_read(
+        db,
+        "obtener_aging_saldos_dashboard",
+        _aging_vacio(),
+        lambda: crud_cobranza.obtener_aging_saldos_dashboard(db),
+    )
+    recuperacion = _safe_read(
+        db,
+        "obtener_recuperacion_reciente_dashboard",
+        _recuperacion_vacia(),
+        lambda: crud_cobranza.obtener_recuperacion_reciente_dashboard(db),
+    )
+    proximos_venc = _safe_read(
+        db,
+        "obtener_proximos_vencimientos_dashboard",
+        [],
+        lambda: crud_cobranza.obtener_proximos_vencimientos_dashboard(db, limit=14),
+    )
 
     saldo_total = float(kpis.get("saldo_total_num") or 0)
     top3_saldo = sum(float(d.get("saldo_num") or 0) for d in (top_deudores or [])[:3])
