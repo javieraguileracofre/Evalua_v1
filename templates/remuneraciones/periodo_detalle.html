@@ -1,0 +1,85 @@
+{% extends "layout/base.html" %}
+{% block title %}Remuneración {{ '%02d' % pr.mes }}/{{ pr.anio }} · Evalua ERP{% endblock %}
+{% block page_title %}Periodo {{ '%02d' % pr.mes }}/{{ pr.anio }}{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('remuneraciones_periodos_lista') }}">Remuneraciones</a></li>
+<li class="breadcrumb-item active">{{ '%02d' % pr.mes }}/{{ pr.anio }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <p class="text-muted mb-1">Del <strong>{{ pr.fecha_inicio }}</strong> al <strong>{{ pr.fecha_fin }}</strong></p>
+    <p class="mb-0"><span class="badge text-bg-dark">{{ pr.estado }}</span>
+      {% if pr.asiento_pago_id %}
+      <span class="badge text-bg-info ms-1">Asiento pago n.º {{ pr.asiento_pago_id }}</span>
+      {% endif %}
+    </p>
+    <p class="small text-muted mt-2 mb-0">
+      Anticipos: solo fondos <code>APROBADO</code> con <code>fecha_aprobacion</code> en el rango.
+      Bono viaje automático si parámetro <code>BONO_VIAJE_PCT_VALOR_FLETE</code> &gt; 0 (viajes <code>CERRADO</code>).
+    </p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    {% if puede_calcular and pr.estado in ('BORRADOR', 'CALCULADO') %}
+    <form method="post" action="{{ request.url_for('remuneraciones_periodo_calcular', periodo_id=pr.id) }}" onsubmit="return confirm('¿Recalcular detalle e ítems?');">
+      <button type="submit" class="btn btn-warning btn-sm">Calcular / recalcular</button>
+    </form>
+    {% endif %}
+    {% if puede_aprobar_rrhh and pr.estado in ('CALCULADO', 'EN_REVISION') %}
+    <form method="post" action="{{ request.url_for('remuneraciones_periodo_aprobar_rrhh', periodo_id=pr.id) }}">
+      <button type="submit" class="btn btn-outline-primary btn-sm">Aprobar RRHH</button>
+    </form>
+    {% endif %}
+    {% if puede_aprobar_finanzas and pr.estado == 'APROBADO_RRHH' %}
+    <form method="post" action="{{ request.url_for('remuneraciones_periodo_aprobar_finanzas', periodo_id=pr.id) }}">
+      <button type="submit" class="btn btn-outline-primary btn-sm">Aprobar Finanzas</button>
+    </form>
+    {% endif %}
+    {% if puede_cerrar_pagar and pr.estado == 'APROBADO_FINANZAS' %}
+    <form method="post" action="{{ request.url_for('remuneraciones_periodo_cerrar', periodo_id=pr.id) }}" onsubmit="return confirm('¿Cerrar periodo? Requiere periodo contable ABIERTO.');">
+      <button type="submit" class="btn btn-outline-secondary btn-sm">Cerrar</button>
+    </form>
+    {% endif %}
+    {% if puede_cerrar_pagar and pr.estado == 'CERRADO' %}
+    <form method="post" action="{{ request.url_for('remuneraciones_periodo_pagar', periodo_id=pr.id) }}" onsubmit="return confirm('¿Marcar como pagado? Requiere periodo contable ABIERTO.');">
+      <button type="submit" class="btn btn-success btn-sm">Marcar pagado</button>
+    </form>
+    {% endif %}
+    {% if puede_contratos %}
+    <a href="{{ request.url_for('remuneraciones_contrato_nuevo') }}" class="btn btn-outline-secondary btn-sm">Contrato laboral</a>
+    {% endif %}
+    <a href="{{ request.url_for('remuneraciones_periodos_lista') }}" class="btn btn-link btn-sm">Volver</a>
+  </div>
+</div>
+
+{% for d in pr.detalles %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">{{ d.empleado.nombre_completo }}</span>
+    <span class="text-muted small">Líquido: <strong>{{ d.liquido_a_pagar }}</strong></span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead class="table-light"><tr><th>Concepto</th><th class="text-end">Monto</th><th>Origen</th></tr></thead>
+        <tbody>
+          {% for it in d.items %}
+          <tr>
+            <td>{{ it.concepto.nombre if it.concepto else '—' }}</td>
+            <td class="text-end">{{ it.monto_total }}</td>
+            <td class="small text-muted">{{ it.origen or '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-muted small px-3 py-2">Sin ítems.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<p class="text-muted">Sin detalle aún. Pulse <strong>Calcular</strong> (requiere contratos laborales vigentes).</p>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "layout/base.html" %}
+{% block title %}Contrato laboral · Evalua ERP{% endblock %}
+{% block page_title %}Nuevo contrato laboral{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('remuneraciones_periodos_lista') }}">Remuneraciones</a></li>
+<li class="breadcrumb-item active">Contrato</li>
+{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+<form method="post" action="{{ request.url_for('remuneraciones_contrato_crear') }}" class="card border-0 shadow-sm" style="max-width:36rem;">
+  <div class="card-body">
+    <div class="mb-3">
+      <label class="form-label">Trabajador</label>
+      <select name="empleado_id" class="form-select" required>
+        <option value="">— Seleccione —</option>
+        {% for e in empleados %}
+        <option value="{{ e.id }}" {% if empleado_id and e.id == empleado_id %}selected{% endif %}>{{ e.nombre_completo }} ({{ e.rut }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-md-6">
+        <label class="form-label">Fecha inicio</label>
+        <input type="date" name="fecha_inicio" class="form-control" required value="{{ (form.fecha_inicio if form else '') or '' }}"/>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Fecha fin (opcional)</label>
+        <input type="date" name="fecha_fin" class="form-control" value="{{ (form.fecha_fin if form else '') or '' }}"/>
+      </div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Sueldo base</label>
+      <input type="text" name="sueldo_base" class="form-control" required placeholder="500000" value="{{ (form.sueldo_base if form else '') or '' }}"/>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Tipo contrato</label>
+      <input type="text" name="tipo_contrato" class="form-control" maxlength="40" value="{{ (form.tipo_contrato if form else '') or '' }}"/>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Jornada</label>
+      <input type="text" name="jornada" class="form-control" maxlength="40" value="{{ (form.jornada if form else '') or '' }}"/>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Centro de costo (opcional)</label>
+      <select name="centro_costo_id" class="form-select">
+        <option value="">— Ninguno —</option>
+        {% for c in centros %}
+        <option value="{{ c.id }}">{{ c.codigo }} — {{ c.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Observaciones</label>
+      <textarea name="observaciones" class="form-control" rows="2">{{ (form.observaciones if form else '') or '' }}</textarea>
+    </div>
+    <p class="small text-muted">Al crear un contrato vigente, los demás vigentes del mismo trabajador pasan a TERMINADO.</p>
+    <button type="submit" class="btn btn-primary">Guardar</button>
+    <a href="{{ request.url_for('remuneraciones_periodos_lista') }}" class="btn btn-outline-secondary">Volver</a>
+  </div>
+</form>
+{% endblock %}

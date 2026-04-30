@@ -1,0 +1,54 @@
+{% extends "layout/base.html" %}
+{% block title %}Remuneraciones · Evalua ERP{% endblock %}
+{% block page_title %}Remuneraciones{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item active">Remuneraciones</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <p class="text-muted mb-0">Periodos mensuales. Un tenant = una empresa; sin <code>empresa_id</code> en nómina.</p>
+  <div class="d-flex flex-wrap gap-2">
+    {% if puede_contratos %}
+    <a href="{{ request.url_for('remuneraciones_contrato_nuevo') }}" class="btn btn-outline-secondary btn-sm">Nuevo contrato laboral</a>
+    {% endif %}
+    {% if puede_crear_periodo %}
+    <a href="{{ request.url_for('remuneraciones_periodo_nuevo') }}" class="btn btn-primary btn-sm">Nuevo periodo</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Periodo</th>
+            <th>Desde</th>
+            <th>Hasta</th>
+            <th>Estado</th>
+            <th class="text-end">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in periodos %}
+          <tr>
+            <td class="fw-semibold">{{ '%02d' % p.mes }}/{{ p.anio }}</td>
+            <td>{{ p.fecha_inicio }}</td>
+            <td>{{ p.fecha_fin }}</td>
+            <td><span class="badge text-bg-secondary">{{ p.estado }}</span></td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('remuneraciones_periodo_detalle', periodo_id=p.id) }}">Abrir</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-4">No hay periodos registrados.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

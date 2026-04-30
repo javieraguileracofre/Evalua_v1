@@ -16,6 +16,7 @@ from db.base_class import Base
 if TYPE_CHECKING:
     from models.fondos_rendir.fondo_rendir import FondoRendir
     from models.fondos_rendir.flota_mantencion import FlotaMantencion
+    from models.remuneraciones.models import DetalleRemuneracion
     from models.transporte.viaje import TransporteViaje
 
 
@@ -80,4 +81,8 @@ class VehiculoTransporte(Base):
         back_populates="vehiculo",
         cascade="all, delete-orphan",
         order_by="FlotaMantencion.fecha.desc()",
+    )
+    detalles_remuneracion: Mapped[list["DetalleRemuneracion"]] = relationship(
+        "DetalleRemuneracion",
+        back_populates="camion",
     )

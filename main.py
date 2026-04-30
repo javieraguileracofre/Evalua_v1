@@ -37,6 +37,8 @@ from db.startup_schema import (
     ensure_fin_config_contable_seed,
     ensure_fondos_rendir_asiento_columns,
     ensure_postventa_crm_schema,
+    ensure_remuneraciones_seed,
+    ensure_remuneraciones_schema_patch_116,
     ensure_transporte_fondos_control_schema,
     ensure_taller_ordenes_cotizacion_columns,
     ensure_vehiculo_transporte_consumo_column,
@@ -83,6 +85,7 @@ ROUTER_ORDER = [
     "ventas_pos",
     "taller",
     "fondos_rendir",
+    "remuneraciones",
     "transporte_viajes",
     "cobranza",
     "cuentas_por_pagar",
@@ -247,7 +250,9 @@ def create_app() -> FastAPI:
             ensure_fondos_rendir_asiento_columns(engine)
             ensure_vehiculo_transporte_consumo_column(engine)
             ensure_transporte_fondos_control_schema(engine)
+            ensure_remuneraciones_schema_patch_116(engine)
             ensure_auth_roles_seed(engine)
+            ensure_remuneraciones_seed(engine)
             ensure_fin_config_contable_seed(engine)
             ensure_comercial_leasing_financiero_schema(engine)
             ensure_credito_riesgo_schema(engine)

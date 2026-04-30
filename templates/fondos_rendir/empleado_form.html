@@ -22,6 +22,16 @@
     <div class="col-md-4"><label class="form-label">Cargo</label><input type="text" name="cargo" class="form-control" value="{{ empleado.cargo if empleado else '' }}"></div>
     <div class="col-md-4"><label class="form-label">Teléfono</label><input type="text" name="telefono" class="form-control" value="{{ empleado.telefono if empleado else '' }}"></div>
     <div class="col-md-4"><label class="form-label">E-mail</label><input type="email" name="email" class="form-control" value="{{ empleado.email if empleado else '' }}"></div>
+    <div class="col-12">
+      <label class="form-label">Usuario portal (opcional)</label>
+      <select name="auth_usuario_id" class="form-select">
+        <option value="">— Sin vínculo —</option>
+        {% for u in (usuarios_portal or []) %}
+        <option value="{{ u.id }}" {% if empleado and empleado.auth_usuario_id == u.id %}selected{% endif %}>{{ u.email }} — {{ u.nombre_completo }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text">Un mismo usuario solo puede enlazarse a un trabajador.</div>
+    </div>
     {% if modo == 'editar' and empleado %}
     <div class="col-12">
       <div class="form-check">

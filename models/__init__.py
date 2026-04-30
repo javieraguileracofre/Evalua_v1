@@ -113,6 +113,19 @@ from .finanzas.compras_finanzas import (
 )
 
 # ============================================================
+# REMUNERACIONES / RRHH
+# ============================================================
+
+from .remuneraciones.models import (
+    ConceptoRemuneracion,
+    ContratoLaboral,
+    DetalleRemuneracion,
+    ItemRemuneracion,
+    PeriodoRemuneracion,
+    RemuneracionParametro,
+)
+
+# ============================================================
 # FONDOS POR RENDIR / TRANSPORTE
 # ============================================================
 
@@ -190,6 +203,12 @@ __all__ = [
     "APDocumentoImpuesto",
     "APPago",
     "APPagoAplicacion",
+    "ConceptoRemuneracion",
+    "ContratoLaboral",
+    "DetalleRemuneracion",
+    "ItemRemuneracion",
+    "PeriodoRemuneracion",
+    "RemuneracionParametro",
     "Empleado",
     "VehiculoTransporte",
     "ESTADOS_FONDO",

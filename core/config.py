@@ -191,6 +191,10 @@ class Settings:
     fondo_rendir_cuenta_caja: str
     fondo_rendir_cuenta_gasto: str
 
+    # Contabilidad — pago nómina (códigos en fin.plan_cuenta)
+    remuneracion_cuenta_sueldos_por_pagar: str
+    remuneracion_cuenta_banco: str
+
     @property
     def is_dev(self) -> bool:
         return self.app_env.lower() in {"dev", "development", "local"}
@@ -301,6 +305,8 @@ class Settings:
             fondo_rendir_cuenta_anticipo=os.getenv("FONDO_RENDIR_CUENTA_ANTICIPO", "").strip(),
             fondo_rendir_cuenta_caja=os.getenv("FONDO_RENDIR_CUENTA_CAJA", "").strip(),
             fondo_rendir_cuenta_gasto=os.getenv("FONDO_RENDIR_CUENTA_GASTO", "").strip(),
+            remuneracion_cuenta_sueldos_por_pagar=os.getenv("REMUNERACION_CUENTA_SUELDOS_POR_PAGAR", "").strip(),
+            remuneracion_cuenta_banco=os.getenv("REMUNERACION_CUENTA_BANCO", "").strip(),
         )
 
 

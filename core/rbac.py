@@ -59,6 +59,107 @@ def usuario_puede_mutar_modulos_operacion(auth: dict[str, Any] | None) -> bool:
     )
 
 
+def usuario_puede_consultar_remuneraciones(auth: dict[str, Any] | None) -> bool:
+    return (
+        usuario_es_admin(auth)
+        or usuario_tiene_rol(auth, "RRHH")
+        or usuario_tiene_rol(auth, "FINANZAS")
+        or usuario_tiene_rol(auth, "CONSULTA")
+    )
+
+
+def usuario_puede_calcular_remuneraciones(auth: dict[str, Any] | None) -> bool:
+    return usuario_es_admin(auth) or usuario_tiene_rol(auth, "RRHH")
+
+
+def usuario_puede_gestionar_contratos_laborales(auth: dict[str, Any] | None) -> bool:
+    return usuario_es_admin(auth) or usuario_tiene_rol(auth, "RRHH")
+
+
+def usuario_puede_aprobar_remuneraciones_rrhh(auth: dict[str, Any] | None) -> bool:
+    return usuario_es_admin(auth) or usuario_tiene_rol(auth, "RRHH")
+
+
+def usuario_puede_aprobar_remuneraciones_finanzas(auth: dict[str, Any] | None) -> bool:
+    return usuario_es_admin(auth) or usuario_tiene_rol(auth, "FINANZAS")
+
+
+def usuario_puede_cerrar_o_pagar_remuneraciones(auth: dict[str, Any] | None) -> bool:
+    return usuario_es_admin(auth) or usuario_tiene_rol(auth, "FINANZAS")
+
+
+def usuario_puede_anular_remuneraciones(auth: dict[str, Any] | None) -> bool:
+    return usuario_es_admin(auth) or usuario_tiene_rol(auth, "RRHH") or usuario_tiene_rol(auth, "FINANZAS")
+
+
+def guard_remuneraciones_consulta(
+    request: Request,
+    *,
+    mensaje: str | None = None,
+) -> RedirectResponse | None:
+    auth = getattr(request.state, "auth_user", None)
+    if usuario_puede_consultar_remuneraciones(auth):
+        return None
+    msg = mensaje or (
+        "No tiene permiso para ver remuneraciones "
+        "(se requiere rol Administrador, RRHH, Finanzas o Consulta)."
+    )
+    q = urlencode({"msg": msg, "sev": "danger"})
+    return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def guard_remuneraciones_calcular(
+    request: Request,
+    *,
+    mensaje: str | None = None,
+) -> RedirectResponse | None:
+    auth = getattr(request.state, "auth_user", None)
+    if usuario_puede_calcular_remuneraciones(auth):
+        return None
+    msg = mensaje or "No tiene permiso para calcular remuneraciones (Administrador o RRHH)."
+    q = urlencode({"msg": msg, "sev": "danger"})
+    return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def guard_remuneraciones_aprobacion_rrhh(
+    request: Request,
+    *,
+    mensaje: str | None = None,
+) -> RedirectResponse | None:
+    auth = getattr(request.state, "auth_user", None)
+    if usuario_puede_aprobar_remuneraciones_rrhh(auth):
+        return None
+    msg = mensaje or "No tiene permiso para aprobar como RRHH."
+    q = urlencode({"msg": msg, "sev": "danger"})
+    return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def guard_remuneraciones_aprobacion_finanzas(
+    request: Request,
+    *,
+    mensaje: str | None = None,
+) -> RedirectResponse | None:
+    auth = getattr(request.state, "auth_user", None)
+    if usuario_puede_aprobar_remuneraciones_finanzas(auth):
+        return None
+    msg = mensaje or "No tiene permiso para aprobar como Finanzas."
+    q = urlencode({"msg": msg, "sev": "danger"})
+    return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def guard_remuneraciones_cerrar_pagar(
+    request: Request,
+    *,
+    mensaje: str | None = None,
+) -> RedirectResponse | None:
+    auth = getattr(request.state, "auth_user", None)
+    if usuario_puede_cerrar_o_pagar_remuneraciones(auth):
+        return None
+    msg = mensaje or "No tiene permiso para cerrar o marcar pagada la nómina (Administrador o Finanzas)."
+    q = urlencode({"msg": msg, "sev": "danger"})
+    return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)
+
+
 def guard_finanzas_consulta(
     request: Request,
     *,

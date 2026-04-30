@@ -1,0 +1,29 @@
+{% extends "layout/base.html" %}
+{% block title %}Nuevo periodo remuneración · Evalua ERP{% endblock %}
+{% block page_title %}Nuevo periodo de remuneración{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('remuneraciones_periodos_lista') }}">Remuneraciones</a></li>
+<li class="breadcrumb-item active">Nuevo</li>
+{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+<form method="post" action="{{ request.url_for('remuneraciones_periodo_crear') }}" class="card border-0 shadow-sm" style="max-width:28rem;">
+  <div class="card-body">
+    <div class="mb-3">
+      <label class="form-label">Año</label>
+      <input type="number" name="anio" class="form-control" required min="2000" max="2100" value="{{ anio or '' }}"/>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Mes (1–12)</label>
+      <input type="number" name="mes" class="form-control" required min="1" max="12" value="{{ mes or '' }}"/>
+    </div>
+    <p class="small text-muted">No se permite duplicar el mismo año/mes. Debe existir <code>fin.periodo</code> ABIERTO para cerrar o pagar.</p>
+    <button type="submit" class="btn btn-primary">Crear</button>
+    <a href="{{ request.url_for('remuneraciones_periodos_lista') }}" class="btn btn-outline-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

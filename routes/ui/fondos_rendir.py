@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
 from core.rbac import guard_finanzas_consulta, guard_finanzas_mutacion
+from crud.auth import usuarios as crud_auth
 from crud import fondos_rendir as crud_fr
 from db.session import get_db
 from services.fondos_rendir import (
@@ -64,6 +65,11 @@ def _parse_int(v: str | None) -> int | None:
         return int(str(v).strip(), 10)
     except ValueError:
         return None
+
+
+def _parse_optional_user_id(v: Any) -> int | None:
+    n = _parse_int(str(v) if v is not None else None)
+    return n if n and n > 0 else None
 
 
 def _form_to_dict(form: Any) -> dict[str, Any]:
@@ -240,9 +246,10 @@ def fondos_rendir_empleados(
 
 
 @router.get("/empleados/nuevo", response_class=HTMLResponse, name="fondos_rendir_empleado_nuevo")
-def fondos_rendir_empleado_nuevo(request: Request):
+def fondos_rendir_empleado_nuevo(request: Request, db: Session = Depends(get_db)):
     if (redir := guard_finanzas_mutacion(request)) is not None:
         return redir
+    usuarios_portal = crud_auth.listar_usuarios(db)
     return templates.TemplateResponse(
         "fondos_rendir/empleado_form.html",
         {
@@ -250,6 +257,7 @@ def fondos_rendir_empleado_nuevo(request: Request):
             "active_menu": "fondos_rendir",
             "empleado": None,
             "modo": "nuevo",
+            "usuarios_portal": usuarios_portal,
         },
     )
 
@@ -270,6 +278,7 @@ async def fondos_rendir_empleado_crear(
             cargo=str(fd.get("cargo") or "") or None,
             email=str(fd.get("email") or "") or None,
             telefono=str(fd.get("telefono") or "") or None,
+            auth_usuario_id=_parse_optional_user_id(fd.get("auth_usuario_id")),
         )
         db.commit()
     except ValueError as e:
@@ -303,6 +312,7 @@ def fondos_rendir_empleado_editar(
     e = crud_fr.obtener_empleado(db, empleado_id)
     if not e:
         return _redirect(request, "fondos_rendir_empleados", msg="Empleado no encontrado.", sev="warning")
+    usuarios_portal = crud_auth.listar_usuarios(db)
     return templates.TemplateResponse(
         "fondos_rendir/empleado_form.html",
         {
@@ -310,6 +320,7 @@ def fondos_rendir_empleado_editar(
             "active_menu": "fondos_rendir",
             "empleado": e,
             "modo": "editar",
+            "usuarios_portal": usuarios_portal,
         },
     )
 
@@ -334,6 +345,7 @@ async def fondos_rendir_empleado_actualizar(
             email=str(fd.get("email") or "") or None,
             telefono=str(fd.get("telefono") or "") or None,
             activo=activo,
+            auth_usuario_id=_parse_optional_user_id(fd.get("auth_usuario_id")),
         )
         db.commit()
     except ValueError as e:

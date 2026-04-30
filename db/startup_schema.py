@@ -16,6 +16,7 @@ _ROLES_SEED: tuple[tuple[str, str, str], ...] = (
     ("ADMIN", "Administrador", "Acceso completo a la suite ERP."),
     ("OPERACIONES", "Operaciones", "Ventas, taller, inventario y maestros operativos."),
     ("FINANZAS", "Finanzas", "Cobranza, cuentas por pagar y contabilidad."),
+    ("RRHH", "Recursos humanos", "Nómina, contratos laborales y remuneraciones."),
     ("CONSULTA", "Consulta", "Rol base para políticas de solo lectura (evolución futura)."),
 )
 
@@ -38,6 +39,7 @@ _PATCH_109 = _ROOT / "db" / "psql" / "109_leasing_financiero_workflow.sql"
 _PATCH_110 = _ROOT / "db" / "psql" / "110_credito_riesgo_flujos.sql"
 _PATCH_111 = _ROOT / "db" / "psql" / "111_postventa_crm_cases.sql"
 _PATCH_112 = _ROOT / "db" / "psql" / "112_transporte_fondos_control.sql"
+_PATCH_116 = _ROOT / "db" / "psql" / "116_remuneraciones_vinculos_y_asiento.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -794,6 +796,19 @@ def ensure_postventa_crm_schema(engine: Engine) -> None:
         raise
 
 
+def ensure_remuneraciones_schema_patch_116(engine: Engine) -> None:
+    """Columnas empleados.auth_usuario_id, periodos_remuneracion.asiento_pago_id e índices."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_116.is_file():
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_116)
+        logger.info("Parche aplicado/verificado: remuneraciones vínculos y asiento (116).")
+    except Exception as exc:
+        logger.warning("No se pudo aplicar 116_remuneraciones_vinculos_y_asiento.sql. Detalle: %s", exc)
+
+
 def ensure_transporte_fondos_control_schema(engine: Engine) -> None:
     """Aplica ampliaciones idempotentes de transporte/fondos y tabla de mantenciones."""
     if engine.dialect.name != "postgresql":
@@ -805,3 +820,96 @@ def ensure_transporte_fondos_control_schema(engine: Engine) -> None:
         logger.info("Parche aplicado/verificado: transporte/fondos control (112).")
     except Exception as exc:
         logger.warning("No se pudo aplicar 112_transporte_fondos_control.sql. Detalle: %s", exc)
+
+
+def ensure_remuneraciones_seed(engine: Engine) -> None:
+    """Conceptos mínimos de remuneración y parámetro de bono por viaje (idempotente)."""
+    if not _has_table(engine, schema="public", table="conceptos_remuneracion"):
+        return
+    try:
+        from decimal import Decimal
+
+        from models.remuneraciones.models import ConceptoRemuneracion, RemuneracionParametro
+    except Exception as exc:
+        logger.debug("Modelos remuneraciones no disponibles: %s", exc)
+        return
+
+    # (codigo, nombre, tipo, imponible, tributable, legal, afecta_liquido, origen, orden)
+    conceptos: tuple[tuple, ...] = (
+        ("SUELDO_BASE", "Sueldo base", "haber_imponible", True, True, False, True, "contrato", 10),
+        ("GRATIFICACION", "Gratificación", "haber_imponible", True, True, False, True, "sistema", 20),
+        ("HORAS_EXTRAS", "Horas extras", "haber_imponible", True, True, False, True, "asistencia", 30),
+        ("BONO_VIAJE", "Bono por viaje", "haber_imponible", True, True, False, True, "viaje", 40),
+        ("BONO_KM", "Bono por kilómetros", "haber_imponible", True, True, False, True, "viaje", 50),
+        ("BONO_NOCTURNO", "Bono nocturno", "haber_imponible", True, True, False, True, "asistencia", 60),
+        ("BONO_ASISTENCIA", "Bono asistencia", "haber_no_imponible", False, False, False, True, "asistencia", 70),
+        ("VIATICO", "Viático", "haber_no_imponible", False, False, False, True, "viatico", 80),
+        ("ANTICIPO", "Anticipo (fondo por rendir)", "descuento_interno", False, False, False, True, "anticipo", 90),
+        ("AFP", "Descuento AFP", "descuento_legal", True, True, True, True, "sistema", 100),
+        ("SALUD", "Descuento salud", "descuento_legal", True, True, True, True, "sistema", 110),
+        ("AFC", "Descuento AFC", "descuento_legal", True, True, True, True, "sistema", 120),
+        ("IMPUESTO_UNICO", "Impuesto único", "descuento_legal", True, True, True, True, "sistema", 130),
+        ("PRESTAMO_EMPRESA", "Préstamo empresa", "descuento_interno", False, False, False, True, "manual", 140),
+        ("DESCUENTO_JUDICIAL", "Descuento judicial", "descuento_interno", False, False, False, True, "manual", 150),
+        ("OTROS_DESCUENTOS", "Otros descuentos", "descuento_interno", False, False, False, True, "manual", 160),
+        ("APORTE_EMPRESA_INFORMATIVO", "Aporte empresa (informativo)", "informativo", False, False, False, False, "sistema", 170),
+    )
+
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    with SessionLocal() as db:
+        try:
+            for row in conceptos:
+                cod, nombre, tipo, imp, trib, leg, liq, orig, orden = row
+                ex = db.scalars(select(ConceptoRemuneracion.id).where(ConceptoRemuneracion.codigo == cod)).first()
+                if ex is not None:
+                    continue
+                db.add(
+                    ConceptoRemuneracion(
+                        codigo=cod,
+                        nombre=nombre,
+                        tipo=tipo,
+                        imponible=imp,
+                        tributable=trib,
+                        legal=leg,
+                        afecta_liquido=liq,
+                        origen_catalogo=orig,
+                        orden=orden,
+                        activo=True,
+                    )
+                )
+            pex = db.scalars(
+                select(RemuneracionParametro.id).where(RemuneracionParametro.clave == "BONO_VIAJE_PCT_VALOR_FLETE")
+            ).first()
+            if pex is None:
+                db.add(
+                    RemuneracionParametro(
+                        clave="BONO_VIAJE_PCT_VALOR_FLETE",
+                        valor_numerico=Decimal("0"),
+                        descripcion="Porcentaje sobre suma valor_flete de viajes CERRADOS en el periodo (0 = solo manual).",
+                    )
+                )
+            for clave, val, desc in (
+                (
+                    "DESCUENTO_AFP_PCT_IMPOSABLE",
+                    Decimal("0"),
+                    "% sobre suma de ítems imponibles (0 = no automático). Orden legal típico no modelado en MVP.",
+                ),
+                (
+                    "DESCUENTO_SALUD_PCT_IMPOSABLE",
+                    Decimal("0"),
+                    "% sobre suma de ítems imponibles (0 = no automático).",
+                ),
+            ):
+                ex2 = db.scalars(select(RemuneracionParametro.id).where(RemuneracionParametro.clave == clave)).first()
+                if ex2 is None:
+                    db.add(
+                        RemuneracionParametro(
+                            clave=clave,
+                            valor_numerico=val,
+                            descripcion=desc,
+                        )
+                    )
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.warning("No se pudo sembrar conceptos/parametros de remuneración: %s", exc)

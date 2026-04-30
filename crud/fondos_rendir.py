@@ -9,10 +9,11 @@ from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session, selectinload
 
 from crud.finanzas.contabilidad_asientos import eliminar_asiento_contable
+from models.auth.usuario import Usuario
 from models.fondos_rendir.empleado import Empleado
 from models.fondos_rendir.fondo_rendir import FondoRendir, FondoRendirGasto
 from models.fondos_rendir.flota_mantencion import FlotaMantencion, TIPOS_MANTENCION
@@ -170,6 +171,14 @@ def obtener_empleado(db: Session, empleado_id: int) -> Empleado | None:
     return db.get(Empleado, empleado_id)
 
 
+def _asignar_auth_usuario_portal(db: Session, *, auth_usuario_id: int | None) -> None:
+    if auth_usuario_id is None:
+        return
+    if not db.get(Usuario, int(auth_usuario_id)):
+        raise ValueError("El usuario portal indicado no existe.")
+    db.execute(update(Empleado).where(Empleado.auth_usuario_id == int(auth_usuario_id)).values(auth_usuario_id=None))
+
+
 def crear_empleado(
     db: Session,
     *,
@@ -178,18 +187,21 @@ def crear_empleado(
     cargo: str | None = None,
     email: str | None = None,
     telefono: str | None = None,
+    auth_usuario_id: int | None = None,
 ) -> Empleado:
     r = normalizar_rut(rut)
     if not rut_valido_basico(r):
         raise ValueError("RUT con formato inválido (use 12345678-9 o 12345678-K).")
     if db.scalar(select(Empleado.id).where(Empleado.rut == r)):
         raise ValueError("Ya existe un empleado con ese RUT.")
+    _asignar_auth_usuario_portal(db, auth_usuario_id=auth_usuario_id)
     e = Empleado(
         rut=r,
         nombre_completo=nombre_completo.strip(),
         cargo=(cargo or "").strip() or None,
         email=(email or "").strip() or None,
         telefono=(telefono or "").strip() or None,
+        auth_usuario_id=int(auth_usuario_id) if auth_usuario_id is not None else None,
         activo=True,
     )
     db.add(e)
@@ -207,6 +219,7 @@ def actualizar_empleado(
     email: str | None,
     telefono: str | None,
     activo: bool,
+    auth_usuario_id: int | None = None,
 ) -> Empleado:
     e = db.get(Empleado, empleado_id)
     if not e:
@@ -217,12 +230,21 @@ def actualizar_empleado(
     otro = db.scalar(select(Empleado.id).where(Empleado.rut == r, Empleado.id != empleado_id))
     if otro:
         raise ValueError("Otro empleado ya usa ese RUT.")
+    if auth_usuario_id is not None:
+        if not db.get(Usuario, int(auth_usuario_id)):
+            raise ValueError("El usuario portal indicado no existe.")
+        db.execute(
+            update(Empleado)
+            .where(Empleado.auth_usuario_id == int(auth_usuario_id), Empleado.id != empleado_id)
+            .values(auth_usuario_id=None)
+        )
     e.rut = r
     e.nombre_completo = nombre_completo.strip()
     e.cargo = (cargo or "").strip() or None
     e.email = (email or "").strip() or None
     e.telefono = (telefono or "").strip() or None
     e.activo = activo
+    e.auth_usuario_id = int(auth_usuario_id) if auth_usuario_id is not None else None
     return e
 
 
