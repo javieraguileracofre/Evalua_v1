@@ -39,7 +39,7 @@ _PATCH_109 = _ROOT / "db" / "psql" / "109_leasing_financiero_workflow.sql"
 _PATCH_110 = _ROOT / "db" / "psql" / "110_credito_riesgo_flujos.sql"
 _PATCH_111 = _ROOT / "db" / "psql" / "111_postventa_crm_cases.sql"
 _PATCH_112 = _ROOT / "db" / "psql" / "112_transporte_fondos_control.sql"
-_PATCH_116 = _ROOT / "db" / "psql" / "116_remuneraciones_vinculos_y_asiento.sql"
+_PATCH_117 = _ROOT / "db" / "psql" / "117_remuneraciones_bootstrap.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -796,17 +796,25 @@ def ensure_postventa_crm_schema(engine: Engine) -> None:
         raise
 
 
-def ensure_remuneraciones_schema_patch_116(engine: Engine) -> None:
-    """Columnas empleados.auth_usuario_id, periodos_remuneracion.asiento_pago_id e índices."""
+def ensure_remuneraciones_bootstrap(engine: Engine) -> None:
+    """
+    Tablas y columnas de remuneraciones (117). Idempotente; necesario si AUTO_MIGRATE_ON_STARTUP=false.
+    Incluye empleados.auth_usuario_id y periodos_remuneracion.asiento_pago_id.
+    """
     if engine.dialect.name != "postgresql":
         return
-    if not _PATCH_116.is_file():
+    if not _PATCH_117.is_file():
+        logger.warning("No se encontró %s; omitiendo bootstrap remuneraciones.", _PATCH_117)
         return
     try:
-        _run_sql_patch_autocommit(engine, _PATCH_116)
-        logger.info("Parche aplicado/verificado: remuneraciones vínculos y asiento (116).")
+        _run_sql_patch_autocommit(engine, _PATCH_117)
+        logger.info("Bootstrap remuneraciones aplicado/verificado (117).")
     except Exception as exc:
-        logger.warning("No se pudo aplicar 116_remuneraciones_vinculos_y_asiento.sql. Detalle: %s", exc)
+        logger.warning(
+            "No se pudo aplicar 117_remuneraciones_bootstrap.sql (revise permisos DDL en la BD). Detalle: %s",
+            exc,
+            exc_info=True,
+        )
 
 
 def ensure_transporte_fondos_control_schema(engine: Engine) -> None:

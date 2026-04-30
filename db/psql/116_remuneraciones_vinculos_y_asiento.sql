@@ -1,5 +1,6 @@
 -- 116_remuneraciones_vinculos_y_asiento.sql
 -- Vínculo trabajador ↔ usuario portal y asiento de pago de nómina (idempotente).
+-- Nota: el bootstrap completo de tablas está en 117_remuneraciones_bootstrap.sql (aplicado en arranque vía ensure_remuneraciones_bootstrap).
 
 BEGIN;
 

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import OperationalError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.paths import TEMPLATES_DIR
@@ -74,7 +74,21 @@ def _uid(request: Request) -> int | None:
 def periodos_lista(request: Request, db: Session = Depends(get_db)):
     if (redir := guard_remuneraciones_consulta(request)) is not None:
         return redir
-    periodos = crud_rem.listar_periodos_remuneracion(db)
+    try:
+        periodos = crud_rem.listar_periodos_remuneracion(db)
+    except (ProgrammingError, OperationalError) as exc:
+        logger.exception("Remuneraciones: error de esquema o conexión al listar periodos: %s", exc)
+        db.rollback()
+        return _redirect(
+            request,
+            "home",
+            msg=(
+                "Remuneraciones: no se pudo leer la base (tablas o columnas faltantes). "
+                "Ejecute en PostgreSQL el script db/psql/117_remuneraciones_bootstrap.sql en la BD del tenant "
+                "o contacte al administrador."
+            ),
+            sev="danger",
+        )
     auth = getattr(request.state, "auth_user", None)
     return templates.TemplateResponse(
         "remuneraciones/periodos_lista.html",

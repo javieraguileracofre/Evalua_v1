@@ -38,7 +38,7 @@ from db.startup_schema import (
     ensure_fondos_rendir_asiento_columns,
     ensure_postventa_crm_schema,
     ensure_remuneraciones_seed,
-    ensure_remuneraciones_schema_patch_116,
+    ensure_remuneraciones_bootstrap,
     ensure_transporte_fondos_control_schema,
     ensure_taller_ordenes_cotizacion_columns,
     ensure_vehiculo_transporte_consumo_column,
@@ -250,7 +250,7 @@ def create_app() -> FastAPI:
             ensure_fondos_rendir_asiento_columns(engine)
             ensure_vehiculo_transporte_consumo_column(engine)
             ensure_transporte_fondos_control_schema(engine)
-            ensure_remuneraciones_schema_patch_116(engine)
+            ensure_remuneraciones_bootstrap(engine)
             ensure_auth_roles_seed(engine)
             ensure_remuneraciones_seed(engine)
             ensure_fin_config_contable_seed(engine)
@@ -264,6 +264,14 @@ def create_app() -> FastAPI:
                 raise RuntimeError("Fallo de migración automática en arranque.") from e
     else:
         logger.info("AUTO_MIGRATE_ON_STARTUP=false: se omiten create_all y ensure_* en arranque.")
+
+    # Remuneraciones: 117 es idempotente; con AUTO_MIGRATE_OFF las tablas no existirían sin esto.
+    try:
+        ensure_remuneraciones_bootstrap(engine)
+        ensure_auth_roles_seed(engine)
+        ensure_remuneraciones_seed(engine)
+    except Exception as exc:
+        logger.warning("Bootstrap remuneraciones / seed roles tras arranque: %s", exc, exc_info=True)
 
     include_ui_routers(app)
 
