@@ -5,7 +5,9 @@ from __future__ import annotations
 from calendar import monthrange
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
+from openpyxl import Workbook
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -16,6 +18,9 @@ from models.remuneraciones.models import (
     DetalleRemuneracion,
     ItemRemuneracion,
     PeriodoRemuneracion,
+    RemuneracionHorasPeriodo,
+    RemuneracionParametro,
+    RemuneracionParametroPeriodo,
 )
 
 
@@ -73,6 +78,7 @@ def obtener_periodo_remuneracion(db: Session, periodo_id: int) -> PeriodoRemuner
             selectinload(PeriodoRemuneracion.detalles)
             .selectinload(DetalleRemuneracion.items)
             .selectinload(ItemRemuneracion.concepto),
+            selectinload(PeriodoRemuneracion.horas_periodo),
         )
         .where(PeriodoRemuneracion.id == periodo_id)
     ).first()
@@ -139,3 +145,214 @@ def obtener_contrato_vigente(db: Session, empleado_id: int, ref: date | None = N
         )
         .order_by(ContratoLaboral.fecha_inicio.desc())
     ).first()
+
+
+def listar_parametros_globales(db: Session) -> list[RemuneracionParametro]:
+    return list(db.scalars(select(RemuneracionParametro).order_by(RemuneracionParametro.clave)).all())
+
+
+def listar_parametros_periodo(db: Session, periodo_id: int) -> list[RemuneracionParametroPeriodo]:
+    return list(
+        db.scalars(
+            select(RemuneracionParametroPeriodo)
+            .where(RemuneracionParametroPeriodo.periodo_remuneracion_id == periodo_id)
+            .order_by(RemuneracionParametroPeriodo.clave)
+        ).all()
+    )
+
+
+def upsert_parametro_global(
+    db: Session,
+    *,
+    clave: str,
+    valor_numerico: Decimal | None,
+    valor_texto: str | None,
+    descripcion: str | None,
+) -> RemuneracionParametro:
+    c = (clave or "").strip().upper()
+    if not c:
+        raise ValueError("Clave obligatoria.")
+    row = db.scalars(select(RemuneracionParametro).where(RemuneracionParametro.clave == c)).first()
+    if row is None:
+        row = RemuneracionParametro(clave=c)
+    row.valor_numerico = valor_numerico
+    row.valor_texto = (valor_texto or "").strip() or None
+    row.descripcion = (descripcion or "").strip() or None
+    db.add(row)
+    db.flush()
+    return row
+
+
+def upsert_parametro_periodo(
+    db: Session,
+    *,
+    periodo_id: int,
+    clave: str,
+    valor_numerico: Decimal | None,
+    valor_texto: str | None,
+    descripcion: str | None,
+) -> RemuneracionParametroPeriodo:
+    if not db.get(PeriodoRemuneracion, periodo_id):
+        raise ValueError("Periodo no encontrado.")
+    c = (clave or "").strip().upper()
+    if not c:
+        raise ValueError("Clave obligatoria.")
+    row = db.scalars(
+        select(RemuneracionParametroPeriodo).where(
+            RemuneracionParametroPeriodo.periodo_remuneracion_id == periodo_id,
+            RemuneracionParametroPeriodo.clave == c,
+        )
+    ).first()
+    if row is None:
+        row = RemuneracionParametroPeriodo(periodo_remuneracion_id=periodo_id, clave=c)
+    row.valor_numerico = valor_numerico
+    row.valor_texto = (valor_texto or "").strip() or None
+    row.descripcion = (descripcion or "").strip() or None
+    db.add(row)
+    db.flush()
+    return row
+
+
+def listar_horas_periodo(db: Session, periodo_id: int) -> list[RemuneracionHorasPeriodo]:
+    return list(
+        db.scalars(
+            select(RemuneracionHorasPeriodo)
+            .options(selectinload(RemuneracionHorasPeriodo.empleado))
+            .where(RemuneracionHorasPeriodo.periodo_remuneracion_id == periodo_id)
+            .order_by(RemuneracionHorasPeriodo.empleado_id)
+        ).all()
+    )
+
+
+def guardar_horas_periodo(
+    db: Session,
+    *,
+    periodo_id: int,
+    empleado_id: int,
+    horas_ordinarias: Decimal,
+    horas_extras: Decimal,
+    horas_nocturnas: Decimal,
+    es_ajuste_manual: bool,
+    motivo_ajuste: str | None,
+    usuario_ajuste_id: int | None,
+) -> RemuneracionHorasPeriodo:
+    if not db.get(PeriodoRemuneracion, periodo_id):
+        raise ValueError("Periodo no encontrado.")
+    if not db.get(Empleado, empleado_id):
+        raise ValueError("Empleado no encontrado.")
+    row = db.scalars(
+        select(RemuneracionHorasPeriodo).where(
+            RemuneracionHorasPeriodo.periodo_remuneracion_id == periodo_id,
+            RemuneracionHorasPeriodo.empleado_id == empleado_id,
+        )
+    ).first()
+    if row is None:
+        row = RemuneracionHorasPeriodo(periodo_remuneracion_id=periodo_id, empleado_id=empleado_id)
+    row.horas_ordinarias = max(Decimal("0"), horas_ordinarias)
+    row.horas_extras = max(Decimal("0"), horas_extras)
+    row.horas_nocturnas = max(Decimal("0"), horas_nocturnas)
+    row.es_ajuste_manual = bool(es_ajuste_manual)
+    row.motivo_ajuste = (motivo_ajuste or "").strip() or None
+    row.usuario_ajuste_id = usuario_ajuste_id
+    db.add(row)
+    db.flush()
+    return row
+
+
+def obtener_libro_periodo(db: Session, periodo_id: int) -> PeriodoRemuneracion | None:
+    return db.scalars(
+        select(PeriodoRemuneracion)
+        .options(
+            selectinload(PeriodoRemuneracion.detalles).selectinload(DetalleRemuneracion.empleado),
+            selectinload(PeriodoRemuneracion.detalles)
+            .selectinload(DetalleRemuneracion.items)
+            .selectinload(ItemRemuneracion.concepto),
+        )
+        .where(PeriodoRemuneracion.id == periodo_id)
+    ).first()
+
+
+def obtener_detalle_periodo_empleado(db: Session, periodo_id: int, empleado_id: int) -> DetalleRemuneracion | None:
+    return db.scalars(
+        select(DetalleRemuneracion)
+        .options(
+            selectinload(DetalleRemuneracion.empleado),
+            selectinload(DetalleRemuneracion.items).selectinload(ItemRemuneracion.concepto),
+            selectinload(DetalleRemuneracion.periodo),
+        )
+        .where(
+            DetalleRemuneracion.periodo_remuneracion_id == periodo_id,
+            DetalleRemuneracion.empleado_id == empleado_id,
+        )
+    ).first()
+
+
+def construir_libro_rows(periodo: PeriodoRemuneracion) -> list[dict[str, Decimal | str | int]]:
+    rows: list[dict[str, Decimal | str | int]] = []
+    for d in sorted(periodo.detalles, key=lambda x: (x.empleado.nombre_completo if x.empleado else "")):
+        rows.append(
+            {
+                "empleado_id": d.empleado_id,
+                "empleado": (d.empleado.nombre_completo if d.empleado else f"ID {d.empleado_id}"),
+                "cargo": d.cargo_snapshot or "",
+                "horas_extras": d.horas_extras,
+                "haberes_imponibles": d.total_haberes_imponibles,
+                "haberes_no_imponibles": d.total_haberes_no_imponibles,
+                "descuentos_legales": d.total_descuentos_legales,
+                "otros_descuentos": d.total_otros_descuentos,
+                "liquido": d.liquido_a_pagar,
+            }
+        )
+    return rows
+
+
+def exportar_libro_xlsx(periodo: PeriodoRemuneracion) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Libro"
+    ws.append(
+        [
+            "Empleado",
+            "Cargo",
+            "Horas extras",
+            "Haberes imponibles",
+            "Haberes no imponibles",
+            "Descuentos legales",
+            "Otros descuentos",
+            "Liquido a pagar",
+        ]
+    )
+    for r in construir_libro_rows(periodo):
+        ws.append(
+            [
+                str(r["empleado"]),
+                str(r["cargo"]),
+                float(r["horas_extras"] or 0),
+                float(r["haberes_imponibles"] or 0),
+                float(r["haberes_no_imponibles"] or 0),
+                float(r["descuentos_legales"] or 0),
+                float(r["otros_descuentos"] or 0),
+                float(r["liquido"] or 0),
+            ]
+        )
+    bio = BytesIO()
+    wb.save(bio)
+    return bio.getvalue()
+
+
+def totales_libro(rows: list[dict[str, Decimal | str | int]]) -> dict[str, Decimal]:
+    zero = Decimal("0")
+    out = {
+        "haberes_imponibles": zero,
+        "haberes_no_imponibles": zero,
+        "descuentos_legales": zero,
+        "otros_descuentos": zero,
+        "liquido": zero,
+    }
+    for r in rows:
+        out["haberes_imponibles"] += Decimal(str(r["haberes_imponibles"] or 0))
+        out["haberes_no_imponibles"] += Decimal(str(r["haberes_no_imponibles"] or 0))
+        out["descuentos_legales"] += Decimal(str(r["descuentos_legales"] or 0))
+        out["otros_descuentos"] += Decimal(str(r["otros_descuentos"] or 0))
+        out["liquido"] += Decimal(str(r["liquido"] or 0))
+    return out

@@ -1,0 +1,70 @@
+{% extends "layout/base.html" %}
+{% block title %}Parámetros remuneraciones · Evalua ERP{% endblock %}
+{% block page_title %}Parámetros remuneraciones{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('remuneraciones_periodos_lista') }}">Remuneraciones</a></li>
+<li class="breadcrumb-item active">Parámetros</li>
+{% endblock %}
+
+{% block content %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Periodo (opcional)</label>
+        <select name="periodo_id" class="form-select form-select-sm">
+          <option value="">Global</option>
+          {% for p in periodos %}
+          <option value="{{ p.id }}" {% if periodo_sel and p.id == periodo_sel.id %}selected{% endif %}>{{ '%02d' % p.mes }}/{{ p.anio }} · {{ p.estado }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-outline-secondary btn-sm" type="submit">Aplicar</button>
+      </div>
+      <div class="col-md-6 text-end">
+        <a class="btn btn-link btn-sm" href="{{ request.url_for('remuneraciones_periodos_lista') }}">Volver</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Clave</th>
+            <th>Descripción</th>
+            <th>Valor numérico</th>
+            <th>Valor texto</th>
+            <th class="text-end">Guardar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <form method="post" action="{{ request.url_for('remuneraciones_parametros_guardar') }}">
+              <td>
+                <code>{{ r.clave }}</code>
+                <input type="hidden" name="clave" value="{{ r.clave }}">
+                <input type="hidden" name="scope" value="{{ 'periodo' if periodo_sel else 'global' }}">
+                {% if periodo_sel %}<input type="hidden" name="periodo_id" value="{{ periodo_sel.id }}">{% endif %}
+              </td>
+              <td><input name="descripcion" class="form-control form-control-sm" value="{{ r.descripcion or '' }}"></td>
+              <td><input name="valor_numerico" class="form-control form-control-sm" value="{{ r.periodo_num if periodo_sel else r.global_num }}"></td>
+              <td><input name="valor_texto" class="form-control form-control-sm" value="{{ r.periodo_txt if periodo_sel else r.global_txt }}"></td>
+              <td class="text-end"><button class="btn btn-primary btn-sm" type="submit">Guardar</button></td>
+            </form>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-3">Sin parámetros.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

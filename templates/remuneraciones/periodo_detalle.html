@@ -22,6 +22,11 @@
     </p>
   </div>
   <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('remuneraciones_libro', periodo_id=pr.id) }}" class="btn btn-outline-dark btn-sm">Libro remuneraciones</a>
+    {% if puede_calcular %}
+    <a href="{{ request.url_for('remuneraciones_horas', periodo_id=pr.id) }}" class="btn btn-outline-dark btn-sm">Carga horas</a>
+    <a href="{{ request.url_for('remuneraciones_parametros', periodo_id=pr.id) }}" class="btn btn-outline-dark btn-sm">Parámetros mes</a>
+    {% endif %}
     {% if puede_calcular and pr.estado in ('BORRADOR', 'CALCULADO') %}
     <form method="post" action="{{ request.url_for('remuneraciones_periodo_calcular', periodo_id=pr.id) }}" onsubmit="return confirm('¿Recalcular detalle e ítems?');">
       <button type="submit" class="btn btn-warning btn-sm">Calcular / recalcular</button>
@@ -58,7 +63,11 @@
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span class="fw-semibold">{{ d.empleado.nombre_completo }}</span>
-    <span class="text-muted small">Líquido: <strong>{{ d.liquido_a_pagar }}</strong></span>
+    <div class="d-flex align-items-center gap-2">
+      <span class="text-muted small">H.E.: <strong>{{ d.horas_extras }}</strong></span>
+      <span class="text-muted small">Líquido: <strong>{{ d.liquido_a_pagar }}</strong></span>
+      <a class="btn btn-outline-primary btn-sm" href="{{ request.url_for('remuneraciones_liquidacion_pdf', periodo_id=pr.id, empleado_id=d.empleado_id) }}">PDF</a>
+    </div>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">

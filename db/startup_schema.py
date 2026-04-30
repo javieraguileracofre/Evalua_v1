@@ -40,6 +40,8 @@ _PATCH_110 = _ROOT / "db" / "psql" / "110_credito_riesgo_flujos.sql"
 _PATCH_111 = _ROOT / "db" / "psql" / "111_postventa_crm_cases.sql"
 _PATCH_112 = _ROOT / "db" / "psql" / "112_transporte_fondos_control.sql"
 _PATCH_117 = _ROOT / "db" / "psql" / "117_remuneraciones_bootstrap.sql"
+_PATCH_118 = _ROOT / "db" / "psql" / "118_remuneraciones_parametros_periodo.sql"
+_PATCH_119 = _ROOT / "db" / "psql" / "119_remuneraciones_horas_periodo.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -817,6 +819,34 @@ def ensure_remuneraciones_bootstrap(engine: Engine) -> None:
         )
 
 
+def ensure_remuneraciones_parametros_periodo_schema(engine: Engine) -> None:
+    """Aplica schema de parámetros de remuneración por período (118)."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_118.is_file():
+        logger.warning("No se encontró %s; omitiendo schema de parámetros por período.", _PATCH_118)
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_118)
+        logger.info("Schema remuneracion_parametros_periodo aplicado/verificado (118).")
+    except Exception as exc:
+        logger.warning("No se pudo aplicar 118_remuneraciones_parametros_periodo.sql. Detalle: %s", exc)
+
+
+def ensure_remuneraciones_horas_periodo_schema(engine: Engine) -> None:
+    """Aplica schema de carga mensual de horas de remuneración (119)."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_119.is_file():
+        logger.warning("No se encontró %s; omitiendo schema de horas por período.", _PATCH_119)
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_119)
+        logger.info("Schema remuneracion_horas_periodo aplicado/verificado (119).")
+    except Exception as exc:
+        logger.warning("No se pudo aplicar 119_remuneraciones_horas_periodo.sql. Detalle: %s", exc)
+
+
 def ensure_transporte_fondos_control_schema(engine: Engine) -> None:
     """Aplica ampliaciones idempotentes de transporte/fondos y tabla de mantenciones."""
     if engine.dialect.name != "postgresql":
@@ -906,6 +936,16 @@ def ensure_remuneraciones_seed(engine: Engine) -> None:
                     "DESCUENTO_SALUD_PCT_IMPOSABLE",
                     Decimal("0"),
                     "% sobre suma de ítems imponibles (0 = no automático).",
+                ),
+                (
+                    "VALOR_HORA_EXTRA",
+                    Decimal("0"),
+                    "Valor por hora extra. Si es 0, se calcula automáticamente como sueldo_base/180*1.5.",
+                ),
+                (
+                    "BONO_NOCTURNO_VALOR_HORA",
+                    Decimal("0"),
+                    "Valor por hora nocturna (0 = no aplica bono nocturno automático).",
                 ),
             ):
                 ex2 = db.scalars(select(RemuneracionParametro.id).where(RemuneracionParametro.clave == clave)).first()

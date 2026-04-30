@@ -1,0 +1,54 @@
+{% extends "layout/base.html" %}
+{% block title %}Carga horas {{ '%02d' % pr.mes }}/{{ pr.anio }} · Evalua ERP{% endblock %}
+{% block page_title %}Carga mensual de horas{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('remuneraciones_periodos_lista') }}">Remuneraciones</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('remuneraciones_periodo_detalle', periodo_id=pr.id) }}">Periodo {{ '%02d' % pr.mes }}/{{ pr.anio }}</a></li>
+<li class="breadcrumb-item active">Horas</li>
+{% endblock %}
+
+{% block content %}
+<form method="post" action="{{ request.url_for('remuneraciones_horas_guardar', periodo_id=pr.id) }}">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <p class="text-muted mb-0">Las horas extras/nocturnas se aplican al recalcular el período.</p>
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary btn-sm" type="submit">Guardar horas</button>
+      <a class="btn btn-link btn-sm" href="{{ request.url_for('remuneraciones_periodo_detalle', periodo_id=pr.id) }}">Volver</a>
+    </div>
+  </div>
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Trabajador</th>
+              <th class="text-end">Horas ordinarias</th>
+              <th class="text-end">Horas extras</th>
+              <th class="text-end">Horas nocturnas</th>
+              <th>Manual</th>
+              <th>Motivo ajuste</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td>
+                {{ r.empleado.nombre_completo }}
+                <input type="hidden" name="empleado_{{ r.empleado.id }}" value="{{ r.empleado.id }}">
+              </td>
+              <td><input class="form-control form-control-sm text-end" name="ho_{{ r.empleado.id }}" value="{{ r.horas_ordinarias }}"></td>
+              <td><input class="form-control form-control-sm text-end" name="hx_{{ r.empleado.id }}" value="{{ r.horas_extras }}"></td>
+              <td><input class="form-control form-control-sm text-end" name="hn_{{ r.empleado.id }}" value="{{ r.horas_nocturnas }}"></td>
+              <td><input class="form-check-input" type="checkbox" name="manual_{{ r.empleado.id }}" {% if r.es_ajuste_manual %}checked{% endif %}></td>
+              <td><input class="form-control form-control-sm" name="motivo_{{ r.empleado.id }}" value="{{ r.motivo_ajuste }}"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}

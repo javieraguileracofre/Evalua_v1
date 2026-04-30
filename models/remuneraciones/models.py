@@ -157,6 +157,16 @@ class PeriodoRemuneracion(Base):
         back_populates="periodo",
         cascade="all, delete-orphan",
     )
+    parametros_periodo: Mapped[list["RemuneracionParametroPeriodo"]] = relationship(
+        "RemuneracionParametroPeriodo",
+        back_populates="periodo",
+        cascade="all, delete-orphan",
+    )
+    horas_periodo: Mapped[list["RemuneracionHorasPeriodo"]] = relationship(
+        "RemuneracionHorasPeriodo",
+        back_populates="periodo",
+        cascade="all, delete-orphan",
+    )
 
 
 class ConceptoRemuneracion(Base):
@@ -379,3 +389,83 @@ class RemuneracionParametro(Base):
         onupdate=datetime.utcnow,
         server_default=func.now(),
     )
+
+
+class RemuneracionParametroPeriodo(Base):
+    """Snapshot mensual de parámetros de cálculo por período de remuneración."""
+
+    __tablename__ = "remuneracion_parametros_periodo"
+
+    __table_args__ = (
+        UniqueConstraint("periodo_remuneracion_id", "clave", name="uq_rem_param_periodo_clave"),
+        Index("ix_rem_param_periodo_periodo", "periodo_remuneracion_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    periodo_remuneracion_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("periodos_remuneracion.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    clave: Mapped[str] = mapped_column(String(80), nullable=False)
+    valor_numerico: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    valor_texto: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    descripcion: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        server_default=func.now(),
+    )
+
+    periodo: Mapped["PeriodoRemuneracion"] = relationship("PeriodoRemuneracion", back_populates="parametros_periodo")
+
+
+class RemuneracionHorasPeriodo(Base):
+    """Entrada mensual de horas por trabajador para cálculo automático de ítems."""
+
+    __tablename__ = "remuneracion_horas_periodo"
+
+    __table_args__ = (
+        UniqueConstraint("periodo_remuneracion_id", "empleado_id", name="uq_rem_horas_periodo_empleado"),
+        Index("ix_rem_horas_periodo_periodo", "periodo_remuneracion_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    periodo_remuneracion_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("periodos_remuneracion.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    empleado_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("empleados.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    horas_ordinarias: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    horas_extras: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    horas_nocturnas: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    es_ajuste_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    motivo_ajuste: Mapped[str | None] = mapped_column(Text, nullable=True)
+    usuario_ajuste_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("auth_usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        server_default=func.now(),
+    )
+
+    periodo: Mapped["PeriodoRemuneracion"] = relationship("PeriodoRemuneracion", back_populates="horas_periodo")
+    empleado: Mapped["Empleado"] = relationship("Empleado")

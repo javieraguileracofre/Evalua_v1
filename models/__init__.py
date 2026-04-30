@@ -122,7 +122,9 @@ from .remuneraciones.models import (
     DetalleRemuneracion,
     ItemRemuneracion,
     PeriodoRemuneracion,
+    RemuneracionHorasPeriodo,
     RemuneracionParametro,
+    RemuneracionParametroPeriodo,
 )
 
 # ============================================================
@@ -208,7 +210,9 @@ __all__ = [
     "DetalleRemuneracion",
     "ItemRemuneracion",
     "PeriodoRemuneracion",
+    "RemuneracionHorasPeriodo",
     "RemuneracionParametro",
+    "RemuneracionParametroPeriodo",
     "Empleado",
     "VehiculoTransporte",
     "ESTADOS_FONDO",

@@ -1,0 +1,71 @@
+{% extends "layout/base.html" %}
+{% block title %}Libro remuneraciones {{ '%02d' % pr.mes }}/{{ pr.anio }} · Evalua ERP{% endblock %}
+{% block page_title %}Libro remuneraciones {{ '%02d' % pr.mes }}/{{ pr.anio }}{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('remuneraciones_periodos_lista') }}">Remuneraciones</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('remuneraciones_periodo_detalle', periodo_id=pr.id) }}">Periodo {{ '%02d' % pr.mes }}/{{ pr.anio }}</a></li>
+<li class="breadcrumb-item active">Libro</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+  <p class="text-muted mb-0">Resumen consolidado por trabajador.</p>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('remuneraciones_libro_csv', periodo_id=pr.id) }}">Exportar CSV</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('remuneraciones_libro_xlsx', periodo_id=pr.id) }}">Exportar XLSX</a>
+    <a class="btn btn-link btn-sm" href="{{ request.url_for('remuneraciones_periodo_detalle', periodo_id=pr.id) }}">Volver</a>
+  </div>
+</div>
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Trabajador</th>
+            <th>Cargo</th>
+            <th class="text-end">H.E.</th>
+            <th class="text-end">Haberes imp.</th>
+            <th class="text-end">Haberes no imp.</th>
+            <th class="text-end">Desc. legales</th>
+            <th class="text-end">Otros desc.</th>
+            <th class="text-end">Líquido</th>
+            <th class="text-end"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td>{{ r.empleado }}</td>
+            <td>{{ r.cargo }}</td>
+            <td class="text-end">{{ r.horas_extras }}</td>
+            <td class="text-end">{{ r.haberes_imponibles }}</td>
+            <td class="text-end">{{ r.haberes_no_imponibles }}</td>
+            <td class="text-end">{{ r.descuentos_legales }}</td>
+            <td class="text-end">{{ r.otros_descuentos }}</td>
+            <td class="text-end fw-semibold">{{ r.liquido }}</td>
+            <td class="text-end">
+              <a class="btn btn-outline-primary btn-sm" href="{{ request.url_for('remuneraciones_liquidacion_pdf', periodo_id=pr.id, empleado_id=r.empleado_id) }}">PDF</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center text-muted py-3">No hay detalle calculado.</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="table-light">
+            <th colspan="3" class="text-end">Totales</th>
+            <th class="text-end">{{ totales.haberes_imponibles }}</th>
+            <th class="text-end">{{ totales.haberes_no_imponibles }}</th>
+            <th class="text-end">{{ totales.descuentos_legales }}</th>
+            <th class="text-end">{{ totales.otros_descuentos }}</th>
+            <th class="text-end">{{ totales.liquido }}</th>
+            <th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
