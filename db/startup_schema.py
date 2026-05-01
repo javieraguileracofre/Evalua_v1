@@ -39,6 +39,7 @@ _PATCH_109 = _ROOT / "db" / "psql" / "109_leasing_financiero_workflow.sql"
 _PATCH_110 = _ROOT / "db" / "psql" / "110_credito_riesgo_flujos.sql"
 _PATCH_111 = _ROOT / "db" / "psql" / "111_postventa_crm_cases.sql"
 _PATCH_112 = _ROOT / "db" / "psql" / "112_transporte_fondos_control.sql"
+_PATCH_115 = _ROOT / "db" / "psql" / "115_empleados_bootstrap.sql"
 _PATCH_117 = _ROOT / "db" / "psql" / "117_remuneraciones_bootstrap.sql"
 _PATCH_118 = _ROOT / "db" / "psql" / "118_remuneraciones_parametros_periodo.sql"
 _PATCH_119 = _ROOT / "db" / "psql" / "119_remuneraciones_horas_periodo.sql"
@@ -799,6 +800,24 @@ def ensure_postventa_crm_schema(engine: Engine) -> None:
             exc_info=True,
         )
         raise
+
+
+def ensure_empleados_bootstrap(engine: Engine) -> None:
+    """Crea public.empleados si no existe (115). Requerido para nómina/transferencias en bases solo-SQL."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_115.is_file():
+        logger.warning("No se encontró %s; omitiendo bootstrap empleados.", _PATCH_115)
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_115)
+        logger.info("Bootstrap empleados aplicado/verificado (115).")
+    except Exception as exc:
+        logger.warning(
+            "No se pudo aplicar 115_empleados_bootstrap.sql. Detalle: %s",
+            exc,
+            exc_info=True,
+        )
 
 
 def ensure_remuneraciones_bootstrap(engine: Engine) -> None:

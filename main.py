@@ -38,6 +38,7 @@ from db.startup_schema import (
     ensure_fondos_rendir_asiento_columns,
     ensure_postventa_crm_schema,
     ensure_remuneraciones_seed,
+    ensure_empleados_bootstrap,
     ensure_remuneraciones_bootstrap,
     ensure_remuneraciones_horas_periodo_schema,
     ensure_remuneraciones_auditoria_schema,
@@ -255,6 +256,7 @@ def create_app() -> FastAPI:
             ensure_fondos_rendir_asiento_columns(engine)
             ensure_vehiculo_transporte_consumo_column(engine)
             ensure_transporte_fondos_control_schema(engine)
+            ensure_empleados_bootstrap(engine)
             ensure_remuneraciones_bootstrap(engine)
             ensure_remuneraciones_parametros_periodo_schema(engine)
             ensure_remuneraciones_horas_periodo_schema(engine)
@@ -277,6 +279,7 @@ def create_app() -> FastAPI:
 
     # Remuneraciones: 117 es idempotente; con AUTO_MIGRATE_OFF las tablas no existirían sin esto.
     try:
+        ensure_empleados_bootstrap(engine)
         ensure_remuneraciones_bootstrap(engine)
         ensure_remuneraciones_parametros_periodo_schema(engine)
         ensure_remuneraciones_horas_periodo_schema(engine)
