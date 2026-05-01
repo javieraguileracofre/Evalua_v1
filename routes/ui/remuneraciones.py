@@ -11,7 +11,7 @@ from io import StringIO
 from typing import Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -34,10 +34,18 @@ from core.rbac import (
 )
 from crud import fondos_rendir as crud_fr
 from crud import remuneraciones as crud_rem
-from crud.remuneraciones_contabilidad import contabilizar_pago_nomina_periodo
+from crud.remuneraciones_contabilidad import (
+    contabilizar_pago_nomina_periodo,
+    contabilizar_provision_nomina_periodo,
+)
 from db.session import get_db
 from models.finanzas.compras_finanzas import CentroCosto
-from services.remuneraciones.calculo_service import calcular_periodo, transicionar_estado
+from services.remuneraciones.banco_transfer_csv import normalizar_formato_masivo
+from services.remuneraciones.calculo_service import (
+    calcular_periodo,
+    puede_editar_periodo,
+    transicionar_estado,
+)
 from services.remuneraciones.liquidacion_pdf import generar_liquidacion_pdf_bytes
 
 router = APIRouter(prefix="/remuneraciones", tags=["Remuneraciones"])
@@ -79,6 +87,75 @@ def _uid(request: Request) -> int | None:
         return int(raw) if raw is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _registrar_auditoria_si_tabla(
+    db: Session,
+    *,
+    periodo_id: int,
+    empleado_id: int | None,
+    actor_usuario_id: int | None,
+    accion: str,
+    detalle: str | None = None,
+) -> None:
+    try:
+        crud_rem.registrar_auditoria_nomina(
+            db,
+            periodo_id=periodo_id,
+            empleado_id=empleado_id,
+            actor_usuario_id=actor_usuario_id,
+            accion=accion,
+            detalle=detalle,
+        )
+    except ProgrammingError:
+        logger.warning("Auditoría remuneraciones: tabla no disponible (aplique parche 120).")
+
+
+@router.get("/rrhh", response_class=HTMLResponse, name="remuneraciones_rrhh_dashboard")
+def rrhh_dashboard(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_remuneraciones_consulta(request)) is not None:
+        return redir
+    try:
+        conteos = crud_rem.conteo_periodos_por_estado(db)
+        periodos = crud_rem.listar_periodos_remuneracion(db, limite=24)
+        sin_contrato = crud_rem.contar_empleados_activos_sin_contrato_vigente(db)
+    except (ProgrammingError, OperationalError) as exc:
+        logger.exception("Remuneraciones RRHH dashboard: %s", exc)
+        db.rollback()
+        return _redirect(
+            request,
+            "home",
+            msg=(
+                "Remuneraciones: no se pudo leer la base (tablas o columnas faltantes). "
+                "Ejecute en PostgreSQL el script db/psql/117_remuneraciones_bootstrap.sql en la BD del tenant "
+                "o contacte al administrador."
+            ),
+            sev="danger",
+        )
+    auth = getattr(request.state, "auth_user", None)
+    pendientes_pago = [p for p in periodos if p.estado == "CERRADO"]
+    pendientes_cierre = [p for p in periodos if p.estado == "APROBADO_FINANZAS"]
+    pendientes_finanzas = [p for p in periodos if p.estado == "APROBADO_RRHH"]
+    pendientes_rrhh = [p for p in periodos if p.estado in ("CALCULADO", "EN_REVISION")]
+    return templates.TemplateResponse(
+        "remuneraciones/rrhh_dashboard.html",
+        {
+            "request": request,
+            "active_menu": "remuneraciones",
+            "conteos": conteos,
+            "periodos": periodos,
+            "sin_contrato": sin_contrato,
+            "pendientes_pago": pendientes_pago,
+            "pendientes_cierre": pendientes_cierre,
+            "pendientes_finanzas": pendientes_finanzas,
+            "pendientes_rrhh": pendientes_rrhh,
+            "puede_calcular": usuario_puede_calcular_remuneraciones(auth),
+            "puede_aprobar_rrhh": usuario_puede_aprobar_remuneraciones_rrhh(auth),
+            "puede_aprobar_finanzas": usuario_puede_aprobar_remuneraciones_finanzas(auth),
+            "puede_cerrar_pagar": usuario_puede_cerrar_o_pagar_remuneraciones(auth),
+            "puede_contratos": usuario_puede_gestionar_contratos_laborales(auth),
+        },
+    )
 
 
 @router.get("", response_class=HTMLResponse, name="remuneraciones_periodos_lista")
@@ -327,6 +404,147 @@ def liquidacion_pdf(request: Request, periodo_id: int, empleado_id: int, db: Ses
     )
 
 
+@router.get(
+    "/periodos/{periodo_id:int}/transferencias-banco.csv",
+    name="remuneraciones_transferencias_banco_csv",
+)
+def transferencias_banco_csv(
+    request: Request,
+    periodo_id: int,
+    formato: str = Query(
+        "generico",
+        description="generico, pesos_cl, banco_estado, bci, banco_chile, santander, scotiabank, security",
+    ),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_remuneraciones_consulta(request)) is not None:
+        return redir
+    fmt = normalizar_formato_masivo(formato)
+    try:
+        content = crud_rem.exportar_transferencias_nomina_csv(db, periodo_id, formato=fmt)
+    except ValueError as e:
+        return _redirect(
+            request,
+            "remuneraciones_periodos_lista",
+            msg=str(e),
+            sev="warning",
+        )
+    pr = crud_rem.obtener_periodo_remuneracion(db, periodo_id)
+    label = f"{pr.mes:02d}_{pr.anio}" if pr else str(periodo_id)
+    suf = "" if fmt == "generico" else f"_{fmt}"
+    name = f"transferencias_nomina_{label}{suf}.csv"
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.post(
+    "/periodos/{periodo_id:int}/empleados/{empleado_id:int}/items-manuales",
+    name="remuneraciones_item_manual_crear",
+)
+async def item_manual_crear(
+    request: Request,
+    periodo_id: int,
+    empleado_id: int,
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_remuneraciones_calcular(request)) is not None:
+        return redir
+    fd = await request.form()
+    try:
+        concepto_id = int(str(fd.get("concepto_id") or "").strip())
+        monto = _parse_decimal(str(fd.get("monto") or "").strip())
+        motivo = str(fd.get("motivo") or "").strip()
+        if monto is None:
+            raise ValueError("Monto inválido.")
+        crud_rem.agregar_item_manual_nomina(
+            db,
+            periodo_id=periodo_id,
+            empleado_id=empleado_id,
+            concepto_id=concepto_id,
+            monto=monto,
+            motivo=motivo,
+            actor_usuario_id=_uid(request),
+        )
+        db.commit()
+        return _redirect(
+            request,
+            "remuneraciones_periodo_detalle",
+            msg="Ajuste manual aplicado. Revise totales y liquidación PDF.",
+            periodo_id=periodo_id,
+        )
+    except (ValueError, TypeError) as e:
+        db.rollback()
+        return _redirect(
+            request,
+            "remuneraciones_periodo_detalle",
+            msg=str(e),
+            sev="warning",
+            periodo_id=periodo_id,
+        )
+    except SQLAlchemyError:
+        logger.exception("Agregar ítem manual remuneración")
+        db.rollback()
+        return _redirect(
+            request,
+            "remuneraciones_periodo_detalle",
+            msg=public_error_message("No se pudo registrar el ajuste."),
+            sev="danger",
+            periodo_id=periodo_id,
+        )
+
+
+@router.post(
+    "/periodos/{periodo_id:int}/empleados/{empleado_id:int}/items-manuales/{item_id:int}/eliminar",
+    name="remuneraciones_item_manual_eliminar",
+)
+def item_manual_eliminar(
+    request: Request,
+    periodo_id: int,
+    empleado_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_remuneraciones_calcular(request)) is not None:
+        return redir
+    try:
+        crud_rem.eliminar_item_manual_nomina(
+            db,
+            periodo_id=periodo_id,
+            empleado_id=empleado_id,
+            item_id=item_id,
+            actor_usuario_id=_uid(request),
+        )
+        db.commit()
+        return _redirect(
+            request,
+            "remuneraciones_periodo_detalle",
+            msg="Línea de ajuste eliminada.",
+            periodo_id=periodo_id,
+        )
+    except (ValueError, TypeError) as e:
+        db.rollback()
+        return _redirect(
+            request,
+            "remuneraciones_periodo_detalle",
+            msg=str(e),
+            sev="warning",
+            periodo_id=periodo_id,
+        )
+    except SQLAlchemyError:
+        logger.exception("Eliminar ítem manual remuneración")
+        db.rollback()
+        return _redirect(
+            request,
+            "remuneraciones_periodo_detalle",
+            msg=public_error_message("No se pudo eliminar la línea."),
+            sev="danger",
+            periodo_id=periodo_id,
+        )
+
+
 @router.get("/periodos/{periodo_id:int}/horas", response_class=HTMLResponse, name="remuneraciones_horas")
 def horas_get(request: Request, periodo_id: int, db: Session = Depends(get_db)):
     if (redir := guard_remuneraciones_calcular(request)) is not None:
@@ -466,6 +684,16 @@ def periodo_detalle(request: Request, periodo_id: int, db: Session = Depends(get
     if not pr:
         return _redirect(request, "remuneraciones_periodos_lista", msg="Periodo no encontrado.", sev="warning")
     auth = getattr(request.state, "auth_user", None)
+    puede_ajustar = bool(
+        usuario_puede_calcular_remuneraciones(auth) and puede_editar_periodo(pr)
+    )
+    conceptos_ajuste = (
+        crud_rem.listar_conceptos_remuneracion_activos(db) if puede_ajustar else []
+    )
+    try:
+        audit_logs = crud_rem.listar_auditoria_periodo_vista(db, periodo_id, limite=50)
+    except ProgrammingError:
+        audit_logs = []
     return templates.TemplateResponse(
         "remuneraciones/periodo_detalle.html",
         {
@@ -477,8 +705,83 @@ def periodo_detalle(request: Request, periodo_id: int, db: Session = Depends(get
             "puede_aprobar_finanzas": usuario_puede_aprobar_remuneraciones_finanzas(auth),
             "puede_cerrar_pagar": usuario_puede_cerrar_o_pagar_remuneraciones(auth),
             "puede_contratos": usuario_puede_gestionar_contratos_laborales(auth),
+            "puede_ajustar": puede_ajustar,
+            "conceptos_ajuste": conceptos_ajuste,
+            "audit_logs": audit_logs,
         },
     )
+
+
+@router.post("/periodos/{periodo_id:int}/provision-contable", name="remuneraciones_periodo_provision_contable")
+def periodo_provision_contable(request: Request, periodo_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_remuneraciones_cerrar_pagar(request)) is not None:
+        return redir
+    pr = crud_rem.obtener_periodo_remuneracion(db, periodo_id)
+    if not pr:
+        return _redirect(request, "remuneraciones_periodos_lista", msg="Periodo no encontrado.", sev="warning")
+    if getattr(pr, "asiento_provision_id", None):
+        return _redirect(
+            request,
+            "remuneraciones_periodo_detalle",
+            msg="Este período ya tiene provisión contable registrada.",
+            sev="warning",
+            periodo_id=periodo_id,
+        )
+    if pr.estado not in ("APROBADO_FINANZAS", "CERRADO"):
+        return _redirect(
+            request,
+            "remuneraciones_periodo_detalle",
+            msg="La provisión solo está disponible con el período aprobado por finanzas o cerrado (antes de marcar pagado).",
+            sev="warning",
+            periodo_id=periodo_id,
+        )
+    auth_u = getattr(request.state, "auth_user", None) or {}
+    usuario_lbl = str(auth_u.get("email") or auth_u.get("nombre") or "").strip() or None
+    try:
+        aid = contabilizar_provision_nomina_periodo(db, pr, usuario=usuario_lbl)
+        if aid is None:
+            db.rollback()
+            return _redirect(
+                request,
+                "remuneraciones_periodo_detalle",
+                msg="No hay líquido para provisionar o faltan cuentas en el plan (gasto / sueldos por pagar).",
+                sev="warning",
+                periodo_id=periodo_id,
+            )
+        _registrar_auditoria_si_tabla(
+            db,
+            periodo_id=periodo_id,
+            empleado_id=None,
+            actor_usuario_id=_uid(request),
+            accion="PROVISION_CONTABLE",
+            detalle=f"asiento_provision_id={aid}",
+        )
+        db.commit()
+        return _redirect(
+            request,
+            "remuneraciones_periodo_detalle",
+            msg=f"Provisión contable registrada (asiento n.º {aid}).",
+            periodo_id=periodo_id,
+        )
+    except ValueError as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return _redirect(request, "remuneraciones_periodo_detalle", msg=str(e), sev="warning", periodo_id=periodo_id)
+    except SQLAlchemyError:
+        logger.exception("Provisión contable remuneración")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return _redirect(
+            request,
+            "remuneraciones_periodo_detalle",
+            msg=public_error_message("No se pudo registrar la provisión contable."),
+            sev="danger",
+            periodo_id=periodo_id,
+        )
 
 
 @router.post("/periodos/{periodo_id:int}/calcular", name="remuneraciones_periodo_calcular")
@@ -487,6 +790,14 @@ def periodo_calcular(request: Request, periodo_id: int, db: Session = Depends(ge
         return redir
     try:
         calcular_periodo(db, periodo_id)
+        _registrar_auditoria_si_tabla(
+            db,
+            periodo_id=periodo_id,
+            empleado_id=None,
+            actor_usuario_id=_uid(request),
+            accion="PERIODO_RECALCULADO",
+            detalle=None,
+        )
         db.commit()
         return _redirect(request, "remuneraciones_periodo_detalle", msg="Cálculo actualizado.", periodo_id=periodo_id)
     except ValueError as e:
@@ -516,6 +827,14 @@ def periodo_aprobar_rrhh(request: Request, periodo_id: int, db: Session = Depend
         return redir
     try:
         transicionar_estado(db, periodo_id, "APROBADO_RRHH", usuario_id=_uid(request))
+        _registrar_auditoria_si_tabla(
+            db,
+            periodo_id=periodo_id,
+            empleado_id=None,
+            actor_usuario_id=_uid(request),
+            accion="APROBADO_RRHH",
+            detalle=None,
+        )
         db.commit()
         return _redirect(request, "remuneraciones_periodo_detalle", msg="Aprobado RRHH.", periodo_id=periodo_id)
     except ValueError as e:
@@ -545,6 +864,14 @@ def periodo_aprobar_finanzas(request: Request, periodo_id: int, db: Session = De
         return redir
     try:
         transicionar_estado(db, periodo_id, "APROBADO_FINANZAS", usuario_id=_uid(request))
+        _registrar_auditoria_si_tabla(
+            db,
+            periodo_id=periodo_id,
+            empleado_id=None,
+            actor_usuario_id=_uid(request),
+            accion="APROBADO_FINANZAS",
+            detalle=None,
+        )
         db.commit()
         return _redirect(request, "remuneraciones_periodo_detalle", msg="Aprobado Finanzas.", periodo_id=periodo_id)
     except ValueError as e:
@@ -574,6 +901,14 @@ def periodo_cerrar(request: Request, periodo_id: int, db: Session = Depends(get_
         return redir
     try:
         transicionar_estado(db, periodo_id, "CERRADO", usuario_id=_uid(request))
+        _registrar_auditoria_si_tabla(
+            db,
+            periodo_id=periodo_id,
+            empleado_id=None,
+            actor_usuario_id=_uid(request),
+            accion="PERIODO_CERRADO",
+            detalle=None,
+        )
         db.commit()
         return _redirect(request, "remuneraciones_periodo_detalle", msg="Periodo cerrado.", periodo_id=periodo_id)
     except ValueError as e:
@@ -606,6 +941,14 @@ def periodo_pagar(request: Request, periodo_id: int, db: Session = Depends(get_d
         auth_u = getattr(request.state, "auth_user", None) or {}
         usuario_lbl = str(auth_u.get("email") or auth_u.get("nombre") or "").strip() or None
         contabilizar_pago_nomina_periodo(db, pr, usuario=usuario_lbl)
+        _registrar_auditoria_si_tabla(
+            db,
+            periodo_id=periodo_id,
+            empleado_id=None,
+            actor_usuario_id=_uid(request),
+            accion="PERIODO_PAGADO",
+            detalle=f"asiento_pago_id={getattr(pr, 'asiento_pago_id', None)}",
+        )
         db.commit()
         msg = "Marcado como pagado."
         if pr.asiento_pago_id:

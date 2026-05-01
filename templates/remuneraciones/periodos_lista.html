@@ -10,6 +10,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <p class="text-muted mb-0">Periodos mensuales. Un tenant = una empresa; sin <code>empresa_id</code> en nómina.</p>
   <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('remuneraciones_rrhh_dashboard') }}" class="btn btn-outline-dark btn-sm">Panel RRHH</a>
     {% if puede_crear_periodo %}
     <a href="{{ request.url_for('remuneraciones_parametros') }}" class="btn btn-outline-primary btn-sm">Parámetros cálculo</a>
     {% endif %}

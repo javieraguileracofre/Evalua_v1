@@ -188,6 +188,9 @@ def crear_empleado(
     email: str | None = None,
     telefono: str | None = None,
     auth_usuario_id: int | None = None,
+    transferencia_banco_codigo: str | None = None,
+    transferencia_numero_cuenta: str | None = None,
+    transferencia_tipo_cuenta: str | None = None,
 ) -> Empleado:
     r = normalizar_rut(rut)
     if not rut_valido_basico(r):
@@ -202,6 +205,9 @@ def crear_empleado(
         email=(email or "").strip() or None,
         telefono=(telefono or "").strip() or None,
         auth_usuario_id=int(auth_usuario_id) if auth_usuario_id is not None else None,
+        transferencia_banco_codigo=(transferencia_banco_codigo or "").strip() or None,
+        transferencia_numero_cuenta=(transferencia_numero_cuenta or "").strip() or None,
+        transferencia_tipo_cuenta=(transferencia_tipo_cuenta or "").strip() or None,
         activo=True,
     )
     db.add(e)
@@ -220,6 +226,9 @@ def actualizar_empleado(
     telefono: str | None,
     activo: bool,
     auth_usuario_id: int | None = None,
+    transferencia_banco_codigo: str | None = None,
+    transferencia_numero_cuenta: str | None = None,
+    transferencia_tipo_cuenta: str | None = None,
 ) -> Empleado:
     e = db.get(Empleado, empleado_id)
     if not e:
@@ -245,6 +254,9 @@ def actualizar_empleado(
     e.telefono = (telefono or "").strip() or None
     e.activo = activo
     e.auth_usuario_id = int(auth_usuario_id) if auth_usuario_id is not None else None
+    e.transferencia_banco_codigo = (transferencia_banco_codigo or "").strip() or None
+    e.transferencia_numero_cuenta = (transferencia_numero_cuenta or "").strip() or None
+    e.transferencia_tipo_cuenta = (transferencia_tipo_cuenta or "").strip() or None
     return e
 
 

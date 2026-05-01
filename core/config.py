@@ -194,6 +194,7 @@ class Settings:
     # Contabilidad — pago nómina (códigos en fin.plan_cuenta)
     remuneracion_cuenta_sueldos_por_pagar: str
     remuneracion_cuenta_banco: str
+    remuneracion_cuenta_gasto_sueldos: str
 
     @property
     def is_dev(self) -> bool:
@@ -307,6 +308,7 @@ class Settings:
             fondo_rendir_cuenta_gasto=os.getenv("FONDO_RENDIR_CUENTA_GASTO", "").strip(),
             remuneracion_cuenta_sueldos_por_pagar=os.getenv("REMUNERACION_CUENTA_SUELDOS_POR_PAGAR", "").strip(),
             remuneracion_cuenta_banco=os.getenv("REMUNERACION_CUENTA_BANCO", "").strip(),
+            remuneracion_cuenta_gasto_sueldos=os.getenv("REMUNERACION_CUENTA_GASTO_SUELDOS", "").strip(),
         )
 
 

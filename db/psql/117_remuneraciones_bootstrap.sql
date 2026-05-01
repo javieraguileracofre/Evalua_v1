@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS public.periodos_remuneracion (
   usuario_aprobador_finanzas_id BIGINT,
   observaciones TEXT,
   asiento_pago_id BIGINT,
+  asiento_provision_id BIGINT,
   created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -227,6 +228,7 @@ END $$;
 
 -- --- Columnas en tablas ya existentes (migración incremental)
 ALTER TABLE public.periodos_remuneracion ADD COLUMN IF NOT EXISTS asiento_pago_id BIGINT;
+ALTER TABLE public.periodos_remuneracion ADD COLUMN IF NOT EXISTS asiento_provision_id BIGINT;
 
 DO $$
 BEGIN

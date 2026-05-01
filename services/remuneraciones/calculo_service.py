@@ -127,6 +127,16 @@ def _contrato_vigente_en_fecha(db: Session, empleado_id: int, ref: date) -> Cont
     ).first()
 
 
+def recalcular_totales_detalle_remuneracion(db: Session, detalle_id: int) -> DetalleRemuneracion:
+    """Recalcula totales del detalle tras agregar o quitar ítems (ajustes manuales, etc.)."""
+    det = db.get(DetalleRemuneracion, detalle_id)
+    if not det:
+        raise ValueError("Detalle de remuneración no encontrado.")
+    _recalcular_totales_detalle(db, det)
+    db.flush()
+    return det
+
+
 def _recalcular_totales_detalle(db: Session, det: DetalleRemuneracion) -> None:
     items = list(
         db.scalars(select(ItemRemuneracion).where(ItemRemuneracion.detalle_remuneracion_id == det.id)).all()

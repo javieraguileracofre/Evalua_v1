@@ -137,6 +137,7 @@ class PeriodoRemuneracion(Base):
     observaciones: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     asiento_pago_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    asiento_provision_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
@@ -164,6 +165,11 @@ class PeriodoRemuneracion(Base):
     )
     horas_periodo: Mapped[list["RemuneracionHorasPeriodo"]] = relationship(
         "RemuneracionHorasPeriodo",
+        back_populates="periodo",
+        cascade="all, delete-orphan",
+    )
+    audit_logs: Mapped[list["RemuneracionAuditLog"]] = relationship(
+        "RemuneracionAuditLog",
         back_populates="periodo",
         cascade="all, delete-orphan",
     )
@@ -469,3 +475,36 @@ class RemuneracionHorasPeriodo(Base):
 
     periodo: Mapped["PeriodoRemuneracion"] = relationship("PeriodoRemuneracion", back_populates="horas_periodo")
     empleado: Mapped["Empleado"] = relationship("Empleado")
+
+
+class RemuneracionAuditLog(Base):
+    """Eventos de control en nómina (ajustes post-cálculo, etc.)."""
+
+    __tablename__ = "remuneracion_audit_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    periodo_remuneracion_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("periodos_remuneracion.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    empleado_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("empleados.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    actor_usuario_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("auth_usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    accion: Mapped[str] = mapped_column(String(80), nullable=False)
+    detalle: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        nullable=False,
+        default=datetime.utcnow,
+        server_default=func.now(),
+    )
+
+    periodo: Mapped["PeriodoRemuneracion"] = relationship("PeriodoRemuneracion", back_populates="audit_logs")

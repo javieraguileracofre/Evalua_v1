@@ -1,0 +1,176 @@
+{% extends "layout/base.html" %}
+{% block title %}Nómina RRHH · Evalua ERP{% endblock %}
+{% block page_title %}Nómina y remuneraciones{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item active">Nómina RRHH</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <h1 class="h5 mb-1">Panel de nómina</h1>
+    <p class="text-muted small mb-0">Flujo: parámetros y horas → calcular → liquidaciones PDF → aprobaciones → cierre → pago y asiento.</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('remuneraciones_periodos_lista') }}" class="btn btn-outline-secondary btn-sm">Todos los periodos</a>
+    {% if puede_calcular %}
+    <a href="{{ request.url_for('remuneraciones_parametros') }}" class="btn btn-outline-primary btn-sm">Parámetros</a>
+    {% endif %}
+    {% if puede_contratos %}
+    <a href="{{ request.url_for('fondos_rendir_empleados') }}" class="btn btn-outline-dark btn-sm">Trabajadores</a>
+    <a href="{{ request.url_for('remuneraciones_contrato_nuevo') }}" class="btn btn-outline-secondary btn-sm">Contrato laboral</a>
+    {% endif %}
+    {% if puede_calcular %}
+    <a href="{{ request.url_for('remuneraciones_periodo_nuevo') }}" class="btn btn-primary btn-sm">Nuevo periodo</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if sin_contrato > 0 %}
+<div class="alert alert-warning py-2 small mb-3">
+  <strong>{{ sin_contrato }}</strong> trabajador(es) activo(s) sin contrato vigente a la fecha de hoy. No aparecerán en el cálculo hasta tener contrato.
+  {% if puede_contratos %}<a href="{{ request.url_for('fondos_rendir_empleados') }}">Ir a trabajadores</a>{% endif %}
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  {% for estado, label, cls in [
+    ('BORRADOR', 'Borrador', 'secondary'),
+    ('CALCULADO', 'Calculado', 'info'),
+    ('EN_REVISION', 'En revisión', 'primary'),
+    ('APROBADO_RRHH', 'Aprob. RRHH', 'primary'),
+    ('APROBADO_FINANZAS', 'Aprob. Finanzas', 'success'),
+    ('CERRADO', 'Cerrado', 'dark'),
+    ('PAGADO', 'Pagado', 'success'),
+    ('ANULADO', 'Anulado', 'danger'),
+  ] %}
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body py-2 px-3">
+        <div class="text-muted text-uppercase small" style="font-size:0.65rem;">{{ label }}</div>
+        <div class="fs-4 fw-semibold"><span class="badge text-bg-{{ cls }}">{{ conteos.get(estado, 0) }}</span></div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold py-2">Siguiente acción — RRHH</div>
+      <div class="card-body p-0">
+        {% if pendientes_rrhh %}
+        <ul class="list-group list-group-flush small">
+          {% for p in pendientes_rrhh %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>{{ '%02d' % p.mes }}/{{ p.anio }} · <span class="badge text-bg-info">{{ p.estado }}</span></span>
+            {% if puede_aprobar_rrhh %}
+            <form method="post" action="{{ request.url_for('remuneraciones_periodo_aprobar_rrhh', periodo_id=p.id) }}" class="m-0">
+              <button type="submit" class="btn btn-sm btn-primary">Aprobar RRHH</button>
+            </form>
+            {% else %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('remuneraciones_periodo_detalle', periodo_id=p.id) }}">Abrir</a>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted small p-3 mb-0">No hay periodos en revisión o calculados pendientes de su bandeja.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold py-2">Pagos — Finanzas</div>
+      <div class="card-body p-0">
+        {% if pendientes_pago %}
+        <ul class="list-group list-group-flush small">
+          {% for p in pendientes_pago %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>{{ '%02d' % p.mes }}/{{ p.anio }} <span class="badge text-bg-dark">CERRADO</span></span>
+            {% if puede_cerrar_pagar %}
+            <form method="post" action="{{ request.url_for('remuneraciones_periodo_pagar', periodo_id=p.id) }}" class="m-0" onsubmit="return confirm('¿Marcar como pagado? Se generará asiento si corresponde.');">
+              <button type="submit" class="btn btn-sm btn-success">Emitir pago</button>
+            </form>
+            {% else %}
+            <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('remuneraciones_periodo_detalle', periodo_id=p.id) }}">Ver</a>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted small p-3 mb-0">No hay periodos cerrados pendientes de marcar como pagados.</p>
+        {% endif %}
+        {% if pendientes_cierre and puede_cerrar_pagar %}
+        <div class="border-top px-3 py-2 small text-muted">Pendiente <strong>cierre</strong> (aprobado finanzas):</div>
+        <ul class="list-group list-group-flush small">
+          {% for p in pendientes_cierre %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>{{ '%02d' % p.mes }}/{{ p.anio }}</span>
+            <form method="post" action="{{ request.url_for('remuneraciones_periodo_cerrar', periodo_id=p.id) }}" class="m-0" onsubmit="return confirm('¿Cerrar periodo?');">
+              <button type="submit" class="btn btn-sm btn-outline-secondary">Cerrar</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if pendientes_finanzas and puede_aprobar_finanzas %}
+        <div class="border-top px-3 py-2 small text-muted">Pendiente <strong>aprobación finanzas</strong>:</div>
+        <ul class="list-group list-group-flush small">
+          {% for p in pendientes_finanzas %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>{{ '%02d' % p.mes }}/{{ p.anio }}</span>
+            <form method="post" action="{{ request.url_for('remuneraciones_periodo_aprobar_finanzas', periodo_id=p.id) }}" class="m-0">
+              <button type="submit" class="btn btn-sm btn-outline-success">Aprobar Finanzas</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-3">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
+    <span class="fw-semibold">Periodos recientes</span>
+    <a href="{{ request.url_for('remuneraciones_periodos_lista') }}" class="small">Lista completa</a>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0 align-middle">
+        <thead class="table-light"><tr><th>Periodo</th><th>Estado</th><th class="text-end">Acciones</th></tr></thead>
+        <tbody>
+          {% for p in periodos %}
+          <tr>
+            <td class="fw-semibold">{{ '%02d' % p.mes }}/{{ p.anio }}</td>
+            <td><span class="badge text-bg-secondary">{{ p.estado }}</span></td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-primary py-0" href="{{ request.url_for('remuneraciones_periodo_detalle', periodo_id=p.id) }}">Detalle</a>
+              <a class="btn btn-sm btn-outline-dark py-0" href="{{ request.url_for('remuneraciones_libro', periodo_id=p.id) }}">Libro</a>
+              <select class="form-select form-select-sm py-0" style="max-width:10rem;" title="CSV banco (validar plantilla)" onchange="if(this.value){ window.location.href='{{ request.url_for('remuneraciones_transferencias_banco_csv', periodo_id=p.id) }}?formato='+encodeURIComponent(this.value); this.selectedIndex=0;}">
+                <option value="">CSV…</option>
+                <option value="generico">Genérico</option>
+                <option value="pesos_cl">CLP</option>
+                <option value="banco_estado">BcoEstado</option>
+                <option value="bci">BCI</option>
+                <option value="banco_chile">Bco Chile</option>
+                <option value="santander">Santander</option>
+                <option value="scotiabank">Scotia</option>
+                <option value="security">Security</option>
+              </select>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-center text-muted py-3">Sin periodos.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

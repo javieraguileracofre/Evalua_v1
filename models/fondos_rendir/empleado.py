@@ -42,6 +42,10 @@ class Empleado(Base):
 
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
 
+    transferencia_banco_codigo: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    transferencia_numero_cuenta: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    transferencia_tipo_cuenta: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
         nullable=False,

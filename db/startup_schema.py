@@ -42,6 +42,9 @@ _PATCH_112 = _ROOT / "db" / "psql" / "112_transporte_fondos_control.sql"
 _PATCH_117 = _ROOT / "db" / "psql" / "117_remuneraciones_bootstrap.sql"
 _PATCH_118 = _ROOT / "db" / "psql" / "118_remuneraciones_parametros_periodo.sql"
 _PATCH_119 = _ROOT / "db" / "psql" / "119_remuneraciones_horas_periodo.sql"
+_PATCH_120 = _ROOT / "db" / "psql" / "120_remuneraciones_auditoria.sql"
+_PATCH_121 = _ROOT / "db" / "psql" / "121_remuneraciones_asiento_provision.sql"
+_PATCH_122 = _ROOT / "db" / "psql" / "122_empleados_transferencia_bancaria.sql"
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -845,6 +848,48 @@ def ensure_remuneraciones_horas_periodo_schema(engine: Engine) -> None:
         logger.info("Schema remuneracion_horas_periodo aplicado/verificado (119).")
     except Exception as exc:
         logger.warning("No se pudo aplicar 119_remuneraciones_horas_periodo.sql. Detalle: %s", exc)
+
+
+def ensure_remuneraciones_auditoria_schema(engine: Engine) -> None:
+    """Tabla de auditoría de acciones en nómina (120)."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_120.is_file():
+        logger.warning("No se encontró %s; omitiendo auditoría remuneraciones.", _PATCH_120)
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_120)
+        logger.info("Schema remuneracion_audit_log aplicado/verificado (120).")
+    except Exception as exc:
+        logger.warning("No se pudo aplicar 120_remuneraciones_auditoria.sql. Detalle: %s", exc)
+
+
+def ensure_remuneraciones_asiento_provision_column(engine: Engine) -> None:
+    """Columna asiento_provision_id en periodos_remuneracion (121)."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_121.is_file():
+        logger.warning("No se encontró %s; omitiendo columna provisión nómina.", _PATCH_121)
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_121)
+        logger.info("Columna asiento_provision_id remuneraciones aplicada/verificada (121).")
+    except Exception as exc:
+        logger.warning("No se pudo aplicar 121_remuneraciones_asiento_provision.sql. Detalle: %s", exc)
+
+
+def ensure_empleados_transferencia_bancaria_columns(engine: Engine) -> None:
+    """Columnas opcionales de transferencia en empleados (122)."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_122.is_file():
+        logger.warning("No se encontró %s; omitiendo columnas transferencia empleados.", _PATCH_122)
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_122)
+        logger.info("Columnas transferencia empleados aplicadas/verificadas (122).")
+    except Exception as exc:
+        logger.warning("No se pudo aplicar 122_empleados_transferencia_bancaria.sql. Detalle: %s", exc)
 
 
 def ensure_transporte_fondos_control_schema(engine: Engine) -> None:

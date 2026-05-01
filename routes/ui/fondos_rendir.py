@@ -279,6 +279,9 @@ async def fondos_rendir_empleado_crear(
             email=str(fd.get("email") or "") or None,
             telefono=str(fd.get("telefono") or "") or None,
             auth_usuario_id=_parse_optional_user_id(fd.get("auth_usuario_id")),
+            transferencia_banco_codigo=str(fd.get("transferencia_banco_codigo") or "").strip() or None,
+            transferencia_numero_cuenta=str(fd.get("transferencia_numero_cuenta") or "").strip() or None,
+            transferencia_tipo_cuenta=str(fd.get("transferencia_tipo_cuenta") or "").strip() or None,
         )
         db.commit()
     except ValueError as e:
@@ -346,6 +349,9 @@ async def fondos_rendir_empleado_actualizar(
             telefono=str(fd.get("telefono") or "") or None,
             activo=activo,
             auth_usuario_id=_parse_optional_user_id(fd.get("auth_usuario_id")),
+            transferencia_banco_codigo=str(fd.get("transferencia_banco_codigo") or "").strip() or None,
+            transferencia_numero_cuenta=str(fd.get("transferencia_numero_cuenta") or "").strip() or None,
+            transferencia_tipo_cuenta=str(fd.get("transferencia_tipo_cuenta") or "").strip() or None,
         )
         db.commit()
     except ValueError as e:

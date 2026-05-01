@@ -2,9 +2,17 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
-from crud.remuneraciones import totales_libro
+from crud import remuneraciones as crud_rem
+from services.remuneraciones.banco_transfer_csv import (
+    exportar_nomina_transfer_csv,
+    monto_csv_generico,
+    monto_csv_pesos_cl,
+    normalizar_formato_masivo,
+)
 from services.remuneraciones.liquidacion_pdf import generar_liquidacion_pdf_bytes
 
 
@@ -25,7 +33,7 @@ def test_totales_libro_agrega_columnas_clave() -> None:
             "liquido": Decimal("520"),
         },
     ]
-    t = totales_libro(rows)
+    t = crud_rem.totales_libro(rows)
     assert t["haberes_imponibles"] == Decimal("1500")
     assert t["haberes_no_imponibles"] == Decimal("250")
     assert t["descuentos_legales"] == Decimal("120")
@@ -58,3 +66,31 @@ def test_liquidacion_pdf_bytes_valido() -> None:
     assert isinstance(data, bytes)
     assert len(data) > 200
     assert data.startswith(b"%PDF")
+
+
+def test_monto_csv_generico_y_pesos_cl() -> None:
+    assert monto_csv_generico(Decimal("1000.50")) == "1000,50"
+    assert monto_csv_pesos_cl(Decimal("1000.49")) == "1000"
+    assert monto_csv_pesos_cl(Decimal("1000.50")) == "1001"
+
+
+def test_normalizar_formato_csv_banco() -> None:
+    assert normalizar_formato_masivo("BCI") == "bci"
+    assert normalizar_formato_masivo("no_existe") == "generico"
+
+
+def test_export_banco_estado_csv_encabezado() -> None:
+    emp = SimpleNamespace(
+        rut="12.345.678-9",
+        nombre_completo="Juan Perez",
+        email="j@example.com",
+        transferencia_banco_codigo="037",
+        transferencia_tipo_cuenta="CTE",
+        transferencia_numero_cuenta="",
+    )
+    det = SimpleNamespace(empleado=emp, liquido_a_pagar=500000)
+    pr = SimpleNamespace(mes=4, anio=2026, fecha_fin=date(2026, 4, 30), detalles=[det])
+    out = exportar_nomina_transfer_csv(pr, "banco_estado")
+    first = out.lstrip("\ufeff").splitlines()[0]
+    assert "RutBeneficiario" in first
+    assert "MontoPesos" in first

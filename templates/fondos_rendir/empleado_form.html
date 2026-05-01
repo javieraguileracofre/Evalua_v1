@@ -22,6 +22,19 @@
     <div class="col-md-4"><label class="form-label">Cargo</label><input type="text" name="cargo" class="form-control" value="{{ empleado.cargo if empleado else '' }}"></div>
     <div class="col-md-4"><label class="form-label">Teléfono</label><input type="text" name="telefono" class="form-control" value="{{ empleado.telefono if empleado else '' }}"></div>
     <div class="col-md-4"><label class="form-label">E-mail</label><input type="email" name="email" class="form-control" value="{{ empleado.email if empleado else '' }}"></div>
+    <div class="col-12"><hr class="my-1"><div class="fw-semibold small text-muted mb-2">Transferencias (nómina)</div></div>
+    <div class="col-md-3">
+      <label class="form-label">Código banco</label>
+      <input type="text" name="transferencia_banco_codigo" class="form-control" maxlength="12" placeholder="ej. 001" value="{{ empleado.transferencia_banco_codigo if empleado else '' }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Tipo cuenta</label>
+      <input type="text" name="transferencia_tipo_cuenta" class="form-control" maxlength="16" placeholder="CORRIENTE / VISTA" value="{{ empleado.transferencia_tipo_cuenta if empleado else '' }}">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Número cuenta</label>
+      <input type="text" name="transferencia_numero_cuenta" class="form-control" maxlength="32" value="{{ empleado.transferencia_numero_cuenta if empleado else '' }}">
+    </div>
     <div class="col-12">
       <label class="form-label">Usuario portal (opcional)</label>
       <select name="auth_usuario_id" class="form-select">

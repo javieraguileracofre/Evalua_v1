@@ -40,6 +40,9 @@ from db.startup_schema import (
     ensure_remuneraciones_seed,
     ensure_remuneraciones_bootstrap,
     ensure_remuneraciones_horas_periodo_schema,
+    ensure_remuneraciones_auditoria_schema,
+    ensure_remuneraciones_asiento_provision_column,
+    ensure_empleados_transferencia_bancaria_columns,
     ensure_remuneraciones_parametros_periodo_schema,
     ensure_transporte_fondos_control_schema,
     ensure_taller_ordenes_cotizacion_columns,
@@ -255,6 +258,9 @@ def create_app() -> FastAPI:
             ensure_remuneraciones_bootstrap(engine)
             ensure_remuneraciones_parametros_periodo_schema(engine)
             ensure_remuneraciones_horas_periodo_schema(engine)
+            ensure_remuneraciones_auditoria_schema(engine)
+            ensure_remuneraciones_asiento_provision_column(engine)
+            ensure_empleados_transferencia_bancaria_columns(engine)
             ensure_auth_roles_seed(engine)
             ensure_remuneraciones_seed(engine)
             ensure_fin_config_contable_seed(engine)
@@ -274,6 +280,9 @@ def create_app() -> FastAPI:
         ensure_remuneraciones_bootstrap(engine)
         ensure_remuneraciones_parametros_periodo_schema(engine)
         ensure_remuneraciones_horas_periodo_schema(engine)
+        ensure_remuneraciones_auditoria_schema(engine)
+        ensure_remuneraciones_asiento_provision_column(engine)
+        ensure_empleados_transferencia_bancaria_columns(engine)
         ensure_auth_roles_seed(engine)
         ensure_remuneraciones_seed(engine)
     except Exception as exc:

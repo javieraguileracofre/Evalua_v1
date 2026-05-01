@@ -6,22 +6,28 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
+from typing import Any
 
 from openpyxl import Workbook
-from sqlalchemy import or_, select
+from sqlalchemy import exists, func, or_, select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session, selectinload
 
+from models.auth.usuario import Usuario
 from models.fondos_rendir.empleado import Empleado
 from models.finanzas.compras_finanzas import CentroCosto
 from models.remuneraciones.models import (
+    ConceptoRemuneracion,
     ContratoLaboral,
     DetalleRemuneracion,
     ItemRemuneracion,
     PeriodoRemuneracion,
+    RemuneracionAuditLog,
     RemuneracionHorasPeriodo,
     RemuneracionParametro,
     RemuneracionParametroPeriodo,
 )
+from services.remuneraciones.banco_transfer_csv import exportar_nomina_transfer_csv, normalizar_formato_masivo
 
 
 def _ultimo_dia_mes(anio: int, mes: int) -> int:
@@ -338,6 +344,222 @@ def exportar_libro_xlsx(periodo: PeriodoRemuneracion) -> bytes:
     bio = BytesIO()
     wb.save(bio)
     return bio.getvalue()
+
+
+def listar_conceptos_remuneracion_activos(db: Session) -> list[ConceptoRemuneracion]:
+    return list(
+        db.scalars(
+            select(ConceptoRemuneracion)
+            .where(ConceptoRemuneracion.activo.is_(True))
+            .order_by(ConceptoRemuneracion.orden, ConceptoRemuneracion.nombre)
+        ).all()
+    )
+
+
+def listar_auditoria_periodo(db: Session, periodo_id: int, *, limite: int = 60) -> list[RemuneracionAuditLog]:
+    return list(
+        db.scalars(
+            select(RemuneracionAuditLog)
+            .where(RemuneracionAuditLog.periodo_remuneracion_id == periodo_id)
+            .order_by(RemuneracionAuditLog.created_at.desc())
+            .limit(max(1, min(limite, 200)))
+        ).all()
+    )
+
+
+def listar_auditoria_periodo_vista(db: Session, periodo_id: int, *, limite: int = 60) -> list[dict[str, Any]]:
+    """Auditoría con etiqueta legible del usuario que ejecutó la acción."""
+    lim = max(1, min(limite, 200))
+    rows = db.execute(
+        select(RemuneracionAuditLog, Usuario.email, Usuario.nombre_completo)
+        .outerjoin(Usuario, Usuario.id == RemuneracionAuditLog.actor_usuario_id)
+        .where(RemuneracionAuditLog.periodo_remuneracion_id == periodo_id)
+        .order_by(RemuneracionAuditLog.created_at.desc())
+        .limit(lim)
+    ).all()
+    out: list[dict[str, Any]] = []
+    for log, email, nombre in rows:
+        actor = (email or "").strip() or (nombre or "").strip() or None
+        if log.actor_usuario_id is not None and not actor:
+            actor = f"usuario_id={log.actor_usuario_id}"
+        out.append(
+            {
+                "id": log.id,
+                "created_at": log.created_at,
+                "accion": log.accion,
+                "detalle": log.detalle,
+                "actor_label": actor,
+            }
+        )
+    return out
+
+
+def exportar_transferencias_nomina_csv(
+    db: Session,
+    periodo_id: int,
+    *,
+    formato: str = "generico",
+) -> str:
+    """
+    CSV separado por ; (UTF-8, BOM) para cargas masivas en banco.
+
+    Presets: ver ``services.remuneraciones.banco_transfer_csv.FORMATOS_NOMINA``.
+    """
+    pr = obtener_periodo_remuneracion(db, periodo_id)
+    if not pr:
+        raise ValueError("Periodo no encontrado.")
+    fmt = normalizar_formato_masivo(formato)
+    return exportar_nomina_transfer_csv(pr, fmt)
+
+
+def registrar_auditoria_nomina(
+    db: Session,
+    *,
+    periodo_id: int,
+    empleado_id: int | None,
+    actor_usuario_id: int | None,
+    accion: str,
+    detalle: str | None,
+) -> RemuneracionAuditLog:
+    row = RemuneracionAuditLog(
+        periodo_remuneracion_id=periodo_id,
+        empleado_id=empleado_id,
+        actor_usuario_id=actor_usuario_id,
+        accion=(accion or "").strip()[:80],
+        detalle=(detalle or "").strip()[:4000] if detalle else None,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def conteo_periodos_por_estado(db: Session) -> dict[str, int]:
+    rows = db.execute(select(PeriodoRemuneracion.estado, func.count()).group_by(PeriodoRemuneracion.estado)).all()
+    out: dict[str, int] = {}
+    for estado, n in rows:
+        out[str(estado)] = int(n or 0)
+    return out
+
+
+def contar_empleados_activos_sin_contrato_vigente(db: Session, ref: date | None = None) -> int:
+    ref = ref or date.today()
+    tiene_vigente = exists(
+        select(1)
+        .select_from(ContratoLaboral)
+        .where(
+            ContratoLaboral.empleado_id == Empleado.id,
+            ContratoLaboral.estado == "VIGENTE",
+            ContratoLaboral.fecha_inicio <= ref,
+            or_(ContratoLaboral.fecha_fin.is_(None), ContratoLaboral.fecha_fin >= ref),
+        )
+    )
+    return int(db.scalar(select(func.count()).select_from(Empleado).where(Empleado.activo.is_(True), ~tiene_vigente)) or 0)
+
+
+def agregar_item_manual_nomina(
+    db: Session,
+    *,
+    periodo_id: int,
+    empleado_id: int,
+    concepto_id: int,
+    monto: Decimal,
+    motivo: str,
+    actor_usuario_id: int | None,
+) -> ItemRemuneracion:
+    from services.remuneraciones.calculo_service import puede_editar_periodo, recalcular_totales_detalle_remuneracion
+
+    pr = db.get(PeriodoRemuneracion, periodo_id)
+    if not pr:
+        raise ValueError("Periodo no encontrado.")
+    if not puede_editar_periodo(pr):
+        raise ValueError("Este período no admite ajustes manuales en su estado actual.")
+
+    det = obtener_detalle_periodo_empleado(db, periodo_id, empleado_id)
+    if not det:
+        raise ValueError("No hay liquidación para este trabajador; calcule el período primero.")
+
+    c = db.get(ConceptoRemuneracion, concepto_id)
+    if not c or not c.activo:
+        raise ValueError("Concepto no válido o inactivo.")
+
+    m = monto.quantize(Decimal("0.01"))
+    if m <= 0:
+        raise ValueError("El monto debe ser mayor a cero.")
+
+    motivo_limpio = (motivo or "").strip()
+    if len(motivo_limpio) < 3:
+        raise ValueError("Indique un motivo del ajuste (mínimo 3 caracteres).")
+
+    it = ItemRemuneracion(
+        detalle_remuneracion_id=det.id,
+        concepto_remuneracion_id=concepto_id,
+        cantidad=Decimal("1"),
+        valor_unitario=m,
+        monto_total=m,
+        origen="manual",
+        referencia_tipo="ajuste_rrhh",
+        referencia_id=None,
+        es_ajuste_manual=True,
+        motivo_ajuste=motivo_limpio[:2000],
+        usuario_ajuste_id=actor_usuario_id,
+    )
+    db.add(it)
+    db.flush()
+    recalcular_totales_detalle_remuneracion(db, det.id)
+    try:
+        registrar_auditoria_nomina(
+            db,
+            periodo_id=periodo_id,
+            empleado_id=empleado_id,
+            actor_usuario_id=actor_usuario_id,
+            accion="ITEM_MANUAL_AGREGADO",
+            detalle=f"concepto_id={concepto_id} monto={m} motivo={motivo_limpio[:500]}",
+        )
+    except ProgrammingError:
+        pass
+    return it
+
+
+def eliminar_item_manual_nomina(
+    db: Session,
+    *,
+    periodo_id: int,
+    empleado_id: int,
+    item_id: int,
+    actor_usuario_id: int | None,
+) -> None:
+    from services.remuneraciones.calculo_service import puede_editar_periodo, recalcular_totales_detalle_remuneracion
+
+    pr = db.get(PeriodoRemuneracion, periodo_id)
+    if not pr:
+        raise ValueError("Periodo no encontrado.")
+    if not puede_editar_periodo(pr):
+        raise ValueError("Este período no admite eliminar ajustes en su estado actual.")
+
+    det = obtener_detalle_periodo_empleado(db, periodo_id, empleado_id)
+    if not det:
+        raise ValueError("Detalle no encontrado.")
+
+    it = db.get(ItemRemuneracion, item_id)
+    if not it or it.detalle_remuneracion_id != det.id:
+        raise ValueError("Ítem no encontrado.")
+    if (it.origen or "").strip().lower() != "manual" or not it.es_ajuste_manual:
+        raise ValueError("Solo se pueden eliminar líneas marcadas como ajuste manual.")
+
+    db.delete(it)
+    db.flush()
+    recalcular_totales_detalle_remuneracion(db, det.id)
+    try:
+        registrar_auditoria_nomina(
+            db,
+            periodo_id=periodo_id,
+            empleado_id=empleado_id,
+            actor_usuario_id=actor_usuario_id,
+            accion="ITEM_MANUAL_ELIMINADO",
+            detalle=f"item_id={item_id}",
+        )
+    except ProgrammingError:
+        pass
 
 
 def totales_libro(rows: list[dict[str, Decimal | str | int]]) -> dict[str, Decimal]:
