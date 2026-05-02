@@ -9,7 +9,7 @@ from typing import Any, List, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from crud.finanzas.plan_cuentas import obtener_plan_cuenta_por_codigo
+from crud.finanzas.plan_cuentas import asegurar_cuentas_leasing_financiero, obtener_plan_cuenta_por_codigo
 from models.comercial.leasing_financiero_cotizacion import (
     LeasingFinancieroCotizacion,
     LeasingFinancieroDocumentoProceso,
@@ -415,6 +415,7 @@ def activar_flujo_contable(
         raise ValueError("Debe informar plazo válido antes de activar.")
     if not cotizacion.fecha_inicio:
         raise ValueError("Debe informar fecha de inicio antes de activar.")
+    asegurar_cuentas_leasing_financiero(db)
     for codigo in _CUENTAS_CONTABLES_REQUERIDAS:
         cuenta = obtener_plan_cuenta_por_codigo(db, codigo)
         if not cuenta:

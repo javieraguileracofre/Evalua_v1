@@ -46,6 +46,25 @@ _PATCH_119 = _ROOT / "db" / "psql" / "119_remuneraciones_horas_periodo.sql"
 _PATCH_120 = _ROOT / "db" / "psql" / "120_remuneraciones_auditoria.sql"
 _PATCH_121 = _ROOT / "db" / "psql" / "121_remuneraciones_asiento_provision.sql"
 _PATCH_122 = _ROOT / "db" / "psql" / "122_empleados_transferencia_bancaria.sql"
+_PATCH_123 = _ROOT / "db" / "psql" / "123_fin_plan_cuenta_leasing_fin_min.sql"
+
+
+def ensure_leasing_financiero_plan_cuentas_min(engine: Engine) -> None:
+    """Upsert cuentas 113701, 210701, 210702, 410701, 110201 (+ agrupadores) para leasing financiero."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _has_table(engine, schema="fin", table="plan_cuenta"):
+        return
+    if not _PATCH_123.is_file():
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_123)
+        logger.info("Plan de cuentas leasing financiero mínimo verificado (123).")
+    except Exception as exc:
+        logger.warning(
+            "No se pudo aplicar 123_fin_plan_cuenta_leasing_fin_min.sql. Detalle: %s",
+            exc,
+        )
 
 
 def ensure_vehiculo_transporte_consumo_column(engine: Engine) -> None:
@@ -485,6 +504,7 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
         return
     if not _has_table(engine, schema="fin", table="plan_cuenta"):
         return
+    ensure_leasing_financiero_plan_cuentas_min(engine)
     with engine.connect() as conn:
         has_cot = conn.execute(
             text(

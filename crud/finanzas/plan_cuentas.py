@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from sqlalchemy import func, inspect, or_, select, text
 from sqlalchemy.orm import Session, selectinload
@@ -321,3 +322,21 @@ def listar_cuentas_movimiento_activas(db: Session) -> list[PlanCuenta]:
         .order_by(PlanCuenta.codigo.asc())
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def asegurar_cuentas_leasing_financiero(db: Session) -> None:
+    """
+    Crea/actualiza en fin.plan_cuenta las cuentas exigidas al activar workflow de leasing financiero
+    (123_fin_plan_cuenta_leasing_fin_min.sql). Idempotente.
+    """
+    bind = db.get_bind()
+    if bind is None or bind.dialect.name != "postgresql":
+        return
+    path = Path(__file__).resolve().parents[2] / "db" / "psql" / "123_fin_plan_cuenta_leasing_fin_min.sql"
+    if not path.is_file():
+        return
+    sql = path.read_text(encoding="utf-8")
+    with bind.connect() as conn:
+        conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+        conn.exec_driver_sql(sql)
+    db.expire_all()

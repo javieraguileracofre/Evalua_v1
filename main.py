@@ -45,6 +45,7 @@ from db.startup_schema import (
     ensure_remuneraciones_asiento_provision_column,
     ensure_empleados_transferencia_bancaria_columns,
     ensure_remuneraciones_parametros_periodo_schema,
+    ensure_leasing_financiero_plan_cuentas_min,
     ensure_transporte_fondos_control_schema,
     ensure_taller_ordenes_cotizacion_columns,
     ensure_vehiculo_transporte_consumo_column,
@@ -288,6 +289,7 @@ def create_app() -> FastAPI:
         ensure_empleados_transferencia_bancaria_columns(engine)
         ensure_auth_roles_seed(engine)
         ensure_remuneraciones_seed(engine)
+        ensure_leasing_financiero_plan_cuentas_min(engine)
     except Exception as exc:
         logger.warning("Bootstrap remuneraciones / seed roles tras arranque: %s", exc, exc_info=True)
 
