@@ -1,59 +1,338 @@
 {% extends "layout/base.html" %}
 {% block title %}Hub Leasing Financiero{% endblock %}
 
+{% block head %}
+<style>
+  :root{
+    --eva-navy:#0B1F3B;
+    --eva-border:#E5E7EB;
+    --eva-muted:#6B7280;
+    --eva-gold:#D4AF37;
+  }
+  .eva-card{ border:1px solid var(--eva-border) !important; border-radius:14px; background:#fff; }
+  .eva-title{ color:var(--eva-navy); }
+  .eva-badge{
+    display:inline-flex; align-items:center; gap:.35rem; padding:.22rem .6rem; border-radius:999px;
+    font-size:.72rem; font-weight:600; border:1px solid var(--eva-border); background:#F9FAFB; color:#111827;
+  }
+  .eva-badge--ok{ border-color:rgba(22,163,74,.35); background:rgba(22,163,74,.10); color:#065F46; }
+  .eva-badge--warn{ border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.12); color:#92400E; }
+  .eva-badge--bad{ border-color:rgba(220,38,38,.35); background:rgba(220,38,38,.10); color:#7F1D1D; }
+  .eva-badge--gold{ border-color:rgba(212,175,55,.45); background:rgba(212,175,55,.12); color:#6B4E00; }
+  .btn-eva-primary{ background:var(--eva-navy); border-color:var(--eva-navy); color:#fff; }
+  .btn-eva-primary:hover{ background:#07162B; border-color:#07162B; color:#fff; }
+  .kpi-card{ border-radius:14px; border:1px solid var(--eva-border); background:#fff; height:100%; transition:box-shadow .15s; }
+  .kpi-card:hover{ box-shadow:0 4px 14px rgba(11,31,59,.08); }
+  .kpi-card .icon{ width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1rem; }
+  .kpi-card .val{ font-size:1.35rem; font-weight:700; color:var(--eva-navy); font-variant-numeric:tabular-nums; }
+  .kpi-card .lbl{ font-size:.72rem; color:var(--eva-muted); text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+  .kpi-card .sub{ font-size:.75rem; color:var(--eva-muted); }
+  .icon-blue{ background:rgba(11,31,59,.08); color:var(--eva-navy); }
+  .icon-amber{ background:rgba(245,158,11,.15); color:#92400E; }
+  .icon-green{ background:rgba(22,163,74,.12); color:#065F46; }
+  .icon-red{ background:rgba(220,38,38,.10); color:#7F1D1D; }
+  .icon-gold{ background:rgba(212,175,55,.18); color:#6B4E00; }
+  .funnel-step{ flex:1; min-width:0; text-align:center; position:relative; }
+  .funnel-step:not(:last-child)::after{
+    content:"→"; position:absolute; right:-6px; top:50%; transform:translateY(-50%);
+    color:var(--eva-muted); font-size:.85rem;
+  }
+  .funnel-count{ font-size:1.25rem; font-weight:700; color:var(--eva-navy); }
+  .funnel-lbl{ font-size:.68rem; color:var(--eva-muted); text-transform:uppercase; letter-spacing:.03em; }
+  .market-strip{
+    border-radius:12px; border:1px solid rgba(11,31,59,.1);
+    background:linear-gradient(90deg,rgba(11,31,59,.04),rgba(212,175,55,.08));
+    padding:.65rem 1rem; font-size:.82rem;
+  }
+  .queue-item{ padding:.55rem 0; border-bottom:1px solid var(--eva-border); }
+  .queue-item:last-child{ border-bottom:none; }
+  .eva-link{ color:var(--eva-navy); font-weight:600; text-decoration:none; }
+  .eva-link:hover{ text-decoration:underline; }
+  .money-clp{ font-variant-numeric:tabular-nums; }
+</style>
+{% endblock head %}
+
 {% block content %}
 <div class="container py-4">
-  <div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-start mb-3 gap-2">
     <div>
-      <h1 class="h5 mb-0">Hub operativo · Leasing financiero</h1>
-      <p class="small text-muted mb-0">Pipeline: cotización → crédito → formalización → documentación → activación.</p>
+      <h1 class="h5 fw-semibold mb-1 eva-title">Hub operativo · Leasing financiero</h1>
+      <p class="small text-muted mb-0">
+        Pipeline comercial y cartera · cotización → crédito → formalización → activación contable
+      </p>
     </div>
-    <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-primary" href="{{ request.url_for('lf_cotizacion_nueva_form') }}">Nueva cotización</a>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-sm btn-eva-primary" href="{{ request.url_for('lf_cotizacion_nueva_form') }}">
+        <i class="bi bi-plus-lg me-1"></i>Nueva cotización
+      </a>
       <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('lf_credito_home') }}">Bandeja crédito</a>
-      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('lf_cotizaciones_list') }}">Cotizaciones</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('lf_cotizaciones_list') }}">Todas las cotizaciones</a>
+    </div>
+  </div>
+
+  {% if mercado %}
+  <div class="market-strip mb-3 d-flex flex-wrap align-items-center gap-3">
+    <span class="eva-badge eva-badge--gold"><i class="bi bi-bank"></i> Referencia mercado</span>
+    <span><strong>UF</strong> ${{ mercado.uf }} CLP</span>
+    <span><strong>USD</strong> ${{ mercado.dolar }} CLP</span>
+    <span class="text-muted">· {{ mercado.fecha }} · {{ mercado.fuente }}</span>
+  </div>
+  {% endif %}
+
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Abiertas</div>
+          <div class="icon icon-blue"><i class="bi bi-file-earmark-text"></i></div>
+        </div>
+        <div class="val">{{ kpis.abiertas }}</div>
+        <div class="sub">En cotización comercial</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">En crédito</div>
+          <div class="icon icon-amber"><i class="bi bi-shield-check"></i></div>
+        </div>
+        <div class="val">{{ kpis.en_credito }}</div>
+        <div class="sub">Scoring pendiente</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Aprobadas</div>
+          <div class="icon icon-green"><i class="bi bi-check2-circle"></i></div>
+        </div>
+        <div class="val">{{ kpis.aprobadas }}</div>
+        <div class="sub">Listas para formalizar</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Formalización</div>
+          <div class="icon icon-gold"><i class="bi bi-folder2-open"></i></div>
+        </div>
+        <div class="val">{{ kpis.formalizacion }}</div>
+        <div class="sub">Docs y activación</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Cartera</div>
+          <div class="icon icon-green"><i class="bi bi-graph-up-arrow"></i></div>
+        </div>
+        <div class="val">{{ kpis.activadas }}</div>
+        <div class="sub">{{ kpis.vigentes }} vigentes</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Rechazadas</div>
+          <div class="icon icon-red"><i class="bi bi-x-circle"></i></div>
+        </div>
+        <div class="val">{{ kpis.rechazadas }}</div>
+        <div class="sub">
+          {% if tasa_cierre_pct is not none %}
+            Cierre {{ "{:.1f}".format(tasa_cierre_pct|float) }}%
+          {% else %}
+            {{ kpis.total }} operaciones
+          {% endif %}
+        </div>
+      </div>
     </div>
   </div>
 
   <div class="row g-3 mb-3">
-    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">Abiertas</div><div class="h5 mb-0">{{ kpis.abiertas }}</div></div></div></div>
-    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">En crédito</div><div class="h5 mb-0">{{ kpis.en_credito }}</div></div></div></div>
-    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">Aprobadas</div><div class="h5 mb-0">{{ kpis.aprobadas }}</div></div></div></div>
-    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">Formalización</div><div class="h5 mb-0">{{ kpis.formalizacion }}</div></div></div></div>
-    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">Vigentes</div><div class="h5 mb-0">{{ kpis.vigentes }}</div></div></div></div>
-    <div class="col-md-2"><div class="card"><div class="card-body"><div class="small text-muted">Rechazadas</div><div class="h5 mb-0">{{ kpis.rechazadas }}</div></div></div></div>
+    <div class="col-lg-5">
+      <div class="card eva-card shadow-sm border-0 h-100">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold eva-title mb-3">Embudo comercial</h2>
+          <div class="d-flex gap-2 mb-3">
+            {% for step in funnel %}
+            <div class="funnel-step">
+              <div class="funnel-count">{{ step.count }}</div>
+              <div class="funnel-lbl">{{ step.label }}</div>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="small text-muted">{{ funnel[0].hint if funnel else '' }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-7">
+      <div class="card eva-card shadow-sm border-0 h-100">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold eva-title mb-3">Exposición financiera</h2>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="small text-muted text-uppercase fw-semibold mb-2" style="letter-spacing:.04em;">Pipeline activo</div>
+              {% set pipe_has = false %}
+              {% for mon, monto in pipeline_montos.items() %}
+                {% if monto and monto > 0 %}
+                  {% set pipe_has = true %}
+                  <div class="d-flex justify-content-between mb-1 money-clp">
+                    <span>{{ mon }}</span>
+                    <strong>
+                      {% if mon == 'CLP' %}${{ "{:,.0f}".format(monto).replace(",", ".") }}
+                      {% elif mon == 'UF' %}{{ "{:,.4f}".format(monto).replace(",", "X").replace(".", ",").replace("X", ".") }} UF
+                      {% else %}US$ {{ "{:,.2f}".format(monto).replace(",", "X").replace(".", ",").replace("X", ".") }}{% endif %}
+                    </strong>
+                  </div>
+                {% endif %}
+              {% endfor %}
+              {% if not pipe_has %}<span class="text-muted small">Sin montos en pipeline.</span>{% endif %}
+            </div>
+            <div class="col-md-6">
+              <div class="small text-muted text-uppercase fw-semibold mb-2" style="letter-spacing:.04em;">Cartera colocada</div>
+              {% set cart_has = false %}
+              {% for mon, monto in cartera_montos.items() %}
+                {% if monto and monto > 0 %}
+                  {% set cart_has = true %}
+                  <div class="d-flex justify-content-between mb-1 money-clp">
+                    <span>{{ mon }}</span>
+                    <strong class="text-success">
+                      {% if mon == 'CLP' %}${{ "{:,.0f}".format(monto).replace(",", ".") }}
+                      {% elif mon == 'UF' %}{{ "{:,.4f}".format(monto).replace(",", "X").replace(".", ",").replace("X", ".") }} UF
+                      {% else %}US$ {{ "{:,.2f}".format(monto).replace(",", "X").replace(".", ",").replace("X", ".") }}{% endif %}
+                    </strong>
+                  </div>
+                {% endif %}
+              {% endfor %}
+              {% if not cart_has %}<span class="text-muted small">Sin operaciones activadas aún.</span>{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <div class="row g-3">
+  <div class="row g-3 mb-3">
     <div class="col-lg-4">
-      <div class="card"><div class="card-body">
-        <h2 class="h6">Pendientes crédito</h2>
-        <ul class="small mb-0">
+      <div class="card eva-card shadow-sm border-0 h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h6 fw-semibold mb-0 eva-title">Pendientes crédito</h2>
+            <span class="eva-badge eva-badge--warn">{{ pendientes_credito|length }}</span>
+          </div>
           {% for c in pendientes_credito %}
-          <li><a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}">#{{ c.id }}</a> · {{ c.cliente.razon_social if c.cliente else 'N/D' }}</li>
-          {% else %}<li class="text-muted">Sin pendientes.</li>{% endfor %}
-        </ul>
-      </div></div>
+          {% set base = c.monto_financiado or c.valor_neto or c.monto %}
+          <div class="queue-item small">
+            <a class="eva-link" href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}">#{{ c.id }}</a>
+            · {{ c.cliente.razon_social if c.cliente else 'N/D' }}
+            {% if base %}<br><span class="text-muted">{{ c.moneda or 'CLP' }} {{ "{:,.0f}".format(base).replace(",", ".") if (c.moneda or 'CLP') == 'CLP' else base }}</span>{% endif %}
+            <a class="float-end eva-link" href="{{ request.url_for('lf_credito_form', cotizacion_id=c.id) }}">Scoring →</a>
+          </div>
+          {% else %}
+          <p class="small text-muted mb-0">Sin operaciones en análisis de crédito.</p>
+          {% endfor %}
+        </div>
+      </div>
     </div>
     <div class="col-lg-4">
-      <div class="card"><div class="card-body">
-        <h2 class="h6">Pendientes documentación</h2>
-        <ul class="small mb-0">
+      <div class="card eva-card shadow-sm border-0 h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h6 fw-semibold mb-0 eva-title">Pendientes documentación</h2>
+            <span class="eva-badge eva-badge--gold">{{ pendientes_documentacion|length }}</span>
+          </div>
           {% for c in pendientes_documentacion %}
-          <li><a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}">#{{ c.id }}</a> · {{ c.estado }}</li>
-          {% else %}<li class="text-muted">Sin pendientes.</li>{% endfor %}
-        </ul>
-      </div></div>
+          <div class="queue-item small">
+            <a class="eva-link" href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}">#{{ c.id }}</a>
+            · {{ c.cliente.razon_social if c.cliente else 'N/D' }}
+            <span class="eva-badge eva-badge--warn ms-1">{{ c.estado }}</span>
+            {% set etapa = (c.workflow_json or {}).get('etapa_actual', '') %}
+            {% if etapa %}<br><span class="text-muted">Etapa: {{ etapa }}</span>{% endif %}
+          </div>
+          {% else %}
+          <p class="small text-muted mb-0">Sin pendientes de formalización.</p>
+          {% endfor %}
+        </div>
+      </div>
     </div>
     <div class="col-lg-4">
-      <div class="card"><div class="card-body">
-        <h2 class="h6">Pendientes activación</h2>
-        <ul class="small mb-0">
+      <div class="card eva-card shadow-sm border-0 h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h6 fw-semibold mb-0 eva-title">Listas para activar</h2>
+            <span class="eva-badge eva-badge--ok">{{ pendientes_activacion|length }}</span>
+          </div>
           {% for c in pendientes_activacion %}
-          <li><a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}">#{{ c.id }}</a> · {{ c.cliente.razon_social if c.cliente else 'N/D' }}</li>
-          {% else %}<li class="text-muted">Sin pendientes.</li>{% endfor %}
-        </ul>
-      </div></div>
+          {% set base = c.monto_financiado or c.valor_neto or c.monto %}
+          <div class="queue-item small">
+            <a class="eva-link" href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}">#{{ c.id }}</a>
+            · {{ c.cliente.razon_social if c.cliente else 'N/D' }}
+            {% if base %}<br><span class="text-muted">{{ c.moneda or 'CLP' }} · plazo {{ c.plazo or '—' }} meses</span>{% endif %}
+          </div>
+          {% else %}
+          <p class="small text-muted mb-0">Ninguna operación con documentación completa.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card eva-card shadow-sm border-0">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h6 fw-semibold mb-0 eva-title">Últimas cotizaciones</h2>
+        <a href="{{ request.url_for('lf_cotizaciones_list') }}" class="small eva-link">Ver todas →</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>ID</th>
+              <th>Cliente</th>
+              <th>Monto</th>
+              <th>Plazo</th>
+              <th>Estado</th>
+              <th>Fecha</th>
+              <th class="text-end">Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for c in recientes %}
+          {% set base = c.monto_financiado or c.valor_neto or c.monto %}
+          {% set est = (c.estado or 'BORRADOR')|upper %}
+          <tr>
+            <td>#{{ c.id }}</td>
+            <td>
+              <div class="fw-semibold">{{ c.cliente.razon_social if c.cliente else 'N/D' }}</div>
+              <div class="small text-muted">{{ c.ejecutivo or '' }}</div>
+            </td>
+            <td class="money-clp">
+              {% if base %}
+                {% if (c.moneda or 'CLP') == 'CLP' %}${{ "{:,.0f}".format(base).replace(",", ".") }}
+                {% else %}{{ "{:,.2f}".format(base).replace(",", "X").replace(".", ",").replace("X", ".") }} {{ c.moneda }}{% endif %}
+              {% else %}—{% endif %}
+            </td>
+            <td>{{ c.plazo or '—' }}{% if c.plazo %} m{% endif %}</td>
+            <td>
+              {% if 'APROB' in est or est in ['ACTIVADA','VIGENTE'] %}
+                <span class="eva-badge eva-badge--ok">{{ c.estado }}</span>
+              {% elif 'RECHAZ' in est %}
+                <span class="eva-badge eva-badge--bad">{{ c.estado }}</span>
+              {% else %}
+                <span class="eva-badge eva-badge--warn">{{ c.estado }}</span>
+              {% endif %}
+            </td>
+            <td>{{ c.fecha_cotizacion or '—' }}</td>
+            <td class="text-end">
+              <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}" class="eva-link small">Ver</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-3">Aún no hay cotizaciones. Cree la primera operación.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>

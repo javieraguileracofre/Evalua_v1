@@ -12,6 +12,7 @@ from core.paths import TEMPLATES_DIR
 from core.rbac import guard_operacion_consulta
 from crud.comercial import leasing_fin as crud_lf
 from db.session import get_db
+from services.indicadores_mercado import obtener_uf_dolar_hoy
 
 router = APIRouter(tags=["Comercial"])
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -35,11 +36,17 @@ def leasing_financiero_hub(request: Request, db: Session = Depends(get_db)):
     if (redir := guard_operacion_consulta(request)) is not None:
         return redir
     resumen = crud_lf.get_hub_resumen(db)
+    mercado = None
+    try:
+        mercado = obtener_uf_dolar_hoy()
+    except Exception:
+        mercado = None
     return templates.TemplateResponse(
         "comercial/leasing_financiero/hub.html",
         {
             "request": request,
             **resumen,
+            "mercado": mercado,
             "active_menu": "leasing_financiero",
         },
     )

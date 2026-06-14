@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -214,6 +215,48 @@ def test_parse_decimal_money_thousands_dot():
 def test_parse_decimal_rate_keeps_decimal():
     assert lf_routes._parse_decimal("0,1200", money=False) == Decimal("0.1200")
     assert lf_routes._parse_decimal("228.500", money=False) == Decimal("228.500")
+
+
+def test_hub_resumen_pipeline_y_funnel():
+    c1 = SimpleNamespace(
+        estado="EN_ANALISIS_CREDITO",
+        moneda="CLP",
+        monto_financiado=Decimal("1000000"),
+        valor_neto=None,
+        monto=None,
+        cliente=SimpleNamespace(razon_social="ACME"),
+        workflow_json={},
+        analisis_credito=None,
+        ejecutivo=None,
+        plazo=36,
+        fecha_cotizacion=date.today(),
+    )
+    c2 = SimpleNamespace(
+        estado="ACTIVADA",
+        moneda="CLP",
+        monto_financiado=Decimal("500000"),
+        valor_neto=None,
+        monto=None,
+        cliente=SimpleNamespace(razon_social="Beta"),
+        workflow_json={},
+        analisis_credito=None,
+        ejecutivo=None,
+        plazo=24,
+        fecha_cotizacion=date.today(),
+    )
+
+    class _Db:
+        pass
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(crud_lf, "get_cotizaciones", lambda _db, **kw: [c1, c2])
+    res = crud_lf.get_hub_resumen(_Db())
+    assert res["kpis"]["en_credito"] == 1
+    assert res["kpis"]["activadas"] == 1
+    assert res["pipeline_montos"]["CLP"] == Decimal("1000000")
+    assert res["cartera_montos"]["CLP"] == Decimal("500000")
+    assert len(res["funnel"]) == 5
+    monkeypatch.undo()
 
 
 def test_activar_flujo_permte_tasa_cero_bloquea_menos_099():

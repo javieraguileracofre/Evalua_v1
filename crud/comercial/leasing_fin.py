@@ -506,9 +506,35 @@ def get_hub_resumen(db: Session) -> dict[str, Any]:
         "formalizacion": 0,
         "vigentes": 0,
         "rechazadas": 0,
+        "activadas": 0,
+        "total": len(cotizaciones),
     }
+    pipeline_montos: dict[str, Decimal] = {"CLP": Decimal("0"), "UF": Decimal("0"), "USD": Decimal("0")}
+    cartera_montos: dict[str, Decimal] = {"CLP": Decimal("0"), "UF": Decimal("0"), "USD": Decimal("0")}
+    _estados_pipeline = {
+        "BORRADOR",
+        "COTIZADA",
+        "EN_ANALISIS_COMERCIAL",
+        "EN_ANALISIS_CREDITO",
+        "APROBADA",
+        "APROBADA_CONDICIONES",
+        "EN_FORMALIZACION",
+        "DOCUMENTACION_COMPLETA",
+    }
+    _estados_cartera = {"VIGENTE", "ACTIVADA"}
+
     for c in cotizaciones:
         est = str(c.estado or "").upper()
+        moneda = str(c.moneda or "CLP").strip().upper()
+        if moneda not in pipeline_montos:
+            moneda = "CLP"
+        monto = c.monto_financiado or c.valor_neto or c.monto or Decimal("0")
+        if monto and monto > 0:
+            if est in _estados_pipeline:
+                pipeline_montos[moneda] += Decimal(str(monto))
+            if est in _estados_cartera:
+                cartera_montos[moneda] += Decimal(str(monto))
+
         if est in {"BORRADOR", "COTIZADA", "EN_ANALISIS_COMERCIAL"}:
             kpis["abiertas"] += 1
         if est == "EN_ANALISIS_CREDITO":
@@ -521,6 +547,48 @@ def get_hub_resumen(db: Session) -> dict[str, Any]:
             kpis["vigentes"] += 1
         if est in {"RECHAZADA", "PERDIDA_CLIENTE", "ANULADA"}:
             kpis["rechazadas"] += 1
+        if est in {"ACTIVADA", "VIGENTE"}:
+            kpis["activadas"] += 1
+
+    cerradas = kpis["activadas"] + kpis["rechazadas"]
+    tasa_cierre_pct = (
+        Decimal(str(kpis["activadas"])) / Decimal(str(cerradas)) * Decimal("100")
+        if cerradas > 0
+        else None
+    )
+
+    funnel = [
+        {
+            "key": "cotizacion",
+            "label": "Cotización",
+            "count": kpis["abiertas"],
+            "hint": "BORRADOR · COTIZADA · ANÁLISIS COMERCIAL",
+        },
+        {
+            "key": "credito",
+            "label": "Crédito",
+            "count": kpis["en_credito"],
+            "hint": "Scoring y aprobación",
+        },
+        {
+            "key": "aprobacion",
+            "label": "Aprobación",
+            "count": kpis["aprobadas"],
+            "hint": "Condiciones comerciales",
+        },
+        {
+            "key": "formalizacion",
+            "label": "Formalización",
+            "count": kpis["formalizacion"],
+            "hint": "OC · contrato · acta",
+        },
+        {
+            "key": "cartera",
+            "label": "Cartera",
+            "count": kpis["activadas"],
+            "hint": "ACTIVADA · VIGENTE",
+        },
+    ]
 
     pendientes_credito = [c for c in cotizaciones if str(c.estado or "").upper() == "EN_ANALISIS_CREDITO"][:10]
     pendientes_docs = [
@@ -529,13 +597,18 @@ def get_hub_resumen(db: Session) -> dict[str, Any]:
         if str(c.estado or "").upper() in {"APROBADA", "APROBADA_CONDICIONES", "EN_FORMALIZACION"}
     ][:10]
     pendientes_activacion = [c for c in cotizaciones if str(c.estado or "").upper() == "DOCUMENTACION_COMPLETA"][:10]
-    recientes = cotizaciones[:10]
+    recientes = cotizaciones[:8]
+
     return {
         "kpis": kpis,
         "recientes": recientes,
         "pendientes_credito": pendientes_credito,
         "pendientes_documentacion": pendientes_docs,
         "pendientes_activacion": pendientes_activacion,
+        "pipeline_montos": pipeline_montos,
+        "cartera_montos": cartera_montos,
+        "tasa_cierre_pct": tasa_cierre_pct,
+        "funnel": funnel,
     }
 
 
