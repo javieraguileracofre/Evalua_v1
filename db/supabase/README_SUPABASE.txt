@@ -104,6 +104,18 @@ El 106 añade leasing_op_documento_proceso (versionado de contrato/OC/acta/factu
 El 107 añade configuración contable base de LOP (activación, facturación y depreciación) en fin.config_contable*.
 La app intenta aplicar 102/103/104/105/106 al arrancar si faltan las tablas y 107 para completar configuración contable LOP.
 
+Migraciones adicionales LOP (hub, cartera, mora, cobranza) — Supabase SQL Editor
+---------------------------------------------------------------------------------
+Si /comercial/leasing-operativo/hub responde 500, ejecute TODO el archivo (idempotente):
+
+  db/supabase/leasing_operativo_108_109.sql
+
+O desde su PC con la clave actual del panel Supabase en .env:
+
+  python tools/apply_lop_migrations.py
+
+La app también intenta aplicar db/psql/108_* y 109_* al arrancar en Render si faltan columnas/tablas.
+
 Si algo falla
 -------------
 - "password authentication failed": la clave no es la del proyecto en la nube; reset en Database.

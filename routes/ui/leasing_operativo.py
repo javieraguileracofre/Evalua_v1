@@ -17,9 +17,9 @@ from core.paths import TEMPLATES_DIR
 from crud.leasing_operativo import crud as lo_crud
 from crud.maestros.cliente import listar_clientes
 from db.session import get_db
-from services.leasing_operativo.cotizacion_pdf import generar_cotizacion_pdf_bytes
 from services.leasing_operativo.contrato_pdf import generar_contrato_pdf_bytes
 from services.leasing_operativo.market_data import fetch_cl_market_indicators
+from services.indicadores_mercado import obtener_uf_dolar_hoy
 
 router = APIRouter(prefix="/comercial/leasing-operativo", tags=["Comercial · Leasing operativo"])
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -147,15 +147,36 @@ def lo_root():
     return RedirectResponse("/comercial/leasing-operativo/hub", status_code=status.HTTP_302_FOUND)
 
 
+def _mercado_hub() -> dict | None:
+    try:
+        return obtener_uf_dolar_hoy()
+    except Exception:
+        mkt = fetch_cl_market_indicators()
+        if not mkt:
+            return None
+        return {
+            "uf": str(mkt.get("uf_clp") or ""),
+            "dolar": str(mkt.get("usd_clp") or ""),
+            "fecha": str(mkt.get("as_of") or "")[:10],
+            "fuente": str(mkt.get("source") or ""),
+        }
+
+
 @router.get("/hub", response_class=HTMLResponse, name="leasing_operativo_hub")
 def lo_hub(request: Request, db: Session = Depends(get_db)):
-    resumen = lo_crud.get_hub_resumen(db)
-    mkt = fetch_cl_market_indicators()
+    try:
+        resumen = lo_crud.get_hub_resumen(db)
+    except Exception as exc:
+        raise HTTPException(
+            503,
+            "Esquema LOP incompleto en la base de datos. Ejecute db/supabase/leasing_operativo_108_109.sql "
+            f"en Supabase SQL Editor o reinicie la app tras migración. Detalle: {exc}",
+        ) from exc
     return templates.TemplateResponse(
         "leasing_operativo/hub.html",
         {
             "request": request,
-            "mercado": mkt,
+            "mercado": _mercado_hub(),
             "active_menu": "leasing_operativo",
             **resumen,
         },

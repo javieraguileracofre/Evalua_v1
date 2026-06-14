@@ -751,7 +751,11 @@ def ensure_leasing_operativo_schema(engine: Engine) -> None:
     if (
         _PATCH_109_LOP.is_file()
         and _has_table(engine, schema="public", table="leasing_op_contrato")
-        and not _has_table(engine, schema="public", table="leasing_op_gestion_evento")
+        and (
+            not _has_table(engine, schema="public", table="leasing_op_gestion_evento")
+            or not _has_column(engine, schema="public", table="leasing_op_cuota", column="dias_mora")
+            or not _has_column(engine, schema="public", table="leasing_op_contrato", column="fecha_termino")
+        )
     ):
         try:
             _run_sql_patch_autocommit(engine, _PATCH_109_LOP)
