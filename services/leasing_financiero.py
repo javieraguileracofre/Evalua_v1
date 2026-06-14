@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import TYPE_CHECKING, List, Optional
 
 from schemas.comercial.leasing_amortizacion import AmortizacionCuota
+from schemas.comercial.leasing_cotizacion import LeasingSimulacionInput, LeasingSimulacionResumen
 
 if TYPE_CHECKING:
     from models.comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion
@@ -85,6 +86,322 @@ def _q4(v: Decimal | float | int) -> Decimal:
     return d.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
+def normalizar_tasa_anual(tasa: Decimal | float | int | None) -> Decimal | None:
+    """Acepta tasa decimal (0,12) o porcentaje (12)."""
+    if tasa is None:
+        return None
+    t = Decimal(str(tasa))
+    if t > Decimal("1"):
+        t = t / Decimal("100")
+    if t < Decimal("-0.99"):
+        raise ValueError("La tasa nominal anual no puede ser inferior a -99%.")
+    return _q4(t)
+
+
+def calcular_pago_inicial(
+    valor_neto: Decimal | None,
+    tipo: str | None,
+    valor: Decimal | None,
+) -> Decimal:
+    if not valor_neto or valor_neto <= 0 or not tipo or not valor or valor <= 0:
+        return Decimal("0.00")
+    tipo_norm = str(tipo).strip().upper()
+    if tipo_norm == "PORCENTAJE":
+        pct = valor / Decimal("100") if valor > Decimal("1") else valor
+        if pct > Decimal("1"):
+            raise ValueError("El porcentaje de pago inicial no puede superar 100%.")
+        return _q(valor_neto * pct)
+    if tipo_norm == "MONTO":
+        if valor > valor_neto:
+            raise ValueError("El pago inicial no puede superar el valor neto de la operación.")
+        return _q(valor)
+    return Decimal("0.00")
+
+
+def _convertir_uf_a_moneda(
+    moneda: str,
+    monto_uf: Decimal | None,
+    *,
+    uf_valor: Decimal | None,
+    dolar_valor: Decimal | None,
+) -> Decimal:
+    if not monto_uf or monto_uf <= 0:
+        return Decimal("0.00")
+    m = (moneda or "CLP").strip().upper()
+    if m == "UF":
+        return _q4(monto_uf)
+    if not uf_valor or uf_valor <= 0:
+        return Decimal("0.00")
+    clp = _q(monto_uf * uf_valor)
+    if m == "CLP":
+        return clp
+    if m == "USD":
+        if not dolar_valor or dolar_valor <= 0:
+            return Decimal("0.00")
+        return _q(clp / dolar_valor)
+    return Decimal("0.00")
+
+
+def _convertir_clp_a_moneda(
+    moneda: str,
+    monto_clp: Decimal | None,
+    *,
+    uf_valor: Decimal | None,
+    dolar_valor: Decimal | None,
+) -> Decimal:
+    if not monto_clp or monto_clp <= 0:
+        return Decimal("0.00")
+    m = (moneda or "CLP").strip().upper()
+    if m == "CLP":
+        return _q(monto_clp)
+    if m == "UF":
+        if not uf_valor or uf_valor <= 0:
+            return Decimal("0.00")
+        return _q(monto_clp / uf_valor)
+    if m == "USD":
+        if not dolar_valor or dolar_valor <= 0:
+            return Decimal("0.00")
+        return _q(monto_clp / dolar_valor)
+    return Decimal("0.00")
+
+
+def calcular_monto_financiado(
+    *,
+    moneda: str,
+    valor_neto: Decimal | None,
+    pago_inicial_tipo: str | None,
+    pago_inicial_valor: Decimal | None,
+    financia_seguro: bool,
+    seguro_monto_uf: Decimal | None,
+    otros_montos_pesos: Decimal | None,
+    uf_valor: Decimal | None,
+    dolar_valor: Decimal | None,
+) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    """
+    Deriva monto financiado desde valor neto, pie, seguro y otros cargos.
+    Retorna (monto_financiado, pago_inicial, seguro_financiado, otros_montos).
+    """
+    pago_inicial = calcular_pago_inicial(valor_neto, pago_inicial_tipo, pago_inicial_valor)
+    base = _q((valor_neto or Decimal("0")) - pago_inicial)
+    if base < 0:
+        raise ValueError("El pago inicial supera el valor neto de la operación.")
+
+    seguro = Decimal("0.00")
+    if financia_seguro:
+        seguro = _convertir_uf_a_moneda(
+            moneda,
+            seguro_monto_uf,
+            uf_valor=uf_valor,
+            dolar_valor=dolar_valor,
+        )
+    otros = _convertir_clp_a_moneda(
+        moneda,
+        otros_montos_pesos,
+        uf_valor=uf_valor,
+        dolar_valor=dolar_valor,
+    )
+    return _q(base + seguro + otros), pago_inicial, seguro, otros
+
+
+def _cotizacion_desde_simulacion(data: LeasingSimulacionInput) -> "LeasingFinancieroCotizacion":
+    from types import SimpleNamespace
+
+    tasa = normalizar_tasa_anual(data.tasa)
+    monto_fin = data.monto_financiado
+    calculado = False
+    if monto_fin is None or monto_fin <= 0:
+        monto_fin, _, _, _ = calcular_monto_financiado(
+            moneda=data.moneda,
+            valor_neto=data.valor_neto,
+            pago_inicial_tipo=data.pago_inicial_tipo,
+            pago_inicial_valor=data.pago_inicial_valor,
+            financia_seguro=data.financia_seguro,
+            seguro_monto_uf=data.seguro_monto_uf,
+            otros_montos_pesos=data.otros_montos_pesos,
+            uf_valor=data.uf_valor,
+            dolar_valor=data.dolar_valor,
+        )
+        calculado = True
+    return SimpleNamespace(
+        plazo=data.plazo,
+        monto_financiado=monto_fin,
+        valor_neto=data.valor_neto,
+        monto=None,
+        tasa=tasa,
+        periodos_gracia=data.periodos_gracia or 0,
+        opcion_compra=data.opcion_compra,
+        fecha_inicio=data.fecha_inicio,
+        moneda=data.moneda,
+        _monto_financiado_calculado=calculado,
+    )
+
+
+def calcular_tea_anual(tasa_nominal_anual: Decimal | None) -> Decimal | None:
+    if tasa_nominal_anual is None:
+        return None
+    t = Decimal(str(tasa_nominal_anual))
+    if t <= Decimal("-0.99"):
+        return None
+    if t == 0:
+        return Decimal("0.0000")
+    im = t / Decimal("12")
+    tea = (Decimal("1") + im) ** 12 - Decimal("1")
+    return _q4(tea)
+
+
+def simular_cotizacion(data: LeasingSimulacionInput) -> LeasingSimulacionResumen:
+    advertencias: list[str] = []
+    moneda = (data.moneda or "CLP").strip().upper()
+    tasa = normalizar_tasa_anual(data.tasa)
+
+    pago_inicial = Decimal("0.00")
+    seguro = Decimal("0.00")
+    otros = Decimal("0.00")
+    monto_fin = data.monto_financiado
+    calculado = False
+
+    try:
+        if monto_fin is None or monto_fin <= 0:
+            monto_fin, pago_inicial, seguro, otros = calcular_monto_financiado(
+                moneda=moneda,
+                valor_neto=data.valor_neto,
+                pago_inicial_tipo=data.pago_inicial_tipo,
+                pago_inicial_valor=data.pago_inicial_valor,
+                financia_seguro=data.financia_seguro,
+                seguro_monto_uf=data.seguro_monto_uf,
+                otros_montos_pesos=data.otros_montos_pesos,
+                uf_valor=data.uf_valor,
+                dolar_valor=data.dolar_valor,
+            )
+            calculado = True
+        elif data.valor_neto and data.valor_neto > 0:
+            pago_inicial = calcular_pago_inicial(
+                data.valor_neto,
+                data.pago_inicial_tipo,
+                data.pago_inicial_valor,
+            )
+            if data.financia_seguro:
+                seguro = _convertir_uf_a_moneda(
+                    moneda,
+                    data.seguro_monto_uf,
+                    uf_valor=data.uf_valor,
+                    dolar_valor=data.dolar_valor,
+                )
+            otros = _convertir_clp_a_moneda(
+                moneda,
+                data.otros_montos_pesos,
+                uf_valor=data.uf_valor,
+                dolar_valor=data.dolar_valor,
+            )
+    except ValueError as exc:
+        advertencias.append(str(exc))
+        return LeasingSimulacionResumen(
+            moneda=moneda,
+            valor_neto=data.valor_neto,
+            monto_financiado=Decimal("0.00"),
+            advertencias=advertencias,
+        )
+
+    if not monto_fin or monto_fin <= 0:
+        advertencias.append("Informe valor neto o monto financiado para simular.")
+        return LeasingSimulacionResumen(
+            moneda=moneda,
+            valor_neto=data.valor_neto,
+            pago_inicial=pago_inicial,
+            seguro_financiado=seguro,
+            otros_montos=otros,
+            monto_financiado=Decimal("0.00"),
+            monto_financiado_calculado=calculado,
+            advertencias=advertencias,
+        )
+
+    if not data.plazo or data.plazo <= 0:
+        advertencias.append("Informe plazo en meses para calcular la renta.")
+        return LeasingSimulacionResumen(
+            moneda=moneda,
+            valor_neto=data.valor_neto,
+            pago_inicial=pago_inicial,
+            seguro_financiado=seguro,
+            otros_montos=otros,
+            monto_financiado=monto_fin,
+            monto_financiado_calculado=calculado,
+            tasa_nominal_anual_pct=_q4((tasa or Decimal("0")) * 100) if tasa is not None else None,
+            advertencias=advertencias,
+        )
+
+    cot = _cotizacion_desde_simulacion(data)
+    cot.monto_financiado = monto_fin
+    cot.tasa = tasa
+
+    try:
+        tabla = calcular_tabla_amortizacion(cot)
+    except ValueError as exc:
+        advertencias.append(str(exc))
+        return LeasingSimulacionResumen(
+            moneda=moneda,
+            valor_neto=data.valor_neto,
+            pago_inicial=pago_inicial,
+            seguro_financiado=seguro,
+            otros_montos=otros,
+            monto_financiado=monto_fin,
+            monto_financiado_calculado=calculado,
+            tasa_nominal_anual_pct=_q4((tasa or Decimal("0")) * 100) if tasa is not None else None,
+            advertencias=advertencias,
+        )
+
+    rentas = [c for c in tabla if not c.es_gracia and not c.es_opcion_compra]
+    renta_mensual = rentas[0].cuota if rentas else None
+    total_interes = sum((c.interes for c in tabla), Decimal("0.00"))
+    total_rentas = sum((c.cuota for c in rentas), Decimal("0.00"))
+    total_opcion = sum((c.cuota for c in tabla if c.es_opcion_compra), Decimal("0.00"))
+    tea = calcular_tea_anual(tasa)
+
+    return LeasingSimulacionResumen(
+        moneda=moneda,
+        valor_neto=data.valor_neto,
+        pago_inicial=pago_inicial,
+        seguro_financiado=seguro,
+        otros_montos=otros,
+        monto_financiado=monto_fin,
+        renta_mensual=renta_mensual,
+        total_intereses=_q(total_interes),
+        total_rentas=_q(total_rentas),
+        total_opcion_compra=_q(total_opcion),
+        total_desembolso=_q(pago_inicial + total_rentas + total_opcion),
+        tasa_nominal_anual_pct=_q4((tasa or Decimal("0")) * 100) if tasa is not None else None,
+        tea_anual_pct=_q4(tea * 100) if tea is not None else None,
+        cuotas_operativas=len(rentas),
+        periodos_gracia=int(data.periodos_gracia or 0),
+        monto_financiado_calculado=calculado,
+        advertencias=advertencias,
+    )
+
+
+def aplicar_parametros_financieros(data: dict) -> dict:
+    """Normaliza tasa y deriva monto financiado antes de persistir."""
+    if "tasa" in data and data["tasa"] is not None:
+        data["tasa"] = normalizar_tasa_anual(data["tasa"])
+    moneda = str(data.get("moneda") or "CLP").strip().upper()
+    monto_fin = data.get("monto_financiado")
+    valor_neto = data.get("valor_neto")
+    if (monto_fin is None or monto_fin <= 0) and valor_neto and valor_neto > 0:
+        monto_calc, _, _, _ = calcular_monto_financiado(
+            moneda=moneda,
+            valor_neto=valor_neto,
+            pago_inicial_tipo=data.get("pago_inicial_tipo"),
+            pago_inicial_valor=data.get("pago_inicial_valor"),
+            financia_seguro=bool(data.get("financia_seguro")),
+            seguro_monto_uf=data.get("seguro_monto_uf"),
+            otros_montos_pesos=data.get("otros_montos_pesos"),
+            uf_valor=data.get("uf_valor"),
+            dolar_valor=data.get("dolar_valor"),
+        )
+        data["monto_financiado"] = monto_calc
+    if data.get("monto") is None and data.get("monto_financiado"):
+        data["monto"] = data["monto_financiado"]
+    return data
+
+
 def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> List[AmortizacionCuota]:
     """
     Tabla de amortización leasing financiero (tasa nominal anual / 12, cuotas mensuales).
@@ -98,7 +415,9 @@ def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> Li
 
     saldo = _q(monto_base)
 
-    tasa_anual = Decimal(str(cotizacion.tasa)) if cotizacion.tasa is not None else Decimal("0")
+    tasa_anual = normalizar_tasa_anual(cotizacion.tasa) if cotizacion.tasa is not None else Decimal("0")
+    if tasa_anual is None:
+        tasa_anual = Decimal("0")
     i = _q4(tasa_anual / Decimal("12")) if tasa_anual > 0 else Decimal("0")
 
     total_periodos = _int_meses(

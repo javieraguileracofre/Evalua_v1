@@ -24,6 +24,8 @@ from schemas.comercial.leasing_cotizacion import (
     LeasingCotizacionCreate,
     LeasingCotizacionRead,
     LeasingCotizacionUpdate,
+    LeasingSimulacionInput,
+    LeasingSimulacionResumen,
 )
 from services import leasing_financiero
 from services.indicadores_mercado import obtener_uf_dolar_hoy
@@ -210,6 +212,7 @@ def lf_cotizacion_nueva_form(
             "cliente_id": cliente_id,
             "has_clientes": has_clientes,
             "moneda_default": "CLP",
+            "fecha_hoy": date.today().isoformat(),
             "active_menu": "leasing_financiero",
         },
     )
@@ -368,6 +371,21 @@ def lf_cotizacion_nueva_post_cliente(
         monto_financiado=monto_financiado,
         dolar_valor=dolar_valor,
     )
+
+
+@router.post("/api/simular", response_model=LeasingSimulacionResumen)
+def api_lf_cotizacion_simular(obj_in: LeasingSimulacionInput):
+    moneda = _normalizar_moneda(obj_in.moneda)
+    uf_val = obj_in.uf_valor
+    usd_val = obj_in.dolar_valor
+    try:
+        _validar_fx_moneda(moneda, uf_val, usd_val)
+    except ValueError as exc:
+        res = leasing_financiero.simular_cotizacion(obj_in)
+        res.advertencias = [str(exc), *res.advertencias]
+        return res
+    payload = obj_in.model_copy(update={"moneda": moneda})
+    return leasing_financiero.simular_cotizacion(payload)
 
 
 @router.get("/api", response_model=List[LeasingCotizacionRead])

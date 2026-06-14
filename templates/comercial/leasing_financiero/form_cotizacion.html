@@ -9,6 +9,7 @@
     --eva-border:#E5E7EB;
     --eva-muted:#6B7280;
     --eva-card:#FFFFFF;
+    --eva-gold:#D4AF37;
   }
   .eva-card{ border:1px solid var(--eva-border) !important; border-radius:14px; background:var(--eva-card); }
   .eva-title{ color:var(--eva-navy); }
@@ -24,6 +25,20 @@
   .hint{ font-size:.75rem; color:var(--eva-muted); }
   .hint.err{ color:#B91C1C; font-weight:600; }
   .alert-eva{ border:1px solid rgba(212,175,55,.35); background:rgba(212,175,55,.10); color:#6B4E00; border-radius:12px; }
+  .eva-section{
+    font-size:.7rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--eva-navy); border-bottom:1px solid var(--eva-border); padding-bottom:.35rem; margin-bottom:.25rem;
+  }
+  .preview-panel{
+    position:sticky; top:1rem; border:1px solid rgba(11,31,59,.12); border-radius:14px;
+    background:linear-gradient(180deg,#FAFBFC 0%,#fff 100%);
+  }
+  .preview-kpi{ border-radius:10px; background:#F9FAFB; border:1px solid var(--eva-border); padding:.65rem .75rem; }
+  .preview-kpi .lbl{ font-size:.68rem; color:var(--eva-muted); text-transform:uppercase; letter-spacing:.04em; }
+  .preview-kpi .val{ font-size:1.05rem; font-weight:700; color:var(--eva-navy); font-variant-numeric:tabular-nums; }
+  .preview-kpi .val.highlight{ color:#065F46; }
+  .preview-warn{ font-size:.75rem; color:#92400E; background:rgba(245,158,11,.12); border-radius:8px; padding:.4rem .55rem; }
+  .field-calc{ background:#FFFBEB; border-color:rgba(212,175,55,.45); }
 </style>
 {% endblock head %}
 
@@ -38,6 +53,7 @@
   </div>
 
   {% set has_clientes = (clientes is defined and clientes and (clientes|length > 0)) %}
+  {% set fecha_hoy = fecha_hoy if fecha_hoy is defined else '' %}
 
   {% if not has_clientes %}
     <div class="alert alert-eva mb-3">
@@ -53,150 +69,222 @@
     </div>
   {% endif %}
 
-  <form id="cotForm"
-        method="post"
-        action="{{ request.url_for('lf_cotizacion_nueva_post') }}"
-        class="card eva-card shadow-sm border-0"
-        data-has-clientes="{{ '1' if has_clientes else '0' }}"
-        data-moneda-default="{{ moneda_default if moneda_default is defined and moneda_default else 'CLP' }}">
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <form id="cotForm"
+            method="post"
+            action="{{ request.url_for('lf_cotizacion_nueva_post') }}"
+            class="card eva-card shadow-sm border-0"
+            data-has-clientes="{{ '1' if has_clientes else '0' }}"
+            data-moneda-default="{{ moneda_default if moneda_default is defined and moneda_default else 'CLP' }}"
+            data-sim-url="{{ request.url_for('api_lf_cotizacion_simular') }}">
 
-    <div class="card-body">
-      <div class="row g-3">
-        <div class="col-12">
-          <label class="form-label small">Cliente *</label>
-          <input id="cliente_search" class="form-control mb-2" list="clientes_datalist"
-                 placeholder="Escribe para buscar por razón social..."
-                 {% if not has_clientes %}disabled{% endif %} autocomplete="off">
-          <select id="cliente_select" class="form-select" {% if not has_clientes %}disabled{% endif %}>
-            <option value="" selected disabled>— Selecciona un cliente —</option>
-            {% if has_clientes %}
-              {% for c in clientes %}
-                <option value="{{ c.id }}" data-razon="{{ c.razon_social }}" data-rut="{{ c.rut }}">
-                  {{ c.razon_social }}{% if c.rut %} ({{ c.rut }}){% endif %}
-                </option>
-              {% endfor %}
-            {% endif %}
-          </select>
-          <input type="hidden" id="cliente_id" name="cliente_id" {% if not has_clientes %}disabled{% endif %} required>
-          <datalist id="clientes_datalist">
-            {% if has_clientes %}
-              {% for c in clientes %}
-                <option value="{{ c.razon_social }}" data-id="{{ c.id }}" data-rut="{{ c.rut }}"></option>
-              {% endfor %}
-            {% endif %}
-          </datalist>
-          <div id="cliente_help" class="hint mt-1"></div>
+        <div class="card-body">
+          <div class="eva-section mb-2">Datos comerciales</div>
+          <div class="row g-3 mb-3">
+            <div class="col-12">
+              <label class="form-label small">Cliente *</label>
+              <input id="cliente_search" class="form-control mb-2" list="clientes_datalist"
+                     placeholder="Escribe para buscar por razón social..."
+                     {% if not has_clientes %}disabled{% endif %} autocomplete="off">
+              <select id="cliente_select" class="form-select" {% if not has_clientes %}disabled{% endif %}>
+                <option value="" selected disabled>— Selecciona un cliente —</option>
+                {% if has_clientes %}
+                  {% for c in clientes %}
+                    <option value="{{ c.id }}" data-razon="{{ c.razon_social }}" data-rut="{{ c.rut }}">
+                      {{ c.razon_social }}{% if c.rut %} ({{ c.rut }}){% endif %}
+                    </option>
+                  {% endfor %}
+                {% endif %}
+              </select>
+              <input type="hidden" id="cliente_id" name="cliente_id" {% if not has_clientes %}disabled{% endif %} required>
+              <datalist id="clientes_datalist">
+                {% if has_clientes %}
+                  {% for c in clientes %}
+                    <option value="{{ c.razon_social }}" data-id="{{ c.id }}" data-rut="{{ c.rut }}"></option>
+                  {% endfor %}
+                {% endif %}
+              </datalist>
+              <div id="cliente_help" class="hint mt-1"></div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Fecha cotización</label>
+              <input type="date" name="fecha_cotizacion" class="form-control js-sim" value="{{ fecha_hoy }}" {% if not has_clientes %}disabled{% endif %}>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Fecha inicio contrato *</label>
+              <input type="date" name="fecha_inicio" class="form-control js-sim" value="{{ fecha_hoy }}" {% if not has_clientes %}disabled{% endif %} required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Ejecutivo comercial</label>
+              <input type="text" name="ejecutivo" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Concesionario / proveedor</label>
+              <input type="text" name="concesionario" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Moneda operación</label>
+              <select id="moneda_select" name="moneda" class="form-select js-sim" {% if not has_clientes %}disabled{% endif %}>
+                <option value="CLP">CLP — Pesos chilenos</option>
+                <option value="UF">UF — Unidad de fomento</option>
+                <option value="USD">USD — Dólares</option>
+              </select>
+              <div id="moneda_help" class="hint mt-1"></div>
+            </div>
+          </div>
+
+          <div class="eva-section mb-2">Estructura financiera</div>
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label small">Valor neto operación *</label>
+              <input type="text" id="valor_neto" name="valor_neto" class="form-control js-money js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <div class="hint">Precio neto del activo (sin IVA recuperable).</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Tipo pago inicial</label>
+              <select id="pago_inicial_tipo" name="pago_inicial_tipo" class="form-select js-sim" {% if not has_clientes %}disabled{% endif %}>
+                <option value="">Sin pago inicial</option>
+                <option value="PORCENTAJE">Porcentaje (%)</option>
+                <option value="MONTO">Monto fijo</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Valor pago inicial</label>
+              <input type="text" id="pago_inicial_valor" name="pago_inicial_valor" class="form-control js-money js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <div class="hint">Ej. 20 para 20% o monto según tipo.</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Monto financiado</label>
+              <input type="text" id="monto_financiado" name="monto_financiado" class="form-control js-money js-sim field-calc" {% if not has_clientes %}disabled{% endif %}>
+              <div id="monto_fin_help" class="hint">Se calcula automáticamente; puede ajustarlo manualmente.</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Monto total referencia</label>
+              <input type="text" name="monto" id="monto" class="form-control js-money" readonly tabindex="-1" {% if not has_clientes %}disabled{% endif %}>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Plazo (meses) *</label>
+              <input type="number" min="1" step="1" name="plazo" id="plazo" class="form-control js-sim" value="36" {% if not has_clientes %}disabled{% endif %} required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Tasa nominal anual</label>
+              <input type="text" name="tasa" id="tasa" class="form-control js-rate js-sim" placeholder="Ej: 12 o 0,12" {% if not has_clientes %}disabled{% endif %}>
+              <div class="hint">Acepta decimal (0,12) o porcentaje (12 = 12% anual).</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Periodos de gracia</label>
+              <input type="number" min="0" step="1" name="periodos_gracia" id="periodos_gracia" class="form-control js-sim" value="0" {% if not has_clientes %}disabled{% endif %}>
+              <div class="hint">Meses solo interés, sin amortización de capital.</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Opción de compra (residual)</label>
+              <input type="text" name="opcion_compra" id="opcion_compra" class="form-control js-money js-sim" {% if not has_clientes %}disabled{% endif %}>
+            </div>
+          </div>
+
+          <div class="eva-section mb-2">Seguro y cargos adicionales</div>
+          <div class="row g-3 mb-2">
+            <div class="col-md-4">
+              <label class="form-label small">¿Financia seguro?</label>
+              <select id="financia_seguro" name="financia_seguro" class="form-select js-sim" {% if not has_clientes %}disabled{% endif %}>
+                <option value="false" selected>No</option>
+                <option value="true">Sí — capitalizar en monto financiado</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Prima seguro (UF)</label>
+              <input type="text" name="seguro_monto_uf" id="seguro_monto_uf" class="form-control js-rate js-sim" {% if not has_clientes %}disabled{% endif %}>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Otros montos (CLP)</label>
+              <input type="text" name="otros_montos_pesos" id="otros_montos_pesos" class="form-control js-money js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <div class="hint">Gastos notariales, inscripción u otros financiables.</div>
+            </div>
+          </div>
+
+          <div class="eva-section mb-2 mt-3">Tipo de cambio de referencia</div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label small">Valor UF (CLP)</label>
+              <input type="text" id="uf_valor" name="uf_valor" class="form-control js-rate js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <div id="uf_help" class="hint"></div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Valor dólar (CLP)</label>
+              <input type="text" id="dolar_valor" name="dolar_valor" class="form-control js-rate js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <div id="usd_help" class="hint"></div>
+            </div>
+            <div class="col-md-4 d-flex flex-column justify-content-end">
+              <button type="button" id="btn_rates" class="btn btn-outline-secondary btn-sm w-100 mb-1" {% if not has_clientes %}disabled{% endif %}>
+                Cargar UF/USD del día
+              </button>
+              <div id="rates_info" class="hint">Indicadores sin cargar.</div>
+            </div>
+          </div>
         </div>
 
-        <div class="col-md-3">
-          <label class="form-label small">Fecha cotización</label>
-          <input type="date" name="fecha_cotizacion" class="form-control" {% if not has_clientes %}disabled{% endif %}>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Fecha inicio *</label>
-          <input type="date" name="fecha_inicio" class="form-control" {% if not has_clientes %}disabled{% endif %} required>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Moneda</label>
-          <select id="moneda_select" name="moneda" class="form-select" {% if not has_clientes %}disabled{% endif %}>
-            <option value="CLP">CLP</option>
-            <option value="UF">UF</option>
-            <option value="USD">USD</option>
-          </select>
-          <div id="rates_info" class="hint mt-1">UF/USD diario sin cargar.</div>
-          <div id="moneda_help" class="hint mt-1"></div>
-        </div>
-        <div class="col-md-3 d-flex align-items-end">
-          <button type="button" id="btn_rates" class="btn btn-outline-secondary btn-sm w-100" {% if not has_clientes %}disabled{% endif %}>
-            Cargar UF/USD del día
+        <div class="card-footer d-flex justify-content-between align-items-center">
+          <span class="small text-muted">* Campos obligatorios · La simulación se actualiza al modificar parámetros</span>
+          <button id="btnSubmit" type="submit" class="btn eva-btn-primary btn-sm" {% if not has_clientes %}disabled{% endif %}>
+            Crear cotización
           </button>
         </div>
-        <div class="col-md-3">
-          <label class="form-label small">Plazo (meses) *</label>
-          <input type="number" min="1" step="1" name="plazo" class="form-control" {% if not has_clientes %}disabled{% endif %} required>
-        </div>
+      </form>
+    </div>
 
-        <div class="col-md-3">
-          <label class="form-label small">Valor neto operación</label>
-          <input type="text" name="valor_neto" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
+    <div class="col-lg-4">
+      <div class="preview-panel p-3 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 class="h6 fw-semibold mb-0 eva-title">Vista previa financiera</h2>
+          <span id="preview_moneda" class="eva-badge">CLP</span>
         </div>
-        <div class="col-md-3">
-          <label class="form-label small">Monto financiado</label>
-          <input type="text" name="monto_financiado" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <div class="preview-kpi">
+              <div class="lbl">Renta mensual</div>
+              <div id="pv_renta" class="val highlight">—</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="preview-kpi">
+              <div class="lbl">Monto financiado</div>
+              <div id="pv_monto_fin" class="val">—</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="preview-kpi">
+              <div class="lbl">Pago inicial</div>
+              <div id="pv_pie" class="val">—</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="preview-kpi">
+              <div class="lbl">Total intereses</div>
+              <div id="pv_intereses" class="val">—</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="preview-kpi">
+              <div class="lbl">TEA estimada</div>
+              <div id="pv_tea" class="val">—</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="preview-kpi">
+              <div class="lbl">Desembolso total</div>
+              <div id="pv_total" class="val">—</div>
+            </div>
+          </div>
         </div>
-        <div class="col-md-3">
-          <label class="form-label small">Monto total (referencia)</label>
-          <input type="text" name="monto" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Tasa nominal anual</label>
-          <input type="text" name="tasa" class="form-control js-rate" placeholder="Ej: 0,1200" {% if not has_clientes %}disabled{% endif %}>
-        </div>
-
-        <div class="col-md-3">
-          <label class="form-label small">Periodos de gracia</label>
-          <input type="number" min="0" step="1" name="periodos_gracia" class="form-control" value="0" {% if not has_clientes %}disabled{% endif %}>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Opción de compra</label>
-          <input type="text" name="opcion_compra" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Tipo pago inicial</label>
-          <select name="pago_inicial_tipo" class="form-select" {% if not has_clientes %}disabled{% endif %}>
-            <option value="">Sin pago inicial</option>
-            <option value="PORCENTAJE">Porcentaje (%)</option>
-            <option value="MONTO">Monto fijo</option>
-          </select>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Valor pago inicial</label>
-          <input type="text" name="pago_inicial_valor" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
-        </div>
-
-        <div class="col-md-3">
-          <label class="form-label small">¿Incluye seguro financiado?</label>
-          <select name="financia_seguro" class="form-select" {% if not has_clientes %}disabled{% endif %}>
-            <option value="false" selected>No</option>
-            <option value="true">Sí</option>
-          </select>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Monto seguro (UF)</label>
-          <input type="text" name="seguro_monto_uf" class="form-control js-rate" {% if not has_clientes %}disabled{% endif %}>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Otros montos en pesos</label>
-          <input type="text" name="otros_montos_pesos" class="form-control js-money" {% if not has_clientes %}disabled{% endif %}>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Valor UF</label>
-          <input type="text" id="uf_valor" name="uf_valor" class="form-control js-rate" {% if not has_clientes %}disabled{% endif %}>
-          <div id="uf_help" class="hint"></div>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Valor dólar</label>
-          <input type="text" id="dolar_valor" name="dolar_valor" class="form-control js-rate" {% if not has_clientes %}disabled{% endif %}>
-          <div id="usd_help" class="hint"></div>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Concesionario</label>
-          <input type="text" name="concesionario" class="form-control" {% if not has_clientes %}disabled{% endif %}>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small">Ejecutivo</label>
-          <input type="text" name="ejecutivo" class="form-control" {% if not has_clientes %}disabled{% endif %}>
+        <div id="pv_warn" class="preview-warn d-none mb-2"></div>
+        <div class="small text-muted">
+          Renta calculada con método francés (cuota fija), tasa nominal anual / 12.
+          Incluye opción de compra al cierre. No constituye CAE regulado CMF.
         </div>
       </div>
     </div>
-
-    <div class="card-footer d-flex justify-content-between align-items-center">
-      <span class="small text-muted">* Campos obligatorios</span>
-      <button id="btnSubmit" type="submit" class="btn eva-btn-primary btn-sm" {% if not has_clientes %}disabled{% endif %}>
-        Crear cotización
-      </button>
-    </div>
-  </form>
+  </div>
 </div>
 
 <script>
@@ -205,6 +293,7 @@
   const form = document.getElementById("cotForm");
   if (!form) return;
   const btn = document.getElementById("btnSubmit");
+  const simUrl = form.getAttribute("data-sim-url") || "";
   const hasClientes = (form.getAttribute("data-has-clientes") || "").trim() === "1";
   const inputSearch = document.getElementById("cliente_search");
   const selectList = document.getElementById("cliente_select");
@@ -215,54 +304,75 @@
   const ratesInfo = document.getElementById("rates_info");
   const btnRates = document.getElementById("btn_rates");
   const monedaDefault = (form.getAttribute("data-moneda-default") || "CLP").trim();
-  if (monedaSelect && monedaDefault) monedaSelect.value = monedaDefault;
-  const moneyInputs = form.querySelectorAll(".js-money");
+  const moneyInputs = form.querySelectorAll(".js-money:not([readonly])");
   const rateInputs = form.querySelectorAll(".js-rate");
   const ufInput = document.getElementById("uf_valor");
   const usdInput = document.getElementById("dolar_valor");
   const monedaHelp = document.getElementById("moneda_help");
   const ufHelp = document.getElementById("uf_help");
   const usdHelp = document.getElementById("usd_help");
+  const montoFinInput = document.getElementById("monto_financiado");
+  const montoRefInput = document.getElementById("monto");
+  const montoFinHelp = document.getElementById("monto_fin_help");
+  let montoFinManual = false;
+  let simTimer = null;
+  let simAbort = null;
+
   function normalizeNumericString(v) {
     let s = (v || "").toString().trim();
     if (!s) return "";
     s = s.replace(/\s+/g, "");
-    if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+    if (s.includes(",") && s.includes(".")) {
+      if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
+      else s = s.replace(/,/g, "");
+    } else if (s.includes(",")) {
+      s = s.replace(/\./g, "").replace(",", ".");
+    }
     return s.replace(/[^\d.-]/g, "");
   }
-  function formatThousands(v) {
-    const raw = normalizeNumericString(v);
-    if (!raw || raw === "-" || raw === ".") return "";
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return "";
-    const [intPart, decPart] = raw.split(".");
-    const intFmt = Number(intPart).toLocaleString("es-CL");
-    return decPart != null ? `${intFmt},${decPart}` : intFmt;
-  }
-  function parseNum(v){
+  function parseNum(v) {
     const raw = normalizeNumericString(v);
     const n = Number(raw);
     return Number.isFinite(n) ? n : null;
   }
+  function formatMoney(v, dec) {
+    const raw = normalizeNumericString(v);
+    if (!raw || raw === "-" || raw === ".") return "";
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return "";
+    const digits = dec != null ? dec : (String(raw).includes(".") ? Math.min(4, (String(raw).split(".")[1] || "").length) : 0);
+    return n.toLocaleString("es-CL", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+  function formatThousands(v) { return formatMoney(v, null); }
+  function fmtPreview(n, moneda) {
+    if (n == null || !Number.isFinite(Number(n))) return "—";
+    const num = Number(n);
+    if (moneda === "UF") return num.toLocaleString("es-CL", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + " UF";
+    if (moneda === "USD") return "US$ " + num.toLocaleString("es-CL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return "$ " + num.toLocaleString("es-CL", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+  function fmtPct(n) {
+    if (n == null || !Number.isFinite(Number(n))) return "—";
+    return Number(n).toLocaleString("es-CL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " %";
+  }
   function setFxUx() {
     if (!monedaSelect) return;
     const m = (monedaSelect.value || "CLP").toUpperCase();
-    const ufReq = m === "UF";
-    const usdReq = m === "USD";
-    if (ufInput) ufInput.required = ufReq;
-    if (usdInput) usdInput.required = usdReq;
-    if (ufHelp) ufHelp.textContent = ufReq ? "Obligatorio para moneda UF." : "";
-    if (usdHelp) usdHelp.textContent = usdReq ? "Obligatorio para moneda USD." : "";
+    if (ufInput) ufInput.required = m === "UF";
+    if (usdInput) usdInput.required = m === "USD";
+    if (ufHelp) ufHelp.textContent = m === "UF" ? "Obligatorio para cotizar en UF." : "";
+    if (usdHelp) usdHelp.textContent = m === "USD" ? "Obligatorio para cotizar en USD." : "";
     if (monedaHelp) {
-      monedaHelp.textContent =
-        m === "CLP"
-          ? "CLP no requiere tipo de cambio."
-          : (m === "UF" ? "UF requiere Valor UF vigente." : "USD requiere Valor dólar vigente.");
+      monedaHelp.textContent = m === "CLP"
+        ? "Operación en pesos; tipo de cambio opcional para seguros en UF."
+        : (m === "UF" ? "Operación en UF; requiere valor UF vigente." : "Operación en USD; requiere valor dólar vigente.");
     }
+    const badge = document.getElementById("preview_moneda");
+    if (badge) badge.textContent = m;
   }
   function onBlurFormat(e) {
-    const val = e.target.value;
-    e.target.value = formatThousands(val);
+    e.target.value = formatThousands(e.target.value);
+    scheduleSim();
   }
   function onFocusUnformat(e) {
     const raw = normalizeNumericString(e.target.value);
@@ -276,6 +386,83 @@
     el.addEventListener("focus", onFocusUnformat);
     el.addEventListener("blur", onBlurFormat);
   });
+  if (montoFinInput) {
+    montoFinInput.addEventListener("input", function () { montoFinManual = true; });
+    montoFinInput.addEventListener("blur", function () {
+      if (!parseNum(montoFinInput.value)) montoFinManual = false;
+    });
+  }
+
+  function payloadSim() {
+    const finSeg = document.getElementById("financia_seguro");
+    return {
+      moneda: (monedaSelect && monedaSelect.value) || "CLP",
+      valor_neto: parseNum(document.getElementById("valor_neto") && document.getElementById("valor_neto").value),
+      pago_inicial_tipo: (document.getElementById("pago_inicial_tipo") && document.getElementById("pago_inicial_tipo").value) || null,
+      pago_inicial_valor: parseNum(document.getElementById("pago_inicial_valor") && document.getElementById("pago_inicial_valor").value),
+      monto_financiado: montoFinManual ? parseNum(montoFinInput && montoFinInput.value) : null,
+      tasa: parseNum(document.getElementById("tasa") && document.getElementById("tasa").value),
+      plazo: parseNum(document.getElementById("plazo") && document.getElementById("plazo").value),
+      opcion_compra: parseNum(document.getElementById("opcion_compra") && document.getElementById("opcion_compra").value),
+      periodos_gracia: parseNum(document.getElementById("periodos_gracia") && document.getElementById("periodos_gracia").value) || 0,
+      financia_seguro: finSeg && finSeg.value === "true",
+      seguro_monto_uf: parseNum(document.getElementById("seguro_monto_uf") && document.getElementById("seguro_monto_uf").value),
+      otros_montos_pesos: parseNum(document.getElementById("otros_montos_pesos") && document.getElementById("otros_montos_pesos").value),
+      uf_valor: parseNum(ufInput && ufInput.value),
+      dolar_valor: parseNum(usdInput && usdInput.value),
+    };
+  }
+
+  function renderPreview(data) {
+    const m = (data.moneda || "CLP").toUpperCase();
+    document.getElementById("pv_renta").textContent = fmtPreview(data.renta_mensual, m);
+    document.getElementById("pv_monto_fin").textContent = fmtPreview(data.monto_financiado, m);
+    document.getElementById("pv_pie").textContent = fmtPreview(data.pago_inicial, m);
+    document.getElementById("pv_intereses").textContent = fmtPreview(data.total_intereses, m);
+    document.getElementById("pv_tea").textContent = fmtPct(data.tea_anual_pct);
+    document.getElementById("pv_total").textContent = fmtPreview(data.total_desembolso, m);
+    const warn = document.getElementById("pv_warn");
+    if (warn) {
+      const msgs = (data.advertencias || []).filter(Boolean);
+      if (msgs.length) {
+        warn.textContent = msgs.join(" · ");
+        warn.classList.remove("d-none");
+      } else {
+        warn.textContent = "";
+        warn.classList.add("d-none");
+      }
+    }
+    if (data.monto_financiado_calculado && montoFinInput && !montoFinManual) {
+      montoFinInput.value = formatThousands(String(data.monto_financiado));
+      if (montoFinHelp) montoFinHelp.textContent = "Calculado: neto − pie + seguro + otros.";
+    }
+    if (montoRefInput && data.monto_financiado != null) {
+      montoRefInput.value = formatThousands(String(data.monto_financiado));
+    }
+  }
+
+  async function ejecutarSim() {
+    if (!simUrl || !hasClientes) return;
+    if (simAbort) simAbort.abort();
+    simAbort = new AbortController();
+    try {
+      const res = await fetch(simUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(payloadSim()),
+        signal: simAbort.signal,
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      renderPreview(data);
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+    }
+  }
+  function scheduleSim() {
+    clearTimeout(simTimer);
+    simTimer = setTimeout(ejecutarSim, 350);
+  }
 
   async function cargarIndicadores() {
     if (!btnRates) return;
@@ -285,11 +472,10 @@
       const res = await fetch("{{ request.url_for('api_lf_rates_today') }}", { headers: { "Accept": "application/json" } });
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
-      const ufInput = document.getElementById("uf_valor");
-      const usdInput = document.getElementById("dolar_valor");
-      if (ufInput && data.uf) ufInput.value = formatThousands(String(data.uf).replace(".", ","));
-      if (usdInput && data.dolar) usdInput.value = formatThousands(String(data.dolar).replace(".", ","));
+      if (ufInput && data.uf) ufInput.value = formatThousands(String(data.uf));
+      if (usdInput && data.dolar) usdInput.value = formatThousands(String(data.dolar));
       if (ratesInfo) ratesInfo.textContent = `Actualizado ${data.fecha} · UF ${data.uf} · USD ${data.dolar} (${data.fuente})`;
+      scheduleSim();
     } catch (err) {
       if (ratesInfo) ratesInfo.textContent = "No se pudo consultar UF/USD. Intente nuevamente.";
     } finally {
@@ -298,8 +484,11 @@
     }
   }
   if (btnRates) btnRates.addEventListener("click", cargarIndicadores);
-  if (monedaSelect) monedaSelect.addEventListener("change", setFxUx);
-
+  if (monedaSelect) monedaSelect.addEventListener("change", function () { setFxUx(); scheduleSim(); });
+  form.querySelectorAll(".js-sim").forEach((el) => {
+    el.addEventListener("change", scheduleSim);
+    el.addEventListener("input", scheduleSim);
+  });
 
   {% if cliente is defined and cliente %}
   if (hiddenId) hiddenId.value = "{{ cliente.id }}";
@@ -363,24 +552,40 @@
       setCliente(o.value, o.getAttribute("data-razon") || "", o.getAttribute("data-rut") || "");
     });
   }
+
+  function unformatFormNumbers() {
+    form.querySelectorAll(".js-money, .js-rate").forEach((el) => {
+      if (el.readOnly) return;
+      const raw = normalizeNumericString(el.value);
+      el.value = raw || "";
+    });
+  }
+
   if (!hasClientes) {
     if (help) help.textContent = "No existen clientes.";
     if (btn) btn.disabled = true;
     form.addEventListener("submit", function (e) { e.preventDefault(); alert("Debe crear un cliente antes de cotizar."); });
   } else {
     form.addEventListener("submit", function (e) {
-      if (!validar()) { e.preventDefault(); alert("Selecciona un cliente válido."); }
+      if (!validar()) { e.preventDefault(); alert("Selecciona un cliente válido."); return; }
       const m = ((monedaSelect && monedaSelect.value) || "CLP").toUpperCase();
       const ufVal = ufInput ? parseNum(ufInput.value) : null;
       const usdVal = usdInput ? parseNum(usdInput.value) : null;
       if (m === "UF" && !(ufVal > 0)) { e.preventDefault(); alert("Debes informar Valor UF mayor a 0 para cotizar en UF."); return; }
       if (m === "USD" && !(usdVal > 0)) { e.preventDefault(); alert("Debes informar Valor dólar mayor a 0 para cotizar en USD."); return; }
+      unformatFormNumbers();
     });
   }
+
+  if (monedaSelect && monedaDefault) monedaSelect.value = monedaDefault;
   setFxUx();
   validar();
   moneyInputs.forEach((el) => { if (el.value) el.value = formatThousands(el.value); });
   rateInputs.forEach((el) => { if (el.value) el.value = formatThousands(el.value); });
+  if (hasClientes) {
+    cargarIndicadores();
+    scheduleSim();
+  }
 })();
 </script>
 {% endblock %}

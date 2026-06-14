@@ -7,7 +7,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from services.leasing_financiero import calcular_tabla_amortizacion
+from services.leasing_financiero import (
+    calcular_monto_financiado,
+    calcular_pago_inicial,
+    calcular_tabla_amortizacion,
+    calcular_tea_anual,
+    normalizar_tasa_anual,
+    simular_cotizacion,
+)
+from schemas.comercial.leasing_cotizacion import LeasingSimulacionInput
 
 
 def _cotizacion_base(**kwargs):
@@ -76,3 +84,53 @@ def test_fechas_amortizacion_contrato_tipico():
     tabla = calcular_tabla_amortizacion(cotizacion)
     assert tabla[0].fecha_cuota == date(2026, 2, 28)
     assert tabla[-1].fecha_cuota == date(2026, 9, 30)
+
+
+def test_normalizar_tasa_porcentaje():
+    assert normalizar_tasa_anual(Decimal("12")) == Decimal("0.1200")
+    assert normalizar_tasa_anual(Decimal("0.12")) == Decimal("0.1200")
+
+
+def test_calcular_pago_inicial_porcentaje():
+    pie = calcular_pago_inicial(Decimal("1000000"), "PORCENTAJE", Decimal("20"))
+    assert pie == Decimal("200000.00")
+
+
+def test_calcular_monto_financiado_con_pie_y_seguro():
+    monto, pie, seguro, otros = calcular_monto_financiado(
+        moneda="CLP",
+        valor_neto=Decimal("10000000"),
+        pago_inicial_tipo="PORCENTAJE",
+        pago_inicial_valor=Decimal("10"),
+        financia_seguro=True,
+        seguro_monto_uf=Decimal("10"),
+        otros_montos_pesos=Decimal("150000"),
+        uf_valor=Decimal("39000"),
+        dolar_valor=None,
+    )
+    assert pie == Decimal("1000000.00")
+    assert seguro == Decimal("390000.00")
+    assert otros == Decimal("150000.00")
+    assert monto == Decimal("9540000.00")
+
+
+def test_simular_cotizacion_renta_positiva():
+    res = simular_cotizacion(
+        LeasingSimulacionInput(
+            moneda="CLP",
+            valor_neto=Decimal("228500"),
+            tasa=Decimal("12"),
+            plazo=7,
+            opcion_compra=Decimal("28500"),
+            periodos_gracia=0,
+        )
+    )
+    assert res.monto_financiado == Decimal("228500.00")
+    assert res.renta_mensual is not None
+    assert res.renta_mensual > 0
+    assert res.tea_anual_pct is not None
+    assert res.tea_anual_pct > Decimal("12")
+
+
+def test_calcular_tea_cero():
+    assert calcular_tea_anual(Decimal("0")) == Decimal("0.0000")

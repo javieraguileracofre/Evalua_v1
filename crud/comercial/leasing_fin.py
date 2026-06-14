@@ -20,6 +20,7 @@ from services.leasing_financiero_contabilidad import (
     activar_contabilidad_leasing_financiero,
     regenerar_proyeccion_contable,
 )
+from services.leasing_financiero import aplicar_parametros_financieros
 
 _WORKFLOW_ETAPAS = [
     "ANALISIS_CREDITO",
@@ -142,10 +143,29 @@ def _validar_moneda_y_tipo_cambio(*, moneda: str, uf_valor: object, dolar_valor:
             raise ValueError("Para moneda UF debe informar valor UF mayor a 0.")
 
 
+def _validar_parametros_cotizacion(data: dict, *, estricto: bool = False) -> None:
+    plazo = data.get("plazo")
+    if plazo is not None and int(plazo) <= 0:
+        raise ValueError("El plazo debe ser mayor a 0 meses.")
+    periodos_gracia = data.get("periodos_gracia")
+    if periodos_gracia is not None and int(periodos_gracia) < 0:
+        raise ValueError("Los períodos de gracia no pueden ser negativos.")
+    if plazo is not None and periodos_gracia is not None and int(plazo) <= int(periodos_gracia):
+        raise ValueError("El plazo debe ser mayor a los períodos de gracia.")
+    if not estricto:
+        return
+    monto_fin = data.get("monto_financiado")
+    valor_neto = data.get("valor_neto")
+    if (monto_fin is None or monto_fin <= 0) and (valor_neto is None or valor_neto <= 0):
+        raise ValueError("Debe informar valor neto o monto financiado mayor a 0.")
+
+
 def crear_cotizacion(db: Session, *, obj_in: LeasingCotizacionCreate) -> LeasingFinancieroCotizacion:
     data = _dump_cotizacion(obj_in, creating=True)
     if data.get("fecha_cotizacion") is None:
         data["fecha_cotizacion"] = date.today()
+    data = aplicar_parametros_financieros(data)
+    _validar_parametros_cotizacion(data, estricto=False)
     _validar_moneda_y_tipo_cambio(
         moneda=str(data.get("moneda") or "CLP"),
         uf_valor=data.get("uf_valor"),
@@ -204,6 +224,33 @@ def actualizar_cotizacion(
         update_data["concesionario"] = update_data["concesionario"].strip() or None
     if "ejecutivo" in update_data and update_data["ejecutivo"] is not None:
         update_data["ejecutivo"] = update_data["ejecutivo"].strip() or None
+
+    merged = {
+        "moneda": moneda_objetivo,
+        "uf_valor": uf_objetivo,
+        "dolar_valor": dolar_objetivo,
+        "valor_neto": update_data.get("valor_neto", cotizacion.valor_neto),
+        "pago_inicial_tipo": update_data.get("pago_inicial_tipo", cotizacion.pago_inicial_tipo),
+        "pago_inicial_valor": update_data.get("pago_inicial_valor", cotizacion.pago_inicial_valor),
+        "financia_seguro": update_data.get("financia_seguro", cotizacion.financia_seguro),
+        "seguro_monto_uf": update_data.get("seguro_monto_uf", cotizacion.seguro_monto_uf),
+        "otros_montos_pesos": update_data.get("otros_montos_pesos", cotizacion.otros_montos_pesos),
+        "monto_financiado": update_data.get("monto_financiado", cotizacion.monto_financiado),
+        "tasa": update_data.get("tasa", cotizacion.tasa),
+        "plazo": update_data.get("plazo", cotizacion.plazo),
+        "periodos_gracia": update_data.get("periodos_gracia", cotizacion.periodos_gracia),
+        "monto": update_data.get("monto", cotizacion.monto),
+    }
+    if "monto_financiado" not in update_data or update_data.get("monto_financiado") is None:
+        merged["monto_financiado"] = None
+    aplicar_parametros_financieros(merged)
+    if "tasa" in update_data:
+        update_data["tasa"] = merged["tasa"]
+    if merged.get("monto_financiado") is not None:
+        update_data["monto_financiado"] = merged["monto_financiado"]
+    if merged.get("monto") is not None and "monto" not in update_data:
+        update_data["monto"] = merged["monto"]
+    _validar_parametros_cotizacion({**merged, **update_data}, estricto=False)
 
     for field, value in update_data.items():
         if hasattr(cotizacion, field) and value is not None:

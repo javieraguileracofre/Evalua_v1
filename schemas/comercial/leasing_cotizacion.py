@@ -105,3 +105,45 @@ class LeasingCotizacionRead(LeasingCotizacionBase):
     actualizado_en: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LeasingSimulacionInput(BaseModel):
+    """Parámetros para simular una cotización sin persistir."""
+
+    moneda: str = "CLP"
+    tasa: Optional[Decimal] = None
+    plazo: Optional[int] = None
+    opcion_compra: Optional[Decimal] = None
+    periodos_gracia: Optional[int] = 0
+    fecha_inicio: Optional[date] = None
+    valor_neto: Optional[Decimal] = None
+    pago_inicial_tipo: Optional[str] = None
+    pago_inicial_valor: Optional[Decimal] = None
+    financia_seguro: bool = False
+    seguro_monto_uf: Optional[Decimal] = None
+    otros_montos_pesos: Optional[Decimal] = None
+    uf_valor: Optional[Decimal] = None
+    monto_financiado: Optional[Decimal] = None
+    dolar_valor: Optional[Decimal] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class LeasingSimulacionResumen(BaseModel):
+    moneda: str
+    valor_neto: Optional[Decimal] = None
+    pago_inicial: Decimal = Decimal("0")
+    seguro_financiado: Decimal = Decimal("0")
+    otros_montos: Decimal = Decimal("0")
+    monto_financiado: Decimal
+    renta_mensual: Optional[Decimal] = None
+    total_intereses: Decimal = Decimal("0")
+    total_rentas: Decimal = Decimal("0")
+    total_opcion_compra: Decimal = Decimal("0")
+    total_desembolso: Decimal = Decimal("0")
+    tasa_nominal_anual_pct: Optional[Decimal] = None
+    tea_anual_pct: Optional[Decimal] = None
+    cuotas_operativas: int = 0
+    periodos_gracia: int = 0
+    monto_financiado_calculado: bool = False
+    advertencias: list[str] = Field(default_factory=list)
