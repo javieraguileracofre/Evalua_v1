@@ -47,6 +47,7 @@ _PATCH_120 = _ROOT / "db" / "psql" / "120_remuneraciones_auditoria.sql"
 _PATCH_121 = _ROOT / "db" / "psql" / "121_remuneraciones_asiento_provision.sql"
 _PATCH_122 = _ROOT / "db" / "psql" / "122_empleados_transferencia_bancaria.sql"
 _PATCH_123 = _ROOT / "db" / "psql" / "123_fin_plan_cuenta_leasing_fin_min.sql"
+_PATCH_124 = _ROOT / "db" / "psql" / "124_lf_cotizaciones_cleanup_borrador_prueba.sql"
 
 
 def ensure_leasing_financiero_plan_cuentas_min(engine: Engine) -> None:
@@ -587,6 +588,22 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
                 "No se pudo aplicar 109_leasing_financiero_workflow.sql. Detalle: %s",
                 exc,
             )
+
+
+def ensure_lf_cotizaciones_cleanup_prueba(engine: Engine) -> None:
+    """Elimina cotizaciones LF de prueba (124). Idempotente; corre también con AUTO_MIGRATE_OFF."""
+    if engine.dialect.name != "postgresql" or not _PATCH_124.is_file():
+        return
+    if not _has_table(engine, schema="public", table="comercial_lf_cotizaciones"):
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_124)
+        logger.info("Backfill aplicado: limpieza cotizaciones LF de prueba (124).")
+    except Exception as exc:
+        logger.warning(
+            "No se pudo aplicar 124_lf_cotizaciones_cleanup_borrador_prueba.sql. Detalle: %s",
+            exc,
+        )
 
 
 def ensure_credito_riesgo_schema(engine: Engine) -> None:
