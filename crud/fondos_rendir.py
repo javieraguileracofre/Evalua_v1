@@ -274,6 +274,19 @@ def obtener_vehiculo(db: Session, vid: int) -> VehiculoTransporte | None:
     return db.get(VehiculoTransporte, vid)
 
 
+def _normalizar_patente_flota(patente: str) -> str:
+    return re.sub(r"[\s\-]+", "", (patente or "").strip().upper())
+
+
+def _siguiente_id_vehiculo_transporte(db: Session) -> int:
+    """
+    IDs explícitos: esquema 113 crea vehiculos_transporte sin SERIAL/BIGSERIAL,
+    así que PostgreSQL no asigna id automáticamente si falta migración de secuencia.
+    """
+    m = db.scalar(select(func.coalesce(func.max(VehiculoTransporte.id), 0)))
+    return int(m or 0) + 1
+
+
 def crear_vehiculo_transporte(
     db: Session,
     *,
@@ -293,12 +306,14 @@ def crear_vehiculo_transporte(
     fecha_proxima_mantencion: date | None = None,
     km_proxima_mantencion: int | None = None,
 ) -> VehiculoTransporte:
-    p = patente.strip().upper()
-    if len(p) < 5:
-        raise ValueError("Patente inválida.")
+    p = _normalizar_patente_flota(patente)
+    if len(p) < 4:
+        raise ValueError("Patente inválida (use al menos 4 caracteres alfanuméricos).")
     if db.scalar(select(VehiculoTransporte.id).where(VehiculoTransporte.patente == p)):
         raise ValueError("Ya existe ese vehículo de flota.")
+    nuevo_id = _siguiente_id_vehiculo_transporte(db)
     v = VehiculoTransporte(
+        id=nuevo_id,
         patente=p,
         marca=marca.strip(),
         modelo=modelo.strip(),
@@ -345,7 +360,7 @@ def actualizar_vehiculo_transporte(
     v = db.get(VehiculoTransporte, vid)
     if not v:
         raise ValueError("Vehículo no encontrado.")
-    p = patente.strip().upper()
+    p = _normalizar_patente_flota(patente)
     otro = db.scalar(
         select(VehiculoTransporte.id).where(
             VehiculoTransporte.patente == p,

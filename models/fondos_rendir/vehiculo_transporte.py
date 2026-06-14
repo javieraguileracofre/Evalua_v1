@@ -28,7 +28,7 @@ class VehiculoTransporte(Base):
         Index("ix_vehiculos_transporte_activo", "activo"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     patente: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     marca: Mapped[str] = mapped_column(String(80), nullable=False)
     modelo: Mapped[str] = mapped_column(String(120), nullable=False)

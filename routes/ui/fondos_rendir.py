@@ -452,6 +452,7 @@ async def fondos_rendir_vehiculo_crear(
         return _redirect(request, "fondos_rendir_vehiculo_nuevo", msg=public_error_message(e), sev="danger")
     except SQLAlchemyError:
         db.rollback()
+        logger.exception("fondos_rendir_vehiculo_crear")
         return _redirect(
             request,
             "fondos_rendir_vehiculo_nuevo",
