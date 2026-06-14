@@ -19,12 +19,14 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from core.bulk_limits import BULK_CSV_MAX_BYTES, BULK_CSV_MAX_ROWS, LIST_PAGE_DEFAULT, LIST_PAGE_MAX
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
 from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
+from core.validators import form_validation_message
 from crud.maestros import cliente as crud_cliente
 from db.session import get_db
 from schemas.maestros.cliente import ClienteCreate, ClienteUpdate
@@ -90,9 +92,17 @@ def clientes_list(
     )
 
 
+def _cliente_user_message(exc: BaseException) -> str:
+    if isinstance(exc, ValidationError):
+        return form_validation_message(exc)
+    return public_error_message(exc)
+
+
 @router.get("/clientes/form", response_class=HTMLResponse, name="clientes_form_nuevo")
 def clientes_form_nuevo(
     request: Request,
+    msg: str | None = Query(None),
+    sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
     if (redir := guard_operacion_consulta(request)) is not None:
@@ -102,6 +112,8 @@ def clientes_form_nuevo(
         {
             "request": request,
             "cliente": None,
+            "msg": msg,
+            "sev": sev,
             "active_menu": "clientes",
         },
     )
@@ -111,6 +123,8 @@ def clientes_form_nuevo(
 def clientes_form_editar(
     request: Request,
     cliente_id: int,
+    msg: str | None = Query(None),
+    sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
     if (redir := guard_operacion_consulta(request)) is not None:
@@ -124,6 +138,8 @@ def clientes_form_editar(
         {
             "request": request,
             "cliente": cliente,
+            "msg": msg,
+            "sev": sev,
             "active_menu": "clientes",
         },
     )
@@ -146,24 +162,23 @@ def clientes_create(
 ):
     if (redir := guard_operacion_mutacion(request)) is not None:
         return redir
-    data = ClienteCreate(
-        rut=rut,
-        razon_social=razon_social,
-        nombre_fantasia=nombre_fantasia,
-        giro=giro,
-        direccion=direccion,
-        comuna=comuna,
-        ciudad=ciudad,
-        telefono=telefono,
-        email=email or None,
-        activo=(activo == "true"),
-    )
-
     try:
+        data = ClienteCreate(
+            rut=rut,
+            razon_social=razon_social,
+            nombre_fantasia=nombre_fantasia,
+            giro=giro,
+            direccion=direccion,
+            comuna=comuna,
+            ciudad=ciudad,
+            telefono=telefono,
+            email=email or None,
+            activo=(activo == "true"),
+        )
         crud_cliente.crear_cliente(db, data)
         return _redirect(request, "clientes_list", msg="Cliente creado", sev="success")
-    except ValueError as e:
-        return _redirect(request, "clientes_form_nuevo", msg=public_error_message(e), sev="warning")
+    except (ValidationError, ValueError) as e:
+        return _redirect(request, "clientes_form_nuevo", msg=_cliente_user_message(e), sev="warning")
 
 
 @router.post("/clientes/{cliente_id}", name="clientes_update")
@@ -187,27 +202,26 @@ def clientes_update(
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-    data = ClienteUpdate(
-        razon_social=razon_social,
-        nombre_fantasia=nombre_fantasia,
-        giro=giro,
-        direccion=direccion,
-        comuna=comuna,
-        ciudad=ciudad,
-        telefono=telefono,
-        email=email or None,
-        activo=(activo == "true"),
-    )
-
     try:
+        data = ClienteUpdate(
+            razon_social=razon_social,
+            nombre_fantasia=nombre_fantasia,
+            giro=giro,
+            direccion=direccion,
+            comuna=comuna,
+            ciudad=ciudad,
+            telefono=telefono,
+            email=email or None,
+            activo=(activo == "true"),
+        )
         crud_cliente.actualizar_cliente(db, cliente, data)
         return _redirect(request, "clientes_list", msg="Cliente actualizado", sev="success")
-    except ValueError as e:
+    except (ValidationError, ValueError) as e:
         return _redirect(
             request,
             "clientes_form_editar",
             cliente_id=cliente_id,
-            msg=public_error_message(e),
+            msg=_cliente_user_message(e),
             sev="warning",
         )
 
@@ -305,13 +319,16 @@ async def clientes_carga_masiva_upload(
 
     creados = 0
     omitidos = 0
+    errores: list[str] = []
 
-    for row in reader:
+    for idx, row in enumerate(reader, start=2):
         rut = (row.get("rut") or row.get("RUT") or "").strip()
         razon_social = (row.get("razon_social") or row.get("RAZON_SOCIAL") or "").strip()
 
         if not rut or not razon_social:
             omitidos += 1
+            if len(errores) < 8:
+                errores.append(f"Fila {idx}: faltan RUT o razón social.")
             continue
 
         try:
@@ -329,12 +346,23 @@ async def clientes_carga_masiva_upload(
             )
             crud_cliente.crear_cliente(db, data)
             creados += 1
-        except Exception:
+        except (ValidationError, ValueError) as exc:
             omitidos += 1
+            if len(errores) < 8:
+                detalle = _cliente_user_message(exc)
+                errores.append(f"Fila {idx} ({rut}): {detalle}")
+
+    resumen = f"Carga finalizada: creados={creados}, omitidos={omitidos}."
+    if errores:
+        resumen += " Detalle: " + " | ".join(errores)
+        if omitidos > len(errores):
+            resumen += f" | …y {omitidos - len(errores)} fila(s) más."
+    if len(resumen) > 900:
+        resumen = resumen[:897] + "..."
 
     return _redirect(
         request,
         "clientes_list",
-        msg=f"Carga finalizada: creados={creados}, omitidos={omitidos}.",
-        sev="success",
+        msg=resumen,
+        sev="success" if creados and not omitidos else "warning",
     )

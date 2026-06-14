@@ -17,6 +17,24 @@
 
 {% block content %}
 
+{% if msg %}
+<div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
+  <div class="d-flex align-items-start gap-2">
+    {% if (sev or 'info') in ['success'] %}
+      <i class="bi bi-check-circle-fill mt-1"></i>
+    {% elif (sev or 'info') in ['warning'] %}
+      <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+    {% elif (sev or 'info') in ['danger'] %}
+      <i class="bi bi-x-circle-fill mt-1"></i>
+    {% else %}
+      <i class="bi bi-info-circle-fill mt-1"></i>
+    {% endif %}
+    <div class="flex-grow-1">{{ msg }}</div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+  </div>
+</div>
+{% endif %}
+
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
   <div>
     <h2 class="h4 fw-semibold mb-1">
@@ -104,15 +122,21 @@
           <input
             type="text"
             name="rut"
+            id="campo-rut"
             class="form-control"
             value="{{ cliente.rut if cliente else '' }}"
             {% if cliente %}readonly{% endif %}
             required
+            autocomplete="off"
+            inputmode="text"
+            placeholder="12.345.678-5"
+            {% if not cliente %}pattern="[0-9.\s]{6,12}-?[0-9Kk]" title="RUT chileno con dígito verificador"{% endif %}
           >
           {% if cliente %}
             <div class="form-text">El RUT no puede modificarse en esta versión.</div>
           {% else %}
-            <div class="form-text">Ingresa el identificador tributario del cliente.</div>
+            <div class="form-text">Formato: 12345678-5. Se valida el dígito verificador automáticamente.</div>
+            <div class="invalid-feedback" id="rut-feedback">RUT inválido. Verifique número y dígito verificador.</div>
           {% endif %}
         </div>
 
@@ -198,12 +222,15 @@
         <div class="col-md-3">
           <label class="form-label small fw-semibold">Teléfono</label>
           <input
-            type="text"
+            type="tel"
             name="telefono"
             class="form-control"
             value="{{ cliente.telefono if cliente else '' }}"
-            placeholder="+56 9 ..."
+            placeholder="+56 9 1234 5678"
+            inputmode="tel"
+            autocomplete="tel"
           >
+          <div class="form-text">Móvil 9 dígitos o fijo 8 dígitos; prefijo +56 opcional.</div>
         </div>
 
         <div class="col-md-5">
@@ -283,5 +310,59 @@
   </div>
 
 </form>
+
+{% if not cliente %}
+<script>
+(function () {
+  const campo = document.getElementById("campo-rut");
+  if (!campo) return;
+
+  function normalizarRut(valor) {
+    let s = (valor || "").trim().toUpperCase().replace(/\./g, "").replace(/\s+/g, "");
+    if (!s) return "";
+    if (!s.includes("-") && s.length >= 2) {
+      s = s.slice(0, -1) + "-" + s.slice(-1);
+    }
+    return s;
+  }
+
+  function calcularDv(cuerpo) {
+    let suma = 0, mult = 2;
+    for (let i = cuerpo.length - 1; i >= 0; i--) {
+      suma += parseInt(cuerpo[i], 10) * mult;
+      mult = mult === 7 ? 2 : mult + 1;
+    }
+    const resto = 11 - (suma % 11);
+    if (resto === 11) return "0";
+    if (resto === 10) return "K";
+    return String(resto);
+  }
+
+  function rutValido(valor) {
+    const s = normalizarRut(valor);
+    const m = /^(\d{1,8})-([\dK])$/.exec(s);
+    if (!m) return false;
+    return calcularDv(m[1]) === m[2];
+  }
+
+  function validar() {
+    const ok = rutValido(campo.value);
+    campo.classList.toggle("is-invalid", campo.value.length > 0 && !ok);
+    campo.classList.toggle("is-valid", ok);
+    return ok;
+  }
+
+  campo.addEventListener("blur", function () {
+    const s = normalizarRut(campo.value);
+    if (s && rutValido(s)) campo.value = s;
+    validar();
+  });
+
+  campo.closest("form")?.addEventListener("submit", function (ev) {
+    if (!validar()) ev.preventDefault();
+  });
+})();
+</script>
+{% endif %}
 
 {% endblock content %}
