@@ -7,6 +7,7 @@ import re
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -128,6 +129,36 @@ def _validar_fx_moneda(moneda: str, uf_valor: Optional[Decimal], dolar_valor: Op
         raise ValueError("Para cotizar en UF debe informar Valor UF mayor a 0.")
 
 
+def _redirect_cotizaciones_list(
+    request: Request,
+    *,
+    msg: str | None = None,
+    sev: str = "info",
+    estado: str | None = None,
+    moneda: str | None = None,
+    ejecutivo: str | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+) -> RedirectResponse:
+    url = str(request.url_for("lf_cotizaciones_list"))
+    params: dict[str, str] = {}
+    for key, value in (
+        ("estado", estado),
+        ("moneda", moneda),
+        ("ejecutivo", ejecutivo),
+        ("fecha_desde", fecha_desde),
+        ("fecha_hasta", fecha_hasta),
+    ):
+        if value:
+            params[key] = value
+    if msg:
+        params["msg"] = msg
+        params["sev"] = sev
+    if params:
+        url = f"{url}?{urlencode(params)}"
+    return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.get("/hub", response_class=HTMLResponse, name="leasing_financiero_hub_internal", include_in_schema=False)
 def leasing_financiero_hub(request: Request, db: Session = Depends(get_db)):
     if (redir := guard_operacion_consulta(request)) is not None:
@@ -189,6 +220,101 @@ def lf_cotizaciones_list(request: Request, db: Session = Depends(get_db)):
             },
             "active_menu": "leasing_financiero",
         },
+    )
+
+
+@router.post("/eliminar-masivo", name="lf_cotizaciones_eliminar_masivo")
+def lf_cotizaciones_eliminar_masivo(
+    request: Request,
+    ids: List[int] = Form(default=[]),
+    estado: str = Form(""),
+    moneda: str = Form(""),
+    ejecutivo: str = Form(""),
+    fecha_desde: str = Form(""),
+    fecha_hasta: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
+    filtros = {
+        "estado": estado,
+        "moneda": moneda,
+        "ejecutivo": ejecutivo,
+        "fecha_desde": fecha_desde,
+        "fecha_hasta": fecha_hasta,
+    }
+    try:
+        resultado = crud_lf.eliminar_cotizaciones(db, ids=ids)
+    except ValueError as exc:
+        return _redirect_cotizaciones_list(request, msg=str(exc), sev="warning", **filtros)
+    except SQLAlchemyError as exc:
+        logger.exception("Error SQL al eliminar cotizaciones LF masivamente")
+        return _redirect_cotizaciones_list(
+            request,
+            msg="No fue posible eliminar las cotizaciones por un problema de base de datos.",
+            sev="danger",
+            **filtros,
+        )
+
+    eliminadas = int(resultado.get("eliminadas") or 0)
+    bloqueadas = int(resultado.get("bloqueadas") or 0)
+    if bloqueadas:
+        msg = (
+            f"Se eliminaron {eliminadas} cotización(es). "
+            f"{bloqueadas} no se eliminaron por estar activadas o vigentes."
+        )
+        sev = "warning"
+    else:
+        msg = f"Se eliminaron {eliminadas} cotización(es) correctamente."
+        sev = "success"
+    return _redirect_cotizaciones_list(request, msg=msg, sev=sev, **filtros)
+
+
+@router.post("/{cotizacion_id}/eliminar", name="lf_cotizacion_eliminar")
+def lf_cotizacion_eliminar(
+    request: Request,
+    cotizacion_id: int,
+    estado: str = Form(""),
+    moneda: str = Form(""),
+    ejecutivo: str = Form(""),
+    fecha_desde: str = Form(""),
+    fecha_hasta: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_operacion_mutacion(request)) is not None:
+        return redir
+    filtros = {
+        "estado": estado,
+        "moneda": moneda,
+        "ejecutivo": ejecutivo,
+        "fecha_desde": fecha_desde,
+        "fecha_hasta": fecha_hasta,
+    }
+    try:
+        resultado = crud_lf.eliminar_cotizaciones(db, ids=[cotizacion_id])
+    except ValueError as exc:
+        return _redirect_cotizaciones_list(request, msg=str(exc), sev="warning", **filtros)
+    except SQLAlchemyError:
+        logger.exception("Error SQL al eliminar cotización LF #%s", cotizacion_id)
+        return _redirect_cotizaciones_list(
+            request,
+            msg="No fue posible eliminar la cotización por un problema de base de datos.",
+            sev="danger",
+            **filtros,
+        )
+
+    if int(resultado.get("eliminadas") or 0) == 0:
+        return _redirect_cotizaciones_list(
+            request,
+            msg="La cotización no puede eliminarse (activada, vigente o con contabilidad).",
+            sev="warning",
+            **filtros,
+        )
+    return _redirect_cotizaciones_list(
+        request,
+        msg=f"Cotización #{cotizacion_id} eliminada correctamente.",
+        sev="success",
+        **filtros,
     )
 
 

@@ -290,3 +290,22 @@ def test_activar_flujo_permte_tasa_cero_bloquea_menos_099():
 
     with pytest.raises(ValueError):
         crud_lf.activar_flujo_contable(_DummyDB(), cotizacion=cot)  # type: ignore[arg-type]
+
+
+def test_puede_eliminar_cotizacion_bloquea_activada():
+    cot = SimpleNamespace(estado="ACTIVADA", contrato_activo=False, asiento_id=None)
+    assert crud_lf.puede_eliminar_cotizacion(cot) is False  # type: ignore[arg-type]
+
+    cot2 = SimpleNamespace(estado="BORRADOR", contrato_activo=True, asiento_id=None)
+    assert crud_lf.puede_eliminar_cotizacion(cot2) is False  # type: ignore[arg-type]
+
+    cot3 = SimpleNamespace(estado="BORRADOR", contrato_activo=False, asiento_id=99)
+    assert crud_lf.puede_eliminar_cotizacion(cot3) is False  # type: ignore[arg-type]
+
+    cot4 = SimpleNamespace(estado="BORRADOR", contrato_activo=False, asiento_id=None)
+    assert crud_lf.puede_eliminar_cotizacion(cot4) is True  # type: ignore[arg-type]
+
+
+def test_eliminar_cotizaciones_requiere_seleccion():
+    with pytest.raises(ValueError, match="Seleccione"):
+        crud_lf.eliminar_cotizaciones(object(), ids=[])  # type: ignore[arg-type]

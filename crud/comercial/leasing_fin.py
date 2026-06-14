@@ -6,7 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from crud.finanzas.plan_cuentas import asegurar_cuentas_leasing_financiero, obtener_plan_cuenta_por_codigo
@@ -30,6 +30,7 @@ _WORKFLOW_ETAPAS = [
     "ACTIVACION_CONTABLE",
 ]
 _ESTADOS_EDITABLES = ESTADOS_LF - {"ACTIVADA", "VIGENTE"}
+_ESTADOS_NO_ELIMINABLES = {"ACTIVADA", "VIGENTE"}
 _ESTADOS_APROBACION_CREDITO = {"APROBADO", "APROBADA_CONDICIONES"}
 _CUENTAS_CONTABLES_REQUERIDAS = ("113701", "210701", "210702", "410701", "110201")
 
@@ -609,6 +610,71 @@ def get_hub_resumen(db: Session) -> dict[str, Any]:
         "cartera_montos": cartera_montos,
         "tasa_cierre_pct": tasa_cierre_pct,
         "funnel": funnel,
+    }
+
+
+def puede_eliminar_cotizacion(cotizacion: LeasingFinancieroCotizacion) -> bool:
+    est = str(cotizacion.estado or "").upper()
+    if est in _ESTADOS_NO_ELIMINABLES:
+        return False
+    if bool(cotizacion.contrato_activo):
+        return False
+    if cotizacion.asiento_id is not None:
+        return False
+    return True
+
+
+def eliminar_cotizaciones(db: Session, *, ids: list[int]) -> dict[str, Any]:
+    if not ids:
+        raise ValueError("Seleccione al menos una cotización.")
+
+    ids_unicos = list(dict.fromkeys(int(i) for i in ids if int(i) > 0))
+    stmt = select(LeasingFinancieroCotizacion).where(LeasingFinancieroCotizacion.id.in_(ids_unicos))
+    cotizaciones = list(db.scalars(stmt))
+    encontrados = {int(c.id) for c in cotizaciones}
+    no_encontradas = [i for i in ids_unicos if i not in encontrados]
+
+    eliminables: list[LeasingFinancieroCotizacion] = []
+    bloqueadas: list[LeasingFinancieroCotizacion] = []
+    for cot in cotizaciones:
+        if puede_eliminar_cotizacion(cot):
+            eliminables.append(cot)
+        else:
+            bloqueadas.append(cot)
+
+    if not eliminables:
+        if bloqueadas:
+            raise ValueError(
+                "Las cotizaciones seleccionadas no pueden eliminarse (activadas, vigentes o con contabilidad)."
+            )
+        raise ValueError("No se encontraron cotizaciones válidas para eliminar.")
+
+    elim_ids = [int(c.id) for c in eliminables]
+    try:
+        from models.comercial.credito_riesgo import CreditoSolicitud
+
+        db.execute(
+            update(CreditoSolicitud)
+            .where(CreditoSolicitud.comercial_lf_cotizacion_id.in_(elim_ids))
+            .values(comercial_lf_cotizacion_id=None)
+        )
+    except Exception:
+        pass
+
+    try:
+        db.execute(
+            delete(LeasingFinancieroCotizacion).where(LeasingFinancieroCotizacion.id.in_(elim_ids))
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "eliminadas": len(eliminables),
+        "bloqueadas": len(bloqueadas),
+        "no_encontradas": len(no_encontradas),
+        "ids_eliminados": elim_ids,
     }
 
 

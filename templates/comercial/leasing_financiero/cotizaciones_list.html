@@ -21,6 +21,16 @@
   .eva-link:hover{ text-decoration:underline; }
   .btn-eva-primary{ background: var(--eva-navy); border-color: var(--eva-navy); color:#fff; }
   .btn-eva-primary:hover{ background:#07162B; border-color:#07162B; color:#fff; }
+  .lf-bulk-bar{
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: #F8FAFC;
+    border-bottom: 1px solid var(--eva-border);
+    padding: .65rem .85rem;
+  }
+  .lf-row-selected{ background: rgba(11, 31, 59, .04) !important; }
+  .lf-check-col{ width: 2.25rem; }
 </style>
 {% endblock head %}
 
@@ -40,7 +50,7 @@
     </div>
   </div>
 
-  <form class="card eva-card shadow-sm border-0 mb-3">
+  <form class="card eva-card shadow-sm border-0 mb-3" method="get">
     <div class="card-body row g-2">
       <div class="col-md-2"><input class="form-control form-control-sm" name="estado" placeholder="Estado" value="{{ filtros.estado }}"></div>
       <div class="col-md-2"><input class="form-control form-control-sm" name="moneda" placeholder="Moneda" value="{{ filtros.moneda }}"></div>
@@ -51,11 +61,57 @@
     </div>
   </form>
 
-  <div class="card eva-card shadow-sm border-0">
+  <form
+    id="lf-bulk-form"
+    method="post"
+    action="{{ request.url_for('lf_cotizaciones_eliminar_masivo') }}"
+    class="card eva-card shadow-sm border-0"
+  >
+    <input type="hidden" name="estado" value="{{ filtros.estado }}">
+    <input type="hidden" name="moneda" value="{{ filtros.moneda }}">
+    <input type="hidden" name="ejecutivo" value="{{ filtros.ejecutivo }}">
+    <input type="hidden" name="fecha_desde" value="{{ filtros.fecha_desde }}">
+    <input type="hidden" name="fecha_hasta" value="{{ filtros.fecha_hasta }}">
+
+    <div class="lf-bulk-bar d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="d-flex align-items-center gap-2">
+        <div class="form-check mb-0">
+          <input class="form-check-input" type="checkbox" id="lf-select-all" title="Seleccionar todas las eliminables">
+          <label class="form-check-label small" for="lf-select-all">Todas</label>
+        </div>
+        <span class="small text-muted" id="lf-selected-count">0 seleccionadas</span>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="lf-btn-ver" disabled title="Ver detalle">
+          <i class="bi bi-eye"></i> Ver
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="lf-btn-credito" disabled title="Análisis de crédito">
+          <i class="bi bi-shield-check"></i> Crédito
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="lf-btn-amort" disabled title="Tabla de amortización">
+          <i class="bi bi-table"></i> Amort.
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="lf-btn-formalizar" disabled title="Formalizar cotización">
+          <i class="bi bi-pencil-square"></i> Formalizar
+        </button>
+        <button
+          type="submit"
+          class="btn btn-sm btn-outline-danger"
+          id="lf-btn-eliminar"
+          disabled
+          formaction="{{ request.url_for('lf_cotizaciones_eliminar_masivo') }}"
+          title="Eliminar seleccionadas"
+        >
+          <i class="bi bi-trash"></i> Eliminar
+        </button>
+      </div>
+    </div>
+
     <div class="table-responsive">
-      <table class="table table-hover mb-0 align-middle">
+      <table class="table table-hover mb-0 align-middle" id="lf-cotizaciones-table">
         <thead class="table-light">
           <tr>
+            <th class="lf-check-col"></th>
             <th>ID</th>
             <th>Cliente</th>
             <th>Monto financiado</th>
@@ -72,7 +128,37 @@
         <tbody>
         {% if cotizaciones %}
           {% for c in cotizaciones %}
-          <tr>
+          {% set est = (c.estado or 'BORRADOR') | string | upper %}
+          {% set eliminable = est not in ['ACTIVADA', 'VIGENTE'] and not c.contrato_activo and not c.asiento_id %}
+          <tr
+            class="lf-cot-row"
+            data-id="{{ c.id }}"
+            data-eliminable="{{ '1' if eliminable else '0' }}"
+            data-url-ver="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}"
+            data-url-credito="{{ request.url_for('lf_credito_form', cotizacion_id=c.id) }}"
+            data-url-amort="{{ request.url_for('lf_cotizacion_amortizacion', cotizacion_id=c.id) }}"
+            data-url-formalizar="{{ request.url_for('lf_cotizacion_editar_form', cotizacion_id=c.id) }}"
+            data-url-eliminar="{{ request.url_for('lf_cotizacion_eliminar', cotizacion_id=c.id) }}"
+          >
+            <td>
+              {% if eliminable %}
+              <input
+                class="form-check-input lf-row-check"
+                type="checkbox"
+                name="ids"
+                value="{{ c.id }}"
+                aria-label="Seleccionar cotización #{{ c.id }}"
+              >
+              {% else %}
+              <input
+                class="form-check-input"
+                type="checkbox"
+                disabled
+                title="No eliminable: activada o vigente"
+                aria-label="Cotización #{{ c.id }} no eliminable"
+              >
+              {% endif %}
+            </td>
             <td>#{{ c.id }}</td>
             <td>
               <div class="fw-semibold">{{ c.cliente.razon_social if c.cliente else 'N/D' }}</div>
@@ -90,7 +176,6 @@
             <td>{{ c.ejecutivo or '-' }}</td>
             <td>{{ c.fecha_cotizacion or '-' }}</td>
             <td>
-              {% set est = (c.estado or 'BORRADOR') | string | upper %}
               {% if 'APROB' in est or 'CONTRAT' in est %}
                 <span class="eva-badge eva-badge--ok">{{ c.estado or 'BORRADOR' }}</span>
               {% elif 'RECHAZ' in est %}
@@ -106,22 +191,157 @@
               {% elif est == 'DOCUMENTACION_COMPLETA' %}Activar contabilidad
               {% else %}-{% endif %}
             </td>
-            <td class="text-end">
+            <td class="text-end text-nowrap">
               <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}" class="eva-link">Ver</a> ·
               <a href="{{ request.url_for('lf_credito_form', cotizacion_id=c.id) }}" class="eva-link">Crédito</a> ·
               <a href="{{ request.url_for('lf_cotizacion_amortizacion', cotizacion_id=c.id) }}" class="eva-link">Amort.</a> ·
               <a href="{{ request.url_for('lf_cotizacion_editar_form', cotizacion_id=c.id) }}" class="eva-link">Formalizar</a>
+              {% if eliminable %}
+              ·
+              <button
+                type="submit"
+                class="btn btn-link btn-sm p-0 align-baseline text-danger lf-row-delete"
+                formaction="{{ request.url_for('lf_cotizacion_eliminar', cotizacion_id=c.id) }}"
+                formnovalidate
+              >Eliminar</button>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="11" class="text-center py-4 text-muted">No hay cotizaciones registradas.</td>
+            <td colspan="12" class="text-center py-4 text-muted">No hay cotizaciones registradas.</td>
           </tr>
         {% endif %}
         </tbody>
       </table>
     </div>
-  </div>
+  </form>
 </div>
+
+<script>
+(function () {
+  const form = document.getElementById('lf-bulk-form');
+  const selectAll = document.getElementById('lf-select-all');
+  const countEl = document.getElementById('lf-selected-count');
+  const btnVer = document.getElementById('lf-btn-ver');
+  const btnCredito = document.getElementById('lf-btn-credito');
+  const btnAmort = document.getElementById('lf-btn-amort');
+  const btnFormalizar = document.getElementById('lf-btn-formalizar');
+  const btnEliminar = document.getElementById('lf-btn-eliminar');
+  const rows = Array.from(document.querySelectorAll('.lf-cot-row'));
+
+  function checkedRows() {
+    return rows.filter(function (row) {
+      const cb = row.querySelector('.lf-row-check');
+      return cb && cb.checked;
+    });
+  }
+
+  function eliminableChecked() {
+    return checkedRows().filter(function (row) {
+      return row.dataset.eliminable === '1';
+    });
+  }
+
+  function updateUi() {
+    const selected = checkedRows();
+    const eliminables = eliminableChecked();
+    const count = selected.length;
+    countEl.textContent = count === 1 ? '1 seleccionada' : count + ' seleccionadas';
+
+    rows.forEach(function (row) {
+      const cb = row.querySelector('.lf-row-check');
+      row.classList.toggle('lf-row-selected', !!(cb && cb.checked));
+    });
+
+    const one = count === 1 ? selected[0] : null;
+    btnVer.disabled = !one;
+    btnCredito.disabled = !one;
+    btnAmort.disabled = !one;
+    btnFormalizar.disabled = !one;
+    btnEliminar.disabled = eliminables.length === 0;
+
+    if (selectAll) {
+      const selectable = rows.filter(function (r) { return r.dataset.eliminable === '1'; });
+      const selectableChecked = selectable.filter(function (r) {
+        const cb = r.querySelector('.lf-row-check');
+        return cb && cb.checked;
+      });
+      selectAll.indeterminate = selectableChecked.length > 0 && selectableChecked.length < selectable.length;
+      selectAll.checked = selectable.length > 0 && selectableChecked.length === selectable.length;
+    }
+  }
+
+  function go(url) {
+    if (url) window.location.href = url;
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      rows.forEach(function (row) {
+        if (row.dataset.eliminable !== '1') return;
+        const cb = row.querySelector('.lf-row-check');
+        if (cb) cb.checked = selectAll.checked;
+      });
+      updateUi();
+    });
+  }
+
+  rows.forEach(function (row) {
+    const cb = row.querySelector('.lf-row-check');
+    if (cb) cb.addEventListener('change', updateUi);
+  });
+
+  btnVer.addEventListener('click', function () {
+    const one = checkedRows()[0];
+    if (one) go(one.dataset.urlVer);
+  });
+  btnCredito.addEventListener('click', function () {
+    const one = checkedRows()[0];
+    if (one) go(one.dataset.urlCredito);
+  });
+  btnAmort.addEventListener('click', function () {
+    const one = checkedRows()[0];
+    if (one) go(one.dataset.urlAmort);
+  });
+  btnFormalizar.addEventListener('click', function () {
+    const one = checkedRows()[0];
+    if (one) go(one.dataset.urlFormalizar);
+  });
+
+  btnEliminar.addEventListener('click', function (ev) {
+    const n = eliminableChecked().length;
+    if (n === 0) {
+      ev.preventDefault();
+      return;
+    }
+    const msg = n === 1
+      ? '¿Eliminar la cotización seleccionada? Esta acción no se puede deshacer.'
+      : '¿Eliminar ' + n + ' cotizaciones seleccionadas? Esta acción no se puede deshacer.';
+    if (!window.confirm(msg)) ev.preventDefault();
+  });
+
+  form.querySelectorAll('.lf-row-delete').forEach(function (btn) {
+    btn.addEventListener('click', function (ev) {
+      const row = btn.closest('.lf-cot-row');
+      const id = row ? row.dataset.id : '';
+      const msg = id
+        ? '¿Eliminar la cotización #' + id + '? Esta acción no se puede deshacer.'
+        : '¿Eliminar esta cotización? Esta acción no se puede deshacer.';
+      if (!window.confirm(msg)) {
+        ev.preventDefault();
+        return;
+      }
+      rows.forEach(function (r) {
+        const cb = r.querySelector('.lf-row-check');
+        if (cb) cb.checked = false;
+      });
+      updateUi();
+    });
+  });
+
+  updateUi();
+})();
+</script>
 {% endblock %}
