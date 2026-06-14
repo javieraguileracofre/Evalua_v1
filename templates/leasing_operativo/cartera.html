@@ -9,7 +9,12 @@
       <h1 class="h5 fw-semibold mt-1 mb-0">Cartera — contratos vigentes</h1>
       <p class="text-secondary small mb-0">Contratos generados desde operaciones aprobadas.</p>
     </div>
-    <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('comercial_hub') }}">Hub comercial</a>
+    <div class="d-flex gap-2">
+      <form method="post" action="{{ request.url_for('leasing_operativo_aplicar_mora') }}">
+        <button class="btn btn-warning btn-sm" type="submit">Aplicar mora cartera</button>
+      </form>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('comercial_hub') }}">Hub comercial</a>
+    </div>
   </div>
   <div class="card border-0 shadow-sm">
     <div class="table-responsive">
@@ -36,7 +41,10 @@
             <td>{{ c.fecha_inicio }}</td>
             <td>{{ c.plazo_meses }}</td>
             <td>{{ "{:,.0f}".format(c.renta_mensual or 0).replace(",", ".") }}</td>
-            <td><span class="badge bg-light text-dark border">{{ c.estado }}</span></td>
+            <td>
+              {% set est = (c.estado or 'VIGENTE')|upper %}
+              <span class="badge {% if est == 'MORA' %}text-bg-danger{% elif est == 'VIGENTE' %}text-bg-success{% else %}bg-light text-dark border{% endif %}">{{ est }}</span>
+            </td>
             <td><a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('leasing_operativo_contrato_detail', cid=c.id) }}">Cuotas</a></td>
           </tr>
           {% else %}

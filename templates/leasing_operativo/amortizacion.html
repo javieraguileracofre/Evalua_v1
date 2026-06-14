@@ -1,0 +1,63 @@
+{% extends "layout/base.html" %}
+{% block title %}Amortización operacional {{ sim.codigo }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/leasing_operativo.css" />
+<div class="container py-4 lo-page">
+  <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+    <div>
+      <a href="{{ request.url_for('leasing_operativo_detail', sim_id=sim.id) }}" class="small text-decoration-none">← Operación</a>
+      <h1 class="h5 fw-semibold mt-1 mb-0">Tabla de amortización operacional</h1>
+      <p class="text-secondary small mb-0">
+        {{ sim.codigo }} · Recupero de inversión vía depreciación económica (no principal/interés financiero).
+      </p>
+    </div>
+  </div>
+
+  <div class="lo-kpi-grid mb-3">
+    <div class="lo-kpi"><div class="label">CAPEX</div><div class="value">{{ "{:,.0f}".format(capex or 0).replace(",", ".") }}</div></div>
+    <div class="lo-kpi"><div class="label">Total rentas</div><div class="value">{{ "{:,.0f}".format(totales.total_rentas or 0).replace(",", ".") }}</div></div>
+    <div class="lo-kpi"><div class="label">Recupero inversión</div><div class="value">{{ "{:,.0f}".format(totales.total_recupero or 0).replace(",", ".") }}</div></div>
+    <div class="lo-kpi"><div class="label">Margen total</div><div class="value">{{ "{:,.0f}".format(totales.total_margen or 0).replace(",", ".") }}</div></div>
+    <div class="lo-kpi"><div class="label">Costo fondo total</div><div class="value">{{ "{:,.0f}".format(totales.total_costo_fondo or 0).replace(",", ".") }}</div></div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-sm table-striped mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>#</th>
+            <th>Fecha</th>
+            <th>Saldo inv. ini.</th>
+            <th>Renta neta</th>
+            <th>C. fondo</th>
+            <th>Recupero inv.</th>
+            <th>Op.</th>
+            <th>Riesgo</th>
+            <th>Com.</th>
+            <th>Margen</th>
+            <th>Saldo inv. fin.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in tabla %}
+          <tr>
+            <td>{{ r.numero_cuota }}</td>
+            <td>{{ r.fecha_cuota or '—' }}</td>
+            <td>{{ "{:,.0f}".format(r.saldo_inversion_inicial).replace(",", ".") }}</td>
+            <td>{{ "{:,.0f}".format(r.renta_neta).replace(",", ".") }}</td>
+            <td>{{ "{:,.0f}".format(r.costo_fondo).replace(",", ".") }}</td>
+            <td>{{ "{:,.0f}".format(r.recupero_inversion).replace(",", ".") }}</td>
+            <td>{{ "{:,.0f}".format(r.costos_operativos).replace(",", ".") }}</td>
+            <td>{{ "{:,.0f}".format(r.prima_riesgo).replace(",", ".") }}</td>
+            <td>{{ "{:,.0f}".format(r.costo_comercial).replace(",", ".") }}</td>
+            <td class="fw-semibold">{{ "{:,.0f}".format(r.margen_operacional).replace(",", ".") }}</td>
+            <td>{{ "{:,.0f}".format(r.saldo_inversion_final).replace(",", ".") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

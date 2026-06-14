@@ -11,8 +11,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from crud.comercial import credito_riesgo as crud_cr
-from crud.finanzas.config_contable import obtener_configuracion_evento_modulo
-from crud.finanzas.contabilidad_asientos import crear_asiento
 from crud.finanzas.cuentas_por_pagar import CuentasPorPagarCRUD
 from models.comercial.credito_riesgo import CreditoSolicitud
 from models.cobranza.cuentas_por_cobrar import CuentaPorCobrar
@@ -26,14 +24,30 @@ from models.leasing_operativo.models import (
     LeasingOpCostoPlantilla,
     LeasingOpCuota,
     LeasingOpDocumentoProceso,
+    LeasingOpGestionEvento,
     LeasingOpHistorial,
     LeasingOpParametroTipo,
     LeasingOpPolitica,
+    LeasingOpRenovacion,
     LeasingOpSimulacion,
     LeasingOpTipoActivo,
 )
 from schemas.finanzas.cuentas_por_pagar import DocumentoCreate, DocumentoDetalleCreate
+from services.leasing_operativo.cronograma import generar_cronograma_cuotas, resumen_cronograma
 from services.leasing_operativo.economic_engine import merge_politica, run_economic_engine
+from services.leasing_operativo.amortizacion import calcular_tabla_amortizacion_operacional, totales_amortizacion_operacional
+from services.leasing_operativo.gestion_cartera import (
+    procesar_mora_cartera,
+    registrar_repossession,
+    registrar_remarketing,
+    registrar_terminacion_anticipada,
+)
+from services.leasing_operativo_contabilidad import (
+    crear_asiento_desde_config_evento,
+    facturar_cuota_individual,
+    registrar_asiento_activacion,
+    resolver_monto_regla_evento,
+)
 
 
 def _add_months(d: date, months: int) -> date:
@@ -130,41 +144,12 @@ def _resolver_monto_regla_evento(
     monto_base: Decimal,
     monto_iva: Decimal,
 ) -> Decimal:
-    lado = str(regla.get("lado") or "").strip().upper()
-    tipo = str(regla.get("tipo") or "").strip().upper()
-    clasificacion = str(regla.get("clasificacion") or "").strip().upper()
-    texto = " ".join(
-        [
-            str(regla.get("nombre_evento") or ""),
-            str(regla.get("descripcion") or ""),
-            str(regla.get("nombre_cuenta") or ""),
-            str(regla.get("codigo_cuenta") or ""),
-        ]
-    ).upper()
-    total = (monto_base + monto_iva).quantize(Decimal("0.01"))
-
-    # Regla crítica de control: la facturación debe reconocer CxC por bruto.
-    if codigo_evento == "LOP_FACTURACION":
-        if lado == "DEBE":
-            if tipo == "ACTIVO" or clasificacion.startswith("ACTIVO"):
-                return total
-            if any(token in texto for token in ("CLIENTE", "COBRAR", "CXC", "113801", "110301")):
-                return total
-            return monto_base
-        if lado == "HABER":
-            if "IVA" in texto or tipo == "PASIVO" or clasificacion.startswith("PASIVO"):
-                return monto_iva
-            return monto_base
-        return Decimal("0")
-
-    if codigo_evento in {"LOP_ACTIVACION", "LOP_DEPRECIACION"}:
-        return monto_base
-
-    # Fallback para futuros eventos no parametrizados.
-    orden = int(regla.get("orden") or 1)
-    if orden == 2:
-        return monto_iva
-    return monto_base
+    return resolver_monto_regla_evento(
+        codigo_evento=codigo_evento,
+        regla=regla,
+        monto_base=monto_base,
+        monto_iva=monto_iva,
+    )
 
 
 def _crear_asiento_desde_config_evento(
@@ -182,48 +167,19 @@ def _crear_asiento_desde_config_evento(
     glosa: str,
     usuario: str | None = None,
 ) -> int | None:
-    reglas = obtener_configuracion_evento_modulo(
+    return crear_asiento_desde_config_evento(
         db,
         modulo=modulo,
         submodulo=submodulo,
         tipo_documento=tipo_documento,
         codigo_evento=codigo_evento,
-    )
-    if not reglas:
-        return None
-    detalles: list[dict[str, Any]] = []
-    for r in reglas:
-        lado = str(r.get("lado") or "").upper()
-        if lado not in {"DEBE", "HABER"}:
-            continue
-        monto = _resolver_monto_regla_evento(
-            codigo_evento=codigo_evento,
-            regla=r,
-            monto_base=monto_base,
-            monto_iva=monto_iva,
-        )
-        if monto <= 0:
-            continue
-        detalles.append(
-            {
-                "codigo_cuenta": str(r.get("codigo_cuenta") or "").strip(),
-                "descripcion": glosa[:120],
-                "debe": monto if lado == "DEBE" else Decimal("0"),
-                "haber": monto if lado == "HABER" else Decimal("0"),
-            }
-        )
-    if not detalles:
-        return None
-    return crear_asiento(
-        db,
-        fecha=fecha or datetime.now(timezone.utc).date(),
+        monto_base=monto_base,
+        monto_iva=monto_iva,
+        fecha=fecha,
         origen_tipo=origen_tipo,
         origen_id=origen_id,
-        glosa=glosa[:255],
-        detalles=detalles,
+        glosa=glosa,
         usuario=usuario,
-        moneda="CLP",
-        do_commit=False,
     )
 
 
@@ -345,72 +301,67 @@ def _registrar_factura_compra_ap(
     return out
 
 
-def _registrar_cxc_contrato(
+def _vincular_activos_operacion(
     db: Session,
     sim: LeasingOpSimulacion,
     *,
+    contrato: LeasingOpContrato,
     usuario: str,
-) -> dict[str, Any]:
-    contrato = obtener_contrato_por_simulacion(db, int(sim.id))
-    if not contrato:
-        raise ValueError("No existe contrato para activar contablemente.")
-    if not sim.cliente_id:
-        raise ValueError("Simulación sin cliente; no se puede crear cartera CxC.")
-    iva_pct = Decimal(str((sim.result_json or {}).get("iva_pct") or 0))
-    factor = Decimal("1") + (iva_pct / Decimal("100"))
-    creadas = 0
-    for c in contrato.cuotas or []:
-        ref = f"LOP_CONTRATO:{int(contrato.id)}:CUOTA:{int(c.nro)}"
-        existe = db.scalars(
-            select(CuentaPorCobrar).where(
-                CuentaPorCobrar.cliente_id == int(sim.cliente_id),
-                CuentaPorCobrar.observacion == ref,
-            ).limit(1)
-        ).first()
-        if existe:
+) -> int:
+    """Vincula activos creados en OC a contrato/cliente y marca ARRENDADO."""
+    wf = _get_workflow(sim)
+    docs = wf.get("documentos") or {}
+    oc = docs.get("orden_compra") or {}
+    activo_id = oc.get("activo_fijo_id")
+    vinculados = 0
+    targets: list[int] = []
+    if activo_id:
+        targets.append(int(activo_id))
+    for af in db.scalars(
+        select(LeasingOpActivoFijo).where(LeasingOpActivoFijo.simulacion_id == int(sim.id))
+    ).all():
+        if int(af.id) not in targets:
+            targets.append(int(af.id))
+    for aid in targets:
+        af = db.get(LeasingOpActivoFijo, aid)
+        if not af:
             continue
-        bruto = (Decimal(str(c.monto_renta or 0)) * factor).quantize(Decimal("0.01"))
+        af.simulacion_id = int(sim.id)
+        af.contrato_id = int(contrato.id)
+        af.cliente_id = int(sim.cliente_id) if sim.cliente_id else None
+        af.estado = "ARRENDADO"
+        db.add(af)
+        vinculados += 1
+    if vinculados:
         db.add(
-            CuentaPorCobrar(
-                cliente_id=int(sim.cliente_id),
-                nota_venta_id=None,
-                fecha_emision=contrato.fecha_inicio,
-                fecha_vencimiento=c.fecha_vencimiento,
-                monto_original=bruto,
-                saldo_pendiente=bruto,
-                estado="PENDIENTE",
-                observacion=ref,
+            LeasingOpHistorial(
+                simulacion_id=int(sim.id),
+                evento="ACTIVOS_VINCULADOS_CONTRATO",
+                detalle_json={"contrato_id": int(contrato.id), "activos": targets},
+                usuario=usuario,
             )
         )
-        creadas += 1
-    return {"contrato_id": int(contrato.id), "cuentas_por_cobrar_creadas": creadas, "iva_pct": float(iva_pct)}
+    return vinculados
 
 
-def _registrar_asiento_activacion(
-    db: Session,
-    sim: LeasingOpSimulacion,
-    *,
-    contrato_id: int,
-    usuario: str,
-) -> int | None:
-    docs = ((_get_workflow(sim).get("documentos") or {}).get("factura_compra") or {})
-    total = Decimal(str(docs.get("total") or 0))
-    iva = Decimal(str(docs.get("iva") or 0))
-    base = total - iva if total > iva else total
-    return _crear_asiento_desde_config_evento(
-        db,
-        modulo="LEASING_OP",
-        submodulo="ACTIVACION",
-        tipo_documento="CONTRATO",
-        codigo_evento="LOP_ACTIVACION",
-        monto_base=base,
-        monto_iva=Decimal("0"),
-        fecha=datetime.now(timezone.utc).date(),
-        origen_tipo="LOP_ACTIVACION",
-        origen_id=int(contrato_id),
-        glosa=f"Activación contable leasing operativo contrato {contrato_id}",
-        usuario=usuario,
+def _registrar_cxc_contrato_legacy_cleanup(db: Session, sim: LeasingOpSimulacion) -> int:
+    """Elimina CxC anticipadas del modelo anterior (LOP_CONTRATO) para evitar duplicidad."""
+    if not sim.cliente_id:
+        return 0
+    rows = list(
+        db.scalars(
+            select(CuentaPorCobrar).where(
+                CuentaPorCobrar.cliente_id == int(sim.cliente_id),
+                CuentaPorCobrar.observacion.like("LOP_CONTRATO:%"),
+            )
+        ).all()
     )
+    removed = 0
+    for r in rows:
+        if Decimal(str(r.saldo_pendiente or 0)) >= Decimal(str(r.monto_original or 0)):
+            db.delete(r)
+            removed += 1
+    return removed
 
 
 def facturar_cuotas_periodo(
@@ -431,53 +382,26 @@ def facturar_cuotas_periodo(
     if not sim or not sim.cliente_id:
         raise ValueError("Contrato sin simulación/cliente; no se puede facturar.")
     iva_pct = Decimal(str((sim.result_json or {}).get("iva_pct") or 0))
-    iva_factor = iva_pct / Decimal("100")
     created = 0
     asiento_ids: list[int] = []
+    detalle_cuotas: list[dict[str, Any]] = []
     for q in contrato.cuotas or []:
         if q.fecha_vencimiento.year != y or q.fecha_vencimiento.month != m:
             continue
-        ref = f"LOP_FACT:{int(contrato.id)}:CUOTA:{int(q.nro)}:{periodo}"
-        exists = db.scalars(
-            select(CuentaPorCobrar).where(
-                CuentaPorCobrar.cliente_id == int(sim.cliente_id),
-                CuentaPorCobrar.observacion == ref,
-            ).limit(1)
-        ).first()
-        if exists:
-            continue
-        neto = Decimal(str(q.monto_renta or 0)).quantize(Decimal("0.01"))
-        iva = (neto * iva_factor).quantize(Decimal("0.01"))
-        bruto = (neto + iva).quantize(Decimal("0.01"))
-        db.add(
-            CuentaPorCobrar(
-                cliente_id=int(sim.cliente_id),
-                nota_venta_id=None,
-                fecha_emision=q.fecha_vencimiento,
-                fecha_vencimiento=q.fecha_vencimiento,
-                monto_original=bruto,
-                saldo_pendiente=bruto,
-                estado="PENDIENTE",
-                observacion=ref,
-            )
-        )
-        aid = _crear_asiento_desde_config_evento(
+        out = facturar_cuota_individual(
             db,
-            modulo="LEASING_OP",
-            submodulo="FACTURACION",
-            tipo_documento="CUOTA",
-            codigo_evento="LOP_FACTURACION",
-            monto_base=neto,
-            monto_iva=iva,
-            fecha=q.fecha_vencimiento,
-            origen_tipo="LOP_FACTURACION",
-            origen_id=int(contrato.id),
-            glosa=f"Facturación cuota {q.nro} contrato {contrato.codigo}",
+            contrato=contrato,
+            cuota=q,
+            sim=sim,
+            iva_pct=iva_pct,
             usuario=usuario,
         )
-        if aid:
-            asiento_ids.append(int(aid))
+        if not out:
+            continue
         created += 1
+        detalle_cuotas.append(out)
+        if out.get("asiento_id"):
+            asiento_ids.append(int(out["asiento_id"]))
     if created == 0:
         return {"periodo": periodo, "cuotas_facturadas": 0, "asientos": []}
     db.add(
@@ -689,14 +613,45 @@ def obtener_simulacion(db: Session, sid: int) -> LeasingOpSimulacion | None:
     return db.scalars(stmt).first()
 
 
-def listar_simulaciones(db: Session, limit: int = 200) -> list[LeasingOpSimulacion]:
+def listar_simulaciones(
+    db: Session,
+    limit: int = 200,
+    *,
+    q: str | None = None,
+    etapa: str | None = None,
+) -> list[LeasingOpSimulacion]:
     stmt = (
         select(LeasingOpSimulacion)
         .options(selectinload(LeasingOpSimulacion.tipo), selectinload(LeasingOpSimulacion.cliente))
         .order_by(LeasingOpSimulacion.id.desc())
         .limit(limit)
     )
-    return list(db.scalars(stmt).all())
+    rows = list(db.scalars(stmt).all())
+    q_norm = (q or "").strip().lower()
+    etapa_norm = (etapa or "").strip().upper()
+    if not q_norm and not etapa_norm:
+        return rows
+    out: list[LeasingOpSimulacion] = []
+    for r in rows:
+        wf = (r.result_json or {}).get("workflow_v1") or {}
+        et = str(wf.get("etapa_actual") or "COTIZACION").upper()
+        if etapa_norm and et != etapa_norm:
+            continue
+        if q_norm:
+            blob = " ".join(
+                [
+                    str(r.codigo or ""),
+                    str(r.nombre or ""),
+                    str(r.estado or ""),
+                    str(r.cliente.razon_social if r.cliente else ""),
+                    str(r.tipo.nombre if r.tipo else ""),
+                    et,
+                ]
+            ).lower()
+            if q_norm not in blob:
+                continue
+        out.append(r)
+    return out
 
 
 def crear_simulacion_y_calcular(
@@ -967,12 +922,21 @@ def registrar_hito_operativo(
         hitos["activacion_contable"] = True
         docs["activacion_contable"] = True
         wf["etapa_actual"] = "ACTIVADO_CONTABLE"
-        cxc = _registrar_cxc_contrato(db, sim, usuario=usuario)
-        ctr_id = int(cxc.get("contrato_id") or 0)
-        as_id = _registrar_asiento_activacion(db, sim, contrato_id=ctr_id, usuario=usuario) if ctr_id > 0 else None
-        wf.setdefault("contabilidad", {})["cxc"] = _json_safe(cxc)
+        contrato = obtener_contrato_por_simulacion(db, int(sim.id))
+        if not contrato:
+            raise ValueError("No existe contrato para activar contablemente.")
+        ctr_id = int(contrato.id)
+        legacy_removed = _registrar_cxc_contrato_legacy_cleanup(db, sim)
+        factura = (wf.get("documentos") or {}).get("factura_compra") or {}
+        as_id = registrar_asiento_activacion(
+            db, sim, contrato_id=ctr_id, factura_compra=factura, usuario=usuario
+        )
+        activos_vinc = _vincular_activos_operacion(db, sim, contrato=contrato, usuario=usuario)
+        wf.setdefault("contabilidad", {})["modelo_cxc"] = "FACTURACION_MENSUAL"
+        wf["contabilidad"]["legacy_cxc_removed"] = legacy_removed
+        wf["contabilidad"]["activos_vinculados"] = activos_vinc
         if as_id:
-            wf.setdefault("contabilidad", {})["asiento_activacion_id"] = int(as_id)
+            wf["contabilidad"]["asiento_activacion_id"] = int(as_id)
         ev = "CONTRATO_ACTIVADO_CONTABLE"
     else:
         raise ValueError("Hito operativo inválido.")
@@ -1138,6 +1102,8 @@ def obtener_contrato(db: Session, cid: int) -> LeasingOpContrato | None:
             selectinload(LeasingOpContrato.simulacion).selectinload(LeasingOpSimulacion.tipo),
             selectinload(LeasingOpContrato.simulacion).selectinload(LeasingOpSimulacion.cliente),
             selectinload(LeasingOpContrato.cuotas),
+            selectinload(LeasingOpContrato.gestion_eventos),
+            selectinload(LeasingOpContrato.activos),
         )
         .where(LeasingOpContrato.id == cid)
     )
@@ -1163,6 +1129,8 @@ def crear_contrato_y_cuotas(
     *,
     usuario: str = "sistema",
     fecha_inicio: date | None = None,
+    indexacion_tipo: str | None = None,
+    indexacion_pct: Decimal | None = None,
 ) -> LeasingOpContrato:
     if sim.estado != "APROBADO":
         raise ValueError("Solo operaciones en estado APROBADO pueden generar contrato.")
@@ -1173,16 +1141,32 @@ def crear_contrato_y_cuotas(
     if obtener_contrato_por_simulacion(db, int(sim.id)):
         raise ValueError("Ya existe un contrato vinculado a esta simulación.")
     res = sim.result_json or {}
+    inp = sim.inputs_json or {}
     renta = Decimal(str(res.get("renta_sugerida") or "0"))
     if renta <= 0:
         raise ValueError("Resultado sin renta sugerida válida; recalcule la simulación.")
+    moneda = str(inp.get("moneda") or res.get("moneda_cotizacion") or "CLP").upper()
+    idx_tipo = (indexacion_tipo or inp.get("indexacion_tipo") or "NINGUNA").strip().upper()
+    if idx_tipo not in {"NINGUNA", "UF", "IPC"}:
+        idx_tipo = "NINGUNA"
+    idx_pct = indexacion_pct if indexacion_pct is not None else Decimal(str(inp.get("indexacion_pct") or 0))
     n = max(int(sim.plazo_meses), 1)
     fi = fecha_inicio or datetime.now(timezone.utc).date()
+    cronograma = generar_cronograma_cuotas(
+        plazo_meses=n,
+        renta_base=renta,
+        fecha_inicio=fi,
+        indexacion_tipo=idx_tipo,
+        indexacion_pct=idx_pct,
+    )
     ctr = LeasingOpContrato(
         simulacion_id=int(sim.id),
         codigo="",
         plazo_meses=n,
         renta_mensual=renta,
+        moneda=moneda,
+        indexacion_tipo=idx_tipo,
+        indexacion_pct=idx_pct,
         fecha_inicio=fi,
         estado="VIGENTE",
     )
@@ -1190,14 +1174,14 @@ def crear_contrato_y_cuotas(
     db.flush()
     y = datetime.now(timezone.utc).year
     ctr.codigo = f"LOC-{y}-{int(ctr.id):05d}"
-    for k in range(1, n + 1):
-        fv = _add_months(fi, k)
+    for row in cronograma:
         db.add(
             LeasingOpCuota(
                 contrato_id=int(ctr.id),
-                nro=k,
-                fecha_vencimiento=fv,
-                monto_renta=renta,
+                nro=int(row["nro"]),
+                fecha_vencimiento=row["fecha_vencimiento"],
+                monto_renta=Decimal(str(row["monto_renta"])),
+                monto_renta_base=Decimal(str(row["monto_renta_base"])),
                 estado="PENDIENTE",
             )
         )
@@ -1207,6 +1191,7 @@ def crear_contrato_y_cuotas(
     docs = wf.get("checklist_documental") or {}
     docs["cotizacion"] = True
     wf["checklist_documental"] = docs
+    wf["cronograma_resumen"] = _json_safe(resumen_cronograma(cronograma))
     rj = dict(sim.result_json or {})
     wf["etapa_actual"] = _recompute_stage(wf)
     rj["workflow_v1"] = _json_safe(wf)
@@ -1216,7 +1201,14 @@ def crear_contrato_y_cuotas(
         LeasingOpHistorial(
             simulacion_id=int(sim.id),
             evento="CONTRATO_CREADO",
-            detalle_json={"contrato_id": int(ctr.id), "codigo": ctr.codigo, "cuotas": n},
+            detalle_json={
+                "contrato_id": int(ctr.id),
+                "codigo": ctr.codigo,
+                "cuotas": n,
+                "indexacion_tipo": idx_tipo,
+                "indexacion_pct": float(idx_pct),
+                "cronograma": wf.get("cronograma_resumen"),
+            },
             usuario=usuario,
         )
     )
@@ -1267,6 +1259,9 @@ def crear_activo_fijo(
     costo_compra: Decimal,
     valor_residual_esperado: Decimal,
     vida_util_meses_sii: int,
+    simulacion_id: int | None = None,
+    contrato_id: int | None = None,
+    cliente_id: int | None = None,
 ) -> LeasingOpActivoFijo:
     vida = max(int(vida_util_meses_sii or 60), 1)
     dep_m = ((costo_compra - valor_residual_esperado) / Decimal(vida)).quantize(Decimal("0.0001"))
@@ -1274,6 +1269,9 @@ def crear_activo_fijo(
     af = LeasingOpActivoFijo(
         codigo="",
         tipo_activo_id=tipo_activo_id,
+        simulacion_id=simulacion_id,
+        contrato_id=contrato_id,
+        cliente_id=cliente_id,
         marca=(marca or "").strip(),
         modelo=(modelo or "").strip(),
         anio=anio,
@@ -1284,7 +1282,7 @@ def crear_activo_fijo(
         vida_util_meses_sii=vida,
         depreciacion_mensual_sii=dep_m,
         valor_libro=costo_compra,
-        estado="DISPONIBLE",
+        estado="ARRENDADO" if contrato_id else "DISPONIBLE",
     )
     db.add(af)
     db.flush()
@@ -1355,3 +1353,362 @@ def generar_depreciacion_mensual_activo(
     db.commit()
     db.refresh(row)
     return row
+
+
+def get_hub_resumen(db: Session) -> dict[str, Any]:
+    """KPIs del pipeline LOP para hub operativo."""
+    sims = listar_simulaciones(db, limit=1000)
+    contratos = listar_contratos_cartera(db, limit=1000)
+    kpis = {
+        "abiertas": 0,
+        "en_credito": 0,
+        "aprobadas": 0,
+        "formalizacion": 0,
+        "vigentes": 0,
+        "rechazadas": 0,
+        "activadas": 0,
+        "total": len(sims),
+    }
+    pipeline_montos: dict[str, Decimal] = {"CLP": Decimal("0"), "UF": Decimal("0"), "USD": Decimal("0")}
+    cartera_montos: dict[str, Decimal] = {"CLP": Decimal("0"), "UF": Decimal("0"), "USD": Decimal("0")}
+    pendientes_credito: list[LeasingOpSimulacion] = []
+    pendientes_documentacion: list[LeasingOpSimulacion] = []
+    pendientes_activacion: list[LeasingOpSimulacion] = []
+
+    for s in sims:
+        wf = (s.result_json or {}).get("workflow_v1") or {}
+        et = str(wf.get("etapa_actual") or "COTIZACION").upper()
+        cred = wf.get("credito") or {}
+        hitos = wf.get("hitos") or {}
+        moneda = str((s.inputs_json or {}).get("moneda") or "CLP").upper()
+        if moneda not in pipeline_montos:
+            moneda = "CLP"
+        capex = Decimal(str((s.result_json or {}).get("capex_total") or 0))
+
+        if et in {"COTIZACION", "CREDITO_RECHAZADO"}:
+            kpis["abiertas"] += 1
+        elif et == "CREDITO_EN_EVALUACION":
+            kpis["en_credito"] += 1
+            if len(pendientes_credito) < 8:
+                pendientes_credito.append(s)
+        elif et == "CREDITO_APROBADO":
+            kpis["aprobadas"] += 1
+        elif et in {"CONTRATO_CONFECCIONADO", "ORDEN_COMPRA", "ENTREGA_RECEPCION", "FACTURA_COMPRA"}:
+            kpis["formalizacion"] += 1
+            if len(pendientes_documentacion) < 8:
+                pendientes_documentacion.append(s)
+        elif et == "ACTIVADO_CONTABLE":
+            kpis["activadas"] += 1
+        if str(cred.get("dictamen") or "").upper() == "RECHAZAR":
+            kpis["rechazadas"] += 1
+
+        if et != "ACTIVADO_CONTABLE" and capex > 0:
+            pipeline_montos[moneda] += capex
+        if hitos.get("contrato_confeccionado") and not hitos.get("activacion_contable"):
+            if len(pendientes_activacion) < 8:
+                pendientes_activacion.append(s)
+
+    for c in contratos:
+        if str(c.estado or "").upper() != "VIGENTE":
+            continue
+        kpis["vigentes"] += 1
+        sim = c.simulacion
+        moneda = str(getattr(c, "moneda", None) or (sim.inputs_json or {}).get("moneda") or "CLP").upper()
+        if moneda not in cartera_montos:
+            moneda = "CLP"
+        total = sum((Decimal(str(q.monto_renta or 0)) for q in (c.cuotas or [])), Decimal("0"))
+        cartera_montos[moneda] += total
+
+    cerradas = kpis["activadas"] + kpis["rechazadas"]
+    tasa_cierre_pct = (
+        Decimal(str(kpis["activadas"])) / Decimal(str(cerradas)) * Decimal("100") if cerradas > 0 else None
+    )
+    funnel = [
+        {"key": "cotizacion", "label": "Cotización", "count": kpis["abiertas"], "hint": "Simulaciones abiertas"},
+        {"key": "credito", "label": "Crédito", "count": kpis["en_credito"], "hint": "Evaluación crédito y riesgo"},
+        {"key": "aprobacion", "label": "Aprobación", "count": kpis["aprobadas"], "hint": "Listas para formalizar"},
+        {"key": "formalizacion", "label": "Docs", "count": kpis["formalizacion"], "hint": "Contrato · OC · entrega · factura"},
+        {"key": "cartera", "label": "Cartera", "count": kpis["activadas"], "hint": f"{kpis['vigentes']} contratos vigentes"},
+    ]
+    return {
+        "kpis": kpis,
+        "funnel": funnel,
+        "pipeline_montos": {k: float(v) for k, v in pipeline_montos.items()},
+        "cartera_montos": {k: float(v) for k, v in cartera_montos.items()},
+        "tasa_cierre_pct": float(tasa_cierre_pct) if tasa_cierre_pct is not None else None,
+        "pendientes_credito": pendientes_credito,
+        "pendientes_documentacion": pendientes_documentacion,
+        "pendientes_activacion": pendientes_activacion,
+        "recientes": sims[:12],
+    }
+
+
+def renovar_contrato(
+    db: Session,
+    contrato: LeasingOpContrato,
+    *,
+    plazo_meses: int,
+    renta_mensual: Decimal,
+    indexacion_tipo: str = "NINGUNA",
+    indexacion_pct: Decimal = Decimal("0"),
+    motivo: str = "",
+    usuario: str = "sistema",
+) -> LeasingOpContrato:
+    """Renueva contrato vigente: cierra origen y genera nuevo contrato + cuotas."""
+    if str(contrato.estado or "").upper() != "VIGENTE":
+        raise ValueError("Solo se pueden renovar contratos vigentes.")
+    sim_orig = contrato.simulacion
+    if not sim_orig:
+        raise ValueError("Contrato sin simulación origen.")
+    pendientes = [q for q in (contrato.cuotas or []) if str(q.estado or "").upper() == "PENDIENTE"]
+    if pendientes:
+        raise ValueError("Existen cuotas pendientes de facturar; regularice la cartera antes de renovar.")
+
+    contrato.estado = "RENOVADO"
+    db.add(contrato)
+    fi = datetime.now(timezone.utc).date()
+    idx_tipo = (indexacion_tipo or "NINGUNA").strip().upper()
+    if idx_tipo not in {"NINGUNA", "UF", "IPC"}:
+        idx_tipo = "NINGUNA"
+    n = max(int(plazo_meses), 1)
+    renta = Decimal(str(renta_mensual))
+    cronograma = generar_cronograma_cuotas(
+        plazo_meses=n,
+        renta_base=renta,
+        fecha_inicio=fi,
+        indexacion_tipo=idx_tipo,
+        indexacion_pct=indexacion_pct,
+    )
+    sim_nueva = crear_simulacion_y_calcular(
+        db,
+        tipo_activo_id=int(sim_orig.tipo_activo_id),
+        cliente_id=int(sim_orig.cliente_id) if sim_orig.cliente_id else None,
+        nombre=f"Renovación {contrato.codigo}",
+        plazo_meses=n,
+        escenario=sim_orig.escenario,
+        metodo_pricing=sim_orig.metodo_pricing,
+        margen_pct=sim_orig.margen_pct,
+        spread_pct=sim_orig.spread_pct,
+        tir_objetivo=sim_orig.tir_objetivo_anual,
+        inputs=dict(sim_orig.inputs_json or {}),
+        usuario=usuario,
+    )
+    sim_nueva.estado = "APROBADO"
+    wf = _get_workflow(sim_nueva)
+    wf["credito"] = dict((_get_workflow(sim_orig).get("credito") or {}))
+    wf["hitos"]["resultado_credito"] = True
+    wf["checklist_documental"]["aprobacion_credito"] = True
+    wf["etapa_actual"] = "CREDITO_APROBADO"
+    rj = dict(sim_nueva.result_json or {})
+    rj["workflow_v1"] = _json_safe(wf)
+    sim_nueva.result_json = rj
+    db.add(sim_nueva)
+    db.flush()
+
+    ctr_nuevo = LeasingOpContrato(
+        simulacion_id=int(sim_nueva.id),
+        codigo="",
+        plazo_meses=n,
+        renta_mensual=renta,
+        moneda=str(getattr(contrato, "moneda", None) or "CLP"),
+        indexacion_tipo=idx_tipo,
+        indexacion_pct=indexacion_pct,
+        contrato_origen_id=int(contrato.id),
+        fecha_inicio=fi,
+        estado="VIGENTE",
+    )
+    db.add(ctr_nuevo)
+    db.flush()
+    y = datetime.now(timezone.utc).year
+    ctr_nuevo.codigo = f"LOC-{y}-{int(ctr_nuevo.id):05d}"
+    for row in cronograma:
+        db.add(
+            LeasingOpCuota(
+                contrato_id=int(ctr_nuevo.id),
+                nro=int(row["nro"]),
+                fecha_vencimiento=row["fecha_vencimiento"],
+                monto_renta=Decimal(str(row["monto_renta"])),
+                monto_renta_base=Decimal(str(row["monto_renta_base"])),
+                estado="PENDIENTE",
+            )
+        )
+    sim_nueva.estado = "CONTRATO"
+    wf2 = _get_workflow(sim_nueva)
+    wf2["hitos"]["contrato_confeccionado"] = True
+    wf2["etapa_actual"] = "CONTRATO_CONFECCIONADO"
+    rj2 = dict(sim_nueva.result_json or {})
+    rj2["workflow_v1"] = _json_safe(wf2)
+    sim_nueva.result_json = rj2
+    db.add(sim_nueva)
+
+    ren = LeasingOpRenovacion(
+        contrato_origen_id=int(contrato.id),
+        contrato_nuevo_id=int(ctr_nuevo.id),
+        simulacion_nueva_id=int(sim_nueva.id),
+        plazo_meses=n,
+        renta_mensual=renta,
+        indexacion_tipo=idx_tipo,
+        indexacion_pct=indexacion_pct,
+        motivo=(motivo or "").strip()[:2000],
+        usuario=usuario,
+    )
+    db.add(ren)
+    db.add(
+        LeasingOpHistorial(
+            simulacion_id=int(sim_orig.id),
+            evento="CONTRATO_RENOVADO",
+            detalle_json={"contrato_nuevo": ctr_nuevo.codigo, "motivo": motivo},
+            usuario=usuario,
+        )
+    )
+    db.commit()
+    db.refresh(ctr_nuevo)
+    return ctr_nuevo
+
+
+def obtener_politica_merged(db: Session) -> dict[str, dict[str, Any]]:
+    return merge_politica(listar_politica(db))
+
+
+def upsert_politica(
+    db: Session,
+    *,
+    clave: str,
+    valor_json: dict[str, Any],
+    descripcion: str | None = None,
+) -> LeasingOpPolitica:
+    k = (clave or "").strip()
+    if not k:
+        raise ValueError("Clave de política requerida.")
+    row = db.scalars(select(LeasingOpPolitica).where(LeasingOpPolitica.clave == k).limit(1)).first()
+    if not row:
+        row = LeasingOpPolitica(clave=k, valor_json={}, descripcion="")
+    row.valor_json = _json_safe(valor_json) or {}
+    if descripcion is not None:
+        row.descripcion = (descripcion or "").strip()
+    row.updated_at = datetime.now(timezone.utc)
+    row.activo = True
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def obtener_tabla_amortizacion_sim(db: Session, sim_id: int) -> tuple[list[Any], dict[str, Decimal]]:
+    sim = obtener_simulacion(db, sim_id)
+    if not sim:
+        raise ValueError("Simulación no encontrada.")
+    res = sim.result_json or {}
+    vr = res.get("valor_residual") or {}
+    residual = Decimal(str(vr.get("valor_residual_ajustado") or 0))
+    fi = None
+    if sim.contrato:
+        fi = sim.contrato.fecha_inicio
+    tabla = calcular_tabla_amortizacion_operacional(
+        capex_total=Decimal(str(res.get("capex_total") or 0)),
+        valor_residual=residual,
+        plazo_meses=int(sim.plazo_meses),
+        flujo_mensual=res.get("flujo_mensual") or [],
+        fecha_inicio=fi,
+    )
+    return tabla, totales_amortizacion_operacional(tabla)
+
+
+def aplicar_mora_cartera_lop(db: Session, *, usuario: str = "sistema") -> dict[str, Any]:
+    politica = obtener_politica_merged(db)
+    out = procesar_mora_cartera(db, politica=politica, usuario=usuario)
+    db.commit()
+    return out
+
+
+def ejecutar_terminacion_anticipada(
+    db: Session,
+    contrato: LeasingOpContrato,
+    *,
+    motivo: str,
+    usuario: str = "sistema",
+) -> dict[str, Any]:
+    sim = contrato.simulacion or obtener_simulacion(db, int(contrato.simulacion_id))
+    if not sim:
+        raise ValueError("Contrato sin simulación.")
+    out = registrar_terminacion_anticipada(
+        db, contrato=contrato, sim=sim, politica=obtener_politica_merged(db), motivo=motivo, usuario=usuario
+    )
+    db.add(
+        LeasingOpHistorial(
+            simulacion_id=int(sim.id),
+            evento="TERMINACION_ANTICIPADA",
+            detalle_json=out,
+            usuario=usuario,
+        )
+    )
+    db.commit()
+    return out
+
+
+def ejecutar_repossession(
+    db: Session,
+    contrato: LeasingOpContrato,
+    *,
+    motivo: str,
+    activo_id: int | None = None,
+    usuario: str = "sistema",
+) -> LeasingOpGestionEvento:
+    sim = contrato.simulacion or obtener_simulacion(db, int(contrato.simulacion_id))
+    if not sim:
+        raise ValueError("Contrato sin simulación.")
+    ev = registrar_repossession(db, contrato=contrato, sim=sim, motivo=motivo, activo_id=activo_id, usuario=usuario)
+    db.add(
+        LeasingOpHistorial(
+            simulacion_id=int(sim.id),
+            evento="REPOSSESSION",
+            detalle_json={"contrato_id": int(contrato.id), "motivo": motivo},
+            usuario=usuario,
+        )
+    )
+    db.commit()
+    db.refresh(ev)
+    return ev
+
+
+def ejecutar_remarketing(
+    db: Session,
+    contrato: LeasingOpContrato,
+    *,
+    valor_venta: Decimal,
+    comprador: str,
+    activo_id: int | None = None,
+    costos_remarketing: Decimal = Decimal("0"),
+    usuario: str = "sistema",
+) -> dict[str, Any]:
+    sim = contrato.simulacion or obtener_simulacion(db, int(contrato.simulacion_id))
+    out = registrar_remarketing(
+        db,
+        contrato=contrato,
+        valor_venta=valor_venta,
+        comprador=comprador,
+        activo_id=activo_id,
+        costos_remarketing=costos_remarketing,
+        usuario=usuario,
+    )
+    if sim:
+        db.add(
+            LeasingOpHistorial(
+                simulacion_id=int(sim.id),
+                evento="REMARKETING",
+                detalle_json=out,
+                usuario=usuario,
+            )
+        )
+    db.commit()
+    return out
+
+
+def listar_gestion_eventos(db: Session, contrato_id: int, limit: int = 50) -> list[LeasingOpGestionEvento]:
+    stmt = (
+        select(LeasingOpGestionEvento)
+        .where(LeasingOpGestionEvento.contrato_id == contrato_id)
+        .order_by(LeasingOpGestionEvento.creado_en.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(stmt).all())

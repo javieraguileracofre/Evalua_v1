@@ -9,42 +9,162 @@
       <h1 class="h5 fw-semibold mt-1 mb-0">{{ ctr.codigo }}</h1>
       {% set s = ctr.simulacion %}
       <p class="text-secondary small mb-0">
-        Simulación {{ s.codigo if s else '—' }} · Renta {{ "{:,.0f}".format(ctr.renta_mensual or 0).replace(",", ".") }} · Inicio {{ ctr.fecha_inicio }}
+        Simulación {{ s.codigo if s else '—' }} · Renta base {{ "{:,.0f}".format(ctr.renta_mensual or 0).replace(",", ".") }}
+        {{ ctr.moneda if ctr.moneda is defined else 'CLP' }}
+        · Inicio {{ ctr.fecha_inicio }}
+        {% if ctr.indexacion_tipo is defined and ctr.indexacion_tipo != 'NINGUNA' %}
+        · Reajuste {{ ctr.indexacion_tipo }} {{ ctr.indexacion_pct }}%
+        {% endif %}
       </p>
     </div>
-    {% if s %}
-    <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">Ver operación</a>
-    {% endif %}
-  </div>
-  <div class="card border-0 shadow-sm">
-    <div class="card-header bg-white">
-      <form method="post" action="{{ request.url_for('leasing_operativo_contrato_facturar_periodo', cid=ctr.id) }}" class="row g-2 align-items-end">
-        <div class="col-md-3">
-          <label class="form-label small mb-1">Facturar periodo (YYYYMM)</label>
-          <input name="periodo_yyyymm" class="form-control form-control-sm" value="{{ ctr.fecha_inicio.strftime('%Y%m') if ctr.fecha_inicio else '' }}" />
-        </div>
-        <div class="col-md-3">
-          <button class="btn btn-sm btn-outline-primary w-100" type="submit">Generar facturación mensual</button>
-        </div>
-      </form>
+    <div class="d-flex flex-wrap gap-2">
+      {% if s %}
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">Ver operación</a>
+      {% endif %}
+      <a class="btn btn-sm btn-outline-danger" href="{{ request.url_for('leasing_operativo_contrato_pdf', cid=ctr.id) }}">PDF contrato</a>
     </div>
-    <div class="card-header bg-white fw-semibold">Plan de cuotas (renta)</div>
-    <div class="table-responsive">
-      <table class="table table-sm table-striped mb-0">
-        <thead class="table-light"><tr><th>#</th><th>Vencimiento</th><th>Monto</th><th>Estado</th></tr></thead>
-        <tbody>
-          {% for q in ctr.cuotas or [] %}
-          <tr>
-            <td>{{ q.nro }}</td>
-            <td>{{ q.fecha_vencimiento }}</td>
-            <td>{{ "{:,.0f}".format(q.monto_renta or 0).replace(",", ".") }}</td>
-            <td><span class="badge bg-secondary-subtle text-secondary-emphasis">{{ q.estado }}</span></td>
-          </tr>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-8">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white">
+          <form method="post" action="{{ request.url_for('leasing_operativo_contrato_facturar_periodo', cid=ctr.id) }}" class="row g-2 align-items-end">
+            <div class="col-md-3">
+              <label class="form-label small mb-1">Facturar periodo (YYYYMM)</label>
+              <input name="periodo_yyyymm" class="form-control form-control-sm" value="{{ ctr.fecha_inicio.strftime('%Y%m') if ctr.fecha_inicio else '' }}" />
+            </div>
+            <div class="col-md-4">
+              <button class="btn btn-sm btn-outline-primary w-100" type="submit">Generar facturación mensual (CxC + ingreso)</button>
+            </div>
+            <div class="col-md-5 small text-muted align-self-center">
+              Modelo contable: CxC al facturar cada periodo, no anticipada en activación.
+            </div>
+          </form>
+        </div>
+        <div class="card-header bg-white fw-semibold">Plan de cuotas (cronograma de rentas)</div>
+        <div class="table-responsive">
+          <table class="table table-sm table-striped mb-0">
+            <thead class="table-light"><tr><th>#</th><th>Vencimiento</th><th>Renta base</th><th>Renta</th><th>Estado</th></tr></thead>
+            <tbody>
+              {% for q in ctr.cuotas or [] %}
+              <tr>
+                <td>{{ q.nro }}</td>
+                <td>{{ q.fecha_vencimiento }}</td>
+                <td>{{ "{:,.0f}".format(q.monto_renta_base or ctr.renta_mensual or 0).replace(",", ".") }}</td>
+                <td>{{ "{:,.0f}".format(q.monto_renta or 0).replace(",", ".") }}</td>
+            <td>
+                  {% set est = (q.estado or 'PENDIENTE')|upper %}
+                  <span class="badge {% if est == 'PAGADA' %}text-bg-success{% elif est == 'FACTURADA' %}text-bg-primary{% elif est == 'MORA' %}text-bg-danger{% elif est == 'CANCELADA' %}text-bg-secondary{% else %}bg-secondary-subtle text-secondary-emphasis{% endif %}">{{ est }}</span>
+                  {% if q.dias_mora and q.dias_mora > 0 %}<div class="small text-danger">{{ q.dias_mora }} d · ${{ "{:,.0f}".format(q.monto_mora or 0).replace(",", ".") }}</div>{% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-muted text-center py-3">Sin cuotas.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      {% if ctr.estado == 'VIGENTE' %}
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold">Renovación / extensión</div>
+        <div class="card-body">
+          <form method="post" action="{{ request.url_for('leasing_operativo_contrato_renovar', cid=ctr.id) }}" class="small">
+            <div class="mb-2">
+              <label class="form-label mb-0">Plazo (meses)</label>
+              <input name="plazo_meses" class="form-control form-control-sm" value="12" />
+            </div>
+            <div class="mb-2">
+              <label class="form-label mb-0">Renta mensual</label>
+              <input name="renta_mensual" class="form-control form-control-sm" value="{{ ctr.renta_mensual }}" required />
+            </div>
+            <div class="mb-2">
+              <label class="form-label mb-0">Indexación</label>
+              <select name="indexacion_tipo" class="form-select form-select-sm">
+                <option value="NINGUNA">Sin reajuste</option>
+                <option value="IPC" {% if ctr.indexacion_tipo == 'IPC' %}selected{% endif %}>IPC mensual</option>
+                <option value="UF" {% if ctr.indexacion_tipo == 'UF' %}selected{% endif %}>UF anual</option>
+              </select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label mb-0">% reajuste</label>
+              <input name="indexacion_pct" class="form-control form-control-sm" value="{{ ctr.indexacion_pct or 0 }}" />
+            </div>
+            <div class="mb-2">
+              <label class="form-label mb-0">Motivo</label>
+              <textarea name="motivo" class="form-control form-control-sm" rows="2"></textarea>
+            </div>
+            <button class="btn btn-sm btn-primary w-100" type="submit">Generar renovación</button>
+          </form>
+        </div>
+      </div>
+      {% else %}
+      <div class="alert alert-secondary small mb-0">Contrato en estado {{ ctr.estado }}.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-lg-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold">Gestión de cartera</div>
+        <div class="card-body small">
+          {% if ctr.estado in ['VIGENTE', 'MORA'] %}
+          <form method="post" action="{{ request.url_for('leasing_operativo_contrato_terminacion', cid=ctr.id) }}" class="mb-3 border-bottom pb-3">
+            <label class="form-label fw-semibold">Terminación anticipada</label>
+            <textarea name="motivo" class="form-control form-control-sm mb-2" rows="2" required placeholder="Motivo legal/comercial"></textarea>
+            <button class="btn btn-sm btn-outline-danger" type="submit">Registrar terminación</button>
+          </form>
+          <form method="post" action="{{ request.url_for('leasing_operativo_contrato_repossession', cid=ctr.id) }}" class="mb-3 border-bottom pb-3">
+            <label class="form-label fw-semibold">Repossession / recupero activo</label>
+            <input name="motivo" class="form-control form-control-sm mb-2" placeholder="Motivo" required />
+            <select name="activo_id" class="form-select form-select-sm mb-2">
+              <option value="">Activo (auto)</option>
+              {% for af in ctr.activos or [] %}
+              <option value="{{ af.id }}">{{ af.codigo }} · {{ af.marca }} {{ af.modelo }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-sm btn-outline-warning" type="submit">Iniciar repossession</button>
+          </form>
+          {% endif %}
+          {% if ctr.estado in ['EN_REPOSSESSION', 'TERMINADO_ANTICIPADO', 'MORA'] %}
+          <form method="post" action="{{ request.url_for('leasing_operativo_contrato_remarketing', cid=ctr.id) }}">
+            <label class="form-label fw-semibold">Remarketing / venta activo</label>
+            <input name="valor_venta" class="form-control form-control-sm mb-2" placeholder="Valor venta" required />
+            <input name="comprador" class="form-control form-control-sm mb-2" placeholder="Comprador" />
+            <input name="costos_remarketing" class="form-control form-control-sm mb-2" value="0" placeholder="Costos remarketing" />
+            <select name="activo_id" class="form-select form-select-sm mb-2">
+              <option value="">Activo</option>
+              {% for af in ctr.activos or [] %}
+              <option value="{{ af.id }}">{{ af.codigo }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-sm btn-outline-success" type="submit">Registrar venta</button>
+          </form>
+          {% endif %}
+          {% if ctr.estado not in ['VIGENTE', 'MORA', 'EN_REPOSSESSION', 'TERMINADO_ANTICIPADO'] %}
+          <p class="text-muted mb-0">Contrato en estado {{ ctr.estado }} — sin acciones de gestión disponibles.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white fw-semibold">Historial gestión / cobranza</div>
+        <ul class="list-group list-group-flush small">
+          {% for ev in ctr.gestion_eventos or [] %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span><strong>{{ ev.tipo }}</strong> · {{ ev.creado_en.strftime('%Y-%m-%d') if ev.creado_en else '' }}</span>
+            <span class="text-muted">{{ ev.usuario }}</span>
+          </li>
           {% else %}
-          <tr><td colspan="4" class="text-muted text-center py-3">Sin cuotas.</td></tr>
+          <li class="list-group-item text-muted">Sin eventos registrados.</li>
           {% endfor %}
-        </tbody>
-      </table>
+        </ul>
+      </div>
     </div>
   </div>
 </div>

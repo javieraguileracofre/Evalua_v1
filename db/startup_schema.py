@@ -35,6 +35,8 @@ _PATCH_104 = _ROOT / "db" / "psql" / "104_leasing_operativo_activo_fijo.sql"
 _PATCH_105 = _ROOT / "db" / "psql" / "105_leasing_operativo_parametros_tipo.sql"
 _PATCH_106 = _ROOT / "db" / "psql" / "106_leasing_operativo_documentos.sql"
 _PATCH_107 = _ROOT / "db" / "psql" / "107_leasing_operativo_contabilidad_base.sql"
+_PATCH_108 = _ROOT / "db" / "psql" / "108_leasing_operativo_mejoras.sql"
+_PATCH_109_LOP = _ROOT / "db" / "psql" / "109_leasing_operativo_gestion_cartera.sql"
 _PATCH_109 = _ROOT / "db" / "psql" / "109_leasing_financiero_workflow.sql"
 _PATCH_110 = _ROOT / "db" / "psql" / "110_credito_riesgo_flujos.sql"
 _PATCH_111 = _ROOT / "db" / "psql" / "111_postventa_crm_cases.sql"
@@ -321,6 +323,25 @@ def _has_table(engine: Engine, *, schema: str, table: str) -> bool:
                     """
                 ),
                 {"schema": schema, "table": table},
+            ).scalar()
+        )
+
+
+def _has_column(engine: Engine, *, schema: str, table: str, column: str) -> bool:
+    with engine.connect() as conn:
+        return bool(
+            conn.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = :schema
+                      AND table_name = :table
+                      AND column_name = :column
+                    LIMIT 1
+                    """
+                ),
+                {"schema": schema, "table": table, "column": column},
             ).scalar()
         )
 
@@ -712,6 +733,32 @@ def ensure_leasing_operativo_schema(engine: Engine) -> None:
         except Exception as exc:
             logger.warning(
                 "No se pudo aplicar 107_leasing_operativo_contabilidad_base.sql. Detalle: %s",
+                exc,
+            )
+    if (
+        _PATCH_108.is_file()
+        and _has_table(engine, schema="public", table="leasing_op_contrato")
+        and not _has_column(engine, schema="public", table="leasing_op_contrato", column="moneda")
+    ):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_108)
+            logger.info("Parche aplicado: mejoras leasing operativo (108).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 108_leasing_operativo_mejoras.sql. Detalle: %s",
+                exc,
+            )
+    if (
+        _PATCH_109_LOP.is_file()
+        and _has_table(engine, schema="public", table="leasing_op_contrato")
+        and not _has_table(engine, schema="public", table="leasing_op_gestion_evento")
+    ):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_109_LOP)
+            logger.info("Parche aplicado: gestión cartera leasing operativo (109 LOP).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 109_leasing_operativo_gestion_cartera.sql. Detalle: %s",
                 exc,
             )
     # Re-seed catálogos si existen tablas pero quedaron vacías por patch parcial/manual.

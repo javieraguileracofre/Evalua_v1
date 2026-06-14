@@ -1,0 +1,173 @@
+{% extends "layout/base.html" %}
+{% block title %}Hub Leasing Operativo{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/leasing_operativo.css" />
+<style>
+  .lo-hub-kpi { border-radius:14px; border:1px solid #E5E7EB; background:#fff; height:100%; }
+  .lo-hub-kpi .val { font-size:1.35rem; font-weight:700; color:#0B1F3B; }
+  .lo-hub-kpi .lbl { font-size:.72rem; color:#6B7280; text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+  .funnel-step { flex:1; min-width:0; text-align:center; position:relative; }
+  .funnel-step:not(:last-child)::after { content:"→"; position:absolute; right:-6px; top:50%; transform:translateY(-50%); color:#6B7280; }
+  .funnel-count { font-size:1.25rem; font-weight:700; color:#0B1F3B; }
+  .funnel-lbl { font-size:.68rem; color:#6B7280; text-transform:uppercase; }
+</style>
+{% endblock head %}
+
+{% block content %}
+<div class="container py-4 lo-page">
+  <div class="lo-hero d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+    <div>
+      <h1 class="h5 mb-1">Hub operativo · Leasing operativo</h1>
+      <p class="mb-0 small opacity-75">Simulación → crédito → contrato → activación → cartera de rentas</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-light btn-sm" href="{{ request.url_for('leasing_operativo_simulador') }}">Nueva simulación</a>
+      <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_tablero') }}">Kanban</a>
+      <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_cartera') }}">Cartera</a>
+      <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_list') }}">Todas</a>
+    </div>
+  </div>
+
+  {% if mercado %}
+  <div class="alert alert-light border small mb-3 py-2">
+    <strong>Referencia mercado:</strong> UF ${{ mercado.uf }} · USD ${{ mercado.dolar }} · {{ mercado.fecha }}
+  </div>
+  {% endif %}
+
+  <div class="row g-3 mb-3">
+    {% set kpi_items = [
+      ('Abiertas', kpis.abiertas, 'Cotización comercial'),
+      ('En crédito', kpis.en_credito, 'Scoring pendiente'),
+      ('Aprobadas', kpis.aprobadas, 'Formalización'),
+      ('Docs / activación', kpis.formalizacion, 'Pipeline operativo'),
+      ('Cartera', kpis.activadas, kpis.vigentes ~ ' vigentes'),
+      ('Rechazadas', kpis.rechazadas, 'Tasa cierre ' ~ (tasa_cierre_pct|round(1) if tasa_cierre_pct is not none else '—') ~ '%')
+    ] %}
+    {% for lbl, val, sub in kpi_items %}
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="lo-hub-kpi p-3">
+        <div class="lbl mb-1">{{ lbl }}</div>
+        <div class="val">{{ val }}</div>
+        <div class="small text-muted">{{ sub }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-3">Embudo comercial</h2>
+          <div class="d-flex gap-2 mb-2">
+            {% for step in funnel %}
+            <div class="funnel-step">
+              <div class="funnel-count">{{ step.count }}</div>
+              <div class="funnel-lbl">{{ step.label }}</div>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="small text-muted">{{ funnel[0].hint if funnel else '' }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-3">Exposición financiera</h2>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="small text-muted text-uppercase fw-semibold mb-2">Pipeline (CAPEX)</div>
+              {% for mon, monto in pipeline_montos.items() %}
+                {% if monto and monto > 0 %}
+                <div class="d-flex justify-content-between mb-1"><span>{{ mon }}</span><strong>${{ "{:,.0f}".format(monto).replace(",", ".") if mon == 'CLP' else monto }}</strong></div>
+                {% endif %}
+              {% endfor %}
+            </div>
+            <div class="col-md-6">
+              <div class="small text-muted text-uppercase fw-semibold mb-2">Cartera colocada (rentas)</div>
+              {% for mon, monto in cartera_montos.items() %}
+                {% if monto and monto > 0 %}
+                <div class="d-flex justify-content-between mb-1"><span>{{ mon }}</span><strong class="text-success">${{ "{:,.0f}".format(monto).replace(",", ".") if mon == 'CLP' else monto }}</strong></div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-2">Pendientes crédito <span class="badge bg-warning-subtle text-warning-emphasis">{{ pendientes_credito|length }}</span></h2>
+          {% for s in pendientes_credito %}
+          <div class="small border-bottom py-2">
+            <a href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">{{ s.codigo }}</a>
+            · {{ s.cliente.razon_social if s.cliente else 'N/D' }}
+          </div>
+          {% else %}<p class="small text-muted mb-0">Sin pendientes.</p>{% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-2">Pendientes documentación <span class="badge bg-secondary-subtle">{{ pendientes_documentacion|length }}</span></h2>
+          {% for s in pendientes_documentacion %}
+          <div class="small border-bottom py-2">
+            <a href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">{{ s.codigo }}</a>
+            · {{ (s.result_json or {}).get('workflow_v1', {}).get('etapa_actual', '') }}
+          </div>
+          {% else %}<p class="small text-muted mb-0">Sin pendientes.</p>{% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-2">Listas para activar <span class="badge bg-success-subtle text-success">{{ pendientes_activacion|length }}</span></h2>
+          {% for s in pendientes_activacion %}
+          <div class="small border-bottom py-2">
+            <a href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">{{ s.codigo }}</a>
+            · plazo {{ s.plazo_meses }} m
+          </div>
+          {% else %}<p class="small text-muted mb-0">Ninguna pendiente.</p>{% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between mb-3">
+        <h2 class="h6 fw-semibold mb-0">Últimas operaciones</h2>
+        <a href="{{ request.url_for('leasing_operativo_list') }}" class="small">Ver todas →</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light"><tr><th>Código</th><th>Cliente</th><th>Plazo</th><th>Renta</th><th>Etapa</th><th></th></tr></thead>
+          <tbody>
+          {% for r in recientes %}
+          {% set j = r.result_json or {} %}
+          <tr>
+            <td class="font-monospace small">{{ r.codigo }}</td>
+            <td>{{ r.cliente.razon_social if r.cliente else '—' }}</td>
+            <td>{{ r.plazo_meses }} m</td>
+            <td>{{ "{:,.0f}".format(j.get('renta_sugerida', 0) or 0).replace(",", ".") }}</td>
+            <td><span class="badge bg-light border">{{ (j.get('workflow_v1') or {}).get('etapa_actual', 'COTIZACION') }}</span></td>
+            <td><a href="{{ request.url_for('leasing_operativo_detail', sim_id=r.id) }}" class="small">Ver</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-3">Sin operaciones aún.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

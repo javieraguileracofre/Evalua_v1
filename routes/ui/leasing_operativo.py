@@ -17,6 +17,8 @@ from core.paths import TEMPLATES_DIR
 from crud.leasing_operativo import crud as lo_crud
 from crud.maestros.cliente import listar_clientes
 from db.session import get_db
+from services.leasing_operativo.cotizacion_pdf import generar_cotizacion_pdf_bytes
+from services.leasing_operativo.contrato_pdf import generar_contrato_pdf_bytes
 from services.leasing_operativo.market_data import fetch_cl_market_indicators
 
 router = APIRouter(prefix="/comercial/leasing-operativo", tags=["Comercial · Leasing operativo"])
@@ -142,12 +144,27 @@ def _build_inputs_from_form(form: dict[str, str]) -> dict:
 
 @router.get("/", name="leasing_operativo_root")
 def lo_root():
-    return RedirectResponse("/comercial/leasing-operativo/simulaciones", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse("/comercial/leasing-operativo/hub", status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/hub", response_class=HTMLResponse, name="leasing_operativo_hub")
+def lo_hub(request: Request, db: Session = Depends(get_db)):
+    resumen = lo_crud.get_hub_resumen(db)
+    mkt = fetch_cl_market_indicators()
+    return templates.TemplateResponse(
+        "leasing_operativo/hub.html",
+        {
+            "request": request,
+            "mercado": mkt,
+            "active_menu": "leasing_operativo",
+            **resumen,
+        },
+    )
 
 
 @router.get("/simulaciones", response_class=HTMLResponse, name="leasing_operativo_list")
-def lo_list(request: Request, db: Session = Depends(get_db)):
-    rows = lo_crud.listar_simulaciones(db, limit=300)
+def lo_list(request: Request, db: Session = Depends(get_db), q: str = "", etapa: str = ""):
+    rows = lo_crud.listar_simulaciones(db, limit=300, q=q or None, etapa=etapa or None)
     resumen = {
         "total": len(rows),
         "cotizado": 0,
@@ -176,7 +193,7 @@ def lo_list(request: Request, db: Session = Depends(get_db)):
             resumen["rechazadas"] += 1
     return templates.TemplateResponse(
         "leasing_operativo/listado.html",
-        {"request": request, "rows": rows, "resumen": resumen, "active_menu": "leasing_operativo"},
+        {"request": request, "rows": rows, "resumen": resumen, "active_menu": "leasing_operativo", "q": q, "etapa": etapa},
     )
 
 
@@ -713,6 +730,8 @@ def lo_oc_builder_save(
             costo_compra=_dec(monto_oc),
             valor_residual_esperado=_dec("0"),
             vida_util_meses_sii=60,
+            simulacion_id=int(sim.id),
+            cliente_id=int(sim.cliente_id) if sim.cliente_id else None,
         )
     lo_crud.guardar_documento_proceso(
         db,
@@ -873,6 +892,79 @@ def lo_contrato_detail(request: Request, cid: int, db: Session = Depends(get_db)
     return templates.TemplateResponse(
         "leasing_operativo/contrato_detail.html",
         {"request": request, "ctr": ctr, "active_menu": "leasing_operativo"},
+    )
+
+
+@router.get("/cartera/contrato/{cid}/pdf", name="leasing_operativo_contrato_pdf")
+def lo_contrato_pdf(request: Request, cid: int, db: Session = Depends(get_db)):
+    ctr = lo_crud.obtener_contrato(db, cid)
+    if not ctr:
+        raise HTTPException(404)
+    s = ctr.simulacion
+    cli = s.cliente if s else None
+    cli_nombre = (cli.nombre_fantasia or cli.razon_social if cli else None) or None
+    cuotas = [
+        {
+            "nro": q.nro,
+            "fecha_vencimiento": str(q.fecha_vencimiento),
+            "monto_renta": float(q.monto_renta or 0),
+            "estado": q.estado,
+        }
+        for q in (ctr.cuotas or [])
+    ]
+    pdf = generar_contrato_pdf_bytes(
+        contrato_codigo=ctr.codigo,
+        sim_codigo=s.codigo if s else "",
+        cliente_nombre=cli_nombre,
+        tipo_nombre=s.tipo.nombre if s and s.tipo else "",
+        plazo_meses=int(ctr.plazo_meses),
+        renta_mensual=ctr.renta_mensual,
+        moneda=str(getattr(ctr, "moneda", None) or "CLP"),
+        indexacion_tipo=str(getattr(ctr, "indexacion_tipo", None) or "NINGUNA"),
+        indexacion_pct=float(getattr(ctr, "indexacion_pct", None) or 0),
+        fecha_inicio=str(ctr.fecha_inicio),
+        cuotas=cuotas,
+    )
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{ctr.codigo}_contrato.pdf"'},
+    )
+
+
+@router.post("/cartera/contrato/{cid}/renovar", name="leasing_operativo_contrato_renovar")
+def lo_contrato_renovar(
+    request: Request,
+    cid: int,
+    db: Session = Depends(get_db),
+    plazo_meses: str = Form("12"),
+    renta_mensual: str = Form(...),
+    indexacion_tipo: str = Form("NINGUNA"),
+    indexacion_pct: str = Form("0"),
+    motivo: str = Form(""),
+):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
+    ctr = lo_crud.obtener_contrato(db, cid)
+    if not ctr:
+        raise HTTPException(404)
+    try:
+        nuevo = lo_crud.renovar_contrato(
+            db,
+            ctr,
+            plazo_meses=_int(plazo_meses, 12),
+            renta_mensual=_dec(renta_mensual),
+            indexacion_tipo=(indexacion_tipo or "NINGUNA").upper(),
+            indexacion_pct=_dec(indexacion_pct, "0"),
+            motivo=motivo,
+            usuario=_actor(request),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return RedirectResponse(
+        str(request.url_for("leasing_operativo_contrato_detail", cid=int(nuevo.id))),
+        status_code=303,
     )
 
 
@@ -1045,3 +1137,147 @@ def lo_activo_depreciar(
         str(request.url_for("leasing_operativo_activo_detail", aid=aid)),
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@router.get("/politicas", response_class=HTMLResponse, name="leasing_operativo_politicas")
+def lo_politicas_get(request: Request, db: Session = Depends(get_db)):
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    rows = lo_crud.listar_politica(db)
+    return templates.TemplateResponse(
+        "leasing_operativo/politicas.html",
+        {"request": request, "politicas": rows, "active_menu": "leasing_operativo"},
+    )
+
+
+@router.post("/politicas/{clave}", name="leasing_operativo_politicas_save")
+async def lo_politicas_save(request: Request, clave: str, db: Session = Depends(get_db)):
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    form = await request.form()
+    import json
+
+    raw = (form.get("valor_json") or "").strip()
+    try:
+        valor = json.loads(raw) if raw else {}
+    except json.JSONDecodeError as e:
+        raise HTTPException(400, f"JSON inválido: {e}") from e
+    lo_crud.upsert_politica(
+        db,
+        clave=clave,
+        valor_json=valor,
+        descripcion=str(form.get("descripcion") or ""),
+    )
+    return RedirectResponse(str(request.url_for("leasing_operativo_politicas")), status_code=303)
+
+
+@router.get("/operacion/{sim_id}/amortizacion", response_class=HTMLResponse, name="leasing_operativo_amortizacion")
+def lo_amortizacion(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404)
+    try:
+        tabla, totales = lo_crud.obtener_tabla_amortizacion_sim(db, sim_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    res = sim.result_json or {}
+    return templates.TemplateResponse(
+        "leasing_operativo/amortizacion.html",
+        {
+            "request": request,
+            "sim": sim,
+            "tabla": tabla,
+            "totales": totales,
+            "capex": res.get("capex_total"),
+            "active_menu": "leasing_operativo",
+        },
+    )
+
+
+@router.post("/cartera/aplicar-mora", name="leasing_operativo_aplicar_mora")
+def lo_aplicar_mora(request: Request, db: Session = Depends(get_db)):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
+    try:
+        out = lo_crud.aplicar_mora_cartera_lop(db, usuario=_actor(request))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return RedirectResponse(
+        str(request.url_for("leasing_operativo_cartera")) + f"?msg=Mora+aplicada+{out.get('cuotas_mora',0)}+cuotas",
+        status_code=303,
+    )
+
+
+@router.post("/cartera/contrato/{cid}/terminacion", name="leasing_operativo_contrato_terminacion")
+def lo_contrato_terminacion(
+    request: Request,
+    cid: int,
+    db: Session = Depends(get_db),
+    motivo: str = Form(...),
+):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
+    ctr = lo_crud.obtener_contrato(db, cid)
+    if not ctr:
+        raise HTTPException(404)
+    try:
+        lo_crud.ejecutar_terminacion_anticipada(db, ctr, motivo=motivo, usuario=_actor(request))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return RedirectResponse(str(request.url_for("leasing_operativo_contrato_detail", cid=cid)), status_code=303)
+
+
+@router.post("/cartera/contrato/{cid}/repossession", name="leasing_operativo_contrato_repossession")
+def lo_contrato_repossession(
+    request: Request,
+    cid: int,
+    db: Session = Depends(get_db),
+    motivo: str = Form(...),
+    activo_id: str = Form(""),
+):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
+    ctr = lo_crud.obtener_contrato(db, cid)
+    if not ctr:
+        raise HTTPException(404)
+    try:
+        lo_crud.ejecutar_repossession(
+            db, ctr, motivo=motivo, activo_id=_int(activo_id) or None, usuario=_actor(request)
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return RedirectResponse(str(request.url_for("leasing_operativo_contrato_detail", cid=cid)), status_code=303)
+
+
+@router.post("/cartera/contrato/{cid}/remarketing", name="leasing_operativo_contrato_remarketing")
+def lo_contrato_remarketing(
+    request: Request,
+    cid: int,
+    db: Session = Depends(get_db),
+    valor_venta: str = Form(...),
+    comprador: str = Form(""),
+    activo_id: str = Form(""),
+    costos_remarketing: str = Form("0"),
+):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
+    ctr = lo_crud.obtener_contrato(db, cid)
+    if not ctr:
+        raise HTTPException(404)
+    try:
+        lo_crud.ejecutar_remarketing(
+            db,
+            ctr,
+            valor_venta=_dec(valor_venta),
+            comprador=comprador,
+            activo_id=_int(activo_id) or None,
+            costos_remarketing=_dec(costos_remarketing),
+            usuario=_actor(request),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return RedirectResponse(str(request.url_for("leasing_operativo_contrato_detail", cid=cid)), status_code=303)

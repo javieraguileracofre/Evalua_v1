@@ -202,6 +202,16 @@ def crear_pago(
     db.commit()
     db.refresh(pago)
     db.refresh(cxc)
+
+    if cxc.estado == "PAGADA":
+        try:
+            from services.leasing_operativo_contabilidad import sincronizar_cobranza_lop
+
+            sincronizar_cobranza_lop(db, int(cxc.id))
+            db.commit()
+        except Exception:
+            logger.exception("Cobranza: no se pudo sincronizar cuota LOP para cxc_id=%s", cxc.id)
+
     return pago
 
 

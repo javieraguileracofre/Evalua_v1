@@ -9,10 +9,12 @@
       <p>Motor económico: CAPEX, residual, collateral, costo de fondo, riesgo, pricing y decisión.</p>
     </div>
     <div class="d-flex gap-2">
+      <a class="btn btn-light btn-sm" href="{{ request.url_for('leasing_operativo_hub') }}">Hub</a>
       <a class="btn btn-light btn-sm" href="{{ request.url_for('leasing_operativo_simulador') }}">Nueva simulación</a>
       <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_comite_list') }}">Comité</a>
       <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_cartera') }}">Cartera</a>
       <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_activos') }}">Activos</a>
+      <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_politicas') }}">Políticas</a>
       <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_parametros') }}">Parámetros</a>
       <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_tablero') }}">Kanban</a>
       <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('comercial_hub') }}">Hub comercial</a>
@@ -26,6 +28,26 @@
     <div class="lo-kpi"><div class="label">Activadas contable</div><div class="value">{{ resumen.activo_contable }}</div></div>
     <div class="lo-kpi"><div class="label">Aprobadas / Rechazadas</div><div class="value">{{ resumen.aprobadas }} / {{ resumen.rechazadas }}</div></div>
   </div>
+  <form method="get" class="card border-0 shadow-sm mb-3">
+    <div class="card-body row g-2 align-items-end">
+      <div class="col-md-5">
+        <label class="form-label small mb-1">Buscar</label>
+        <input name="q" class="form-control form-control-sm" value="{{ q or '' }}" placeholder="Código, cliente, etapa…" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small mb-1">Etapa workflow</label>
+        <select name="etapa" class="form-select form-select-sm">
+          <option value="">Todas</option>
+          {% for e in ['COTIZACION','CREDITO_EN_EVALUACION','CREDITO_APROBADO','CONTRATO_CONFECCIONADO','ORDEN_COMPRA','ENTREGA_RECEPCION','FACTURA_COMPRA','ACTIVADO_CONTABLE'] %}
+          <option value="{{ e }}" {% if etapa == e %}selected{% endif %}>{{ e }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <button class="btn btn-sm btn-primary w-100" type="submit">Filtrar</button>
+      </div>
+    </div>
+  </form>
   <div class="card border-0 shadow-sm">
     <div class="table-responsive">
       <table class="table table-hover mb-0 align-middle">

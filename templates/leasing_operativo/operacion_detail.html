@@ -12,6 +12,7 @@
     <div class="d-flex flex-wrap gap-2">
       <span class="badge align-self-center text-bg-light border">{{ sim.estado }}</span>
       <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_export_xlsx', sim_id=sim.id) }}">Excel</a>
+      <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('leasing_operativo_amortizacion', sim_id=sim.id) }}">Amortización</a>
       <a class="btn btn-sm btn-outline-danger" href="{{ request.url_for('leasing_operativo_cotizacion_pdf', sim_id=sim.id) }}">PDF</a>
     </div>
   </div>
@@ -186,6 +187,7 @@
   <div id="lo-reportes" class="card border-0 shadow-sm">
     <div class="card-header bg-white fw-semibold">Reportes</div>
     <div class="card-body d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-primary btn-sm" href="{{ request.url_for('leasing_operativo_amortizacion', sim_id=sim.id) }}">Amortización operacional</a>
       <a class="btn btn-outline-dark btn-sm" href="{{ request.url_for('leasing_operativo_export_xlsx', sim_id=sim.id) }}">Excel (flujo)</a>
       <a class="btn btn-outline-danger btn-sm" href="{{ request.url_for('leasing_operativo_cotizacion_pdf', sim_id=sim.id) }}">PDF cotización</a>
     </div>

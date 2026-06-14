@@ -7,9 +7,11 @@ from models.leasing_operativo.models import (
     LeasingOpContrato,
     LeasingOpCostoPlantilla,
     LeasingOpCuota,
+    LeasingOpGestionEvento,
     LeasingOpHistorial,
     LeasingOpParametroTipo,
     LeasingOpPolitica,
+    LeasingOpRenovacion,
     LeasingOpSimulacion,
     LeasingOpTipoActivo,
 )
@@ -26,4 +28,6 @@ __all__ = [
     "LeasingOpParametroTipo",
     "LeasingOpComite",
     "LeasingOpHistorial",
+    "LeasingOpRenovacion",
+    "LeasingOpGestionEvento",
 ]

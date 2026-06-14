@@ -115,13 +115,25 @@ class LeasingOpContrato(Base):
     codigo: Mapped[str] = mapped_column(String(48), nullable=False, unique=True)
     plazo_meses: Mapped[int] = mapped_column(Integer, nullable=False)
     renta_mensual: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    moneda: Mapped[str] = mapped_column(String(8), nullable=False, default="CLP", server_default="CLP")
+    indexacion_tipo: Mapped[str] = mapped_column(String(12), nullable=False, default="NINGUNA", server_default="NINGUNA")
+    indexacion_pct: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False, default=Decimal("0"), server_default="0")
+    contrato_origen_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_contrato.id", ondelete="SET NULL"), nullable=True
+    )
     fecha_inicio: Mapped[date] = mapped_column(Date, nullable=False, server_default=text("CURRENT_DATE"))
+    fecha_termino: Mapped[date | None] = mapped_column(Date, nullable=True)
+    motivo_termino: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     estado: Mapped[str] = mapped_column(String(24), nullable=False, default="VIGENTE", server_default="VIGENTE")
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
     simulacion: Mapped["LeasingOpSimulacion"] = relationship("LeasingOpSimulacion", back_populates="contrato")
     cuotas: Mapped[list["LeasingOpCuota"]] = relationship(
         "LeasingOpCuota", back_populates="contrato", cascade="all, delete-orphan", order_by="LeasingOpCuota.nro"
+    )
+    activos: Mapped[list["LeasingOpActivoFijo"]] = relationship("LeasingOpActivoFijo", back_populates="contrato")
+    gestion_eventos: Mapped[list["LeasingOpGestionEvento"]] = relationship(
+        "LeasingOpGestionEvento", back_populates="contrato", cascade="all, delete-orphan", order_by="LeasingOpGestionEvento.creado_en.desc()"
     )
 
 
@@ -133,6 +145,12 @@ class LeasingOpCuota(Base):
     nro: Mapped[int] = mapped_column(Integer, nullable=False)
     fecha_vencimiento: Mapped[date] = mapped_column(Date, nullable=False)
     monto_renta: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    monto_renta_base: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    cxc_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    facturado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dias_mora: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    monto_mora: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"), server_default="0")
+    fecha_mora_aplicada: Mapped[date | None] = mapped_column(Date, nullable=True)
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDIENTE", server_default="PENDIENTE")
 
     contrato: Mapped["LeasingOpContrato"] = relationship("LeasingOpContrato", back_populates="cuotas")
@@ -144,6 +162,15 @@ class LeasingOpActivoFijo(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     codigo: Mapped[str] = mapped_column(String(48), nullable=False, unique=True)
     tipo_activo_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("leasing_op_tipo_activo.id", ondelete="SET NULL"), nullable=True, index=True)
+    simulacion_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_simulacion.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    contrato_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_contrato.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    cliente_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("clientes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     marca: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     modelo: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     anio: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -158,6 +185,7 @@ class LeasingOpActivoFijo(Base):
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
     tipo: Mapped["LeasingOpTipoActivo | None"] = relationship("LeasingOpTipoActivo")
+    contrato: Mapped["LeasingOpContrato | None"] = relationship("LeasingOpContrato", back_populates="activos")
     depreciaciones: Mapped[list["LeasingOpActivoDepreciacion"]] = relationship(
         "LeasingOpActivoDepreciacion", back_populates="activo", cascade="all, delete-orphan"
     )
@@ -240,3 +268,48 @@ class LeasingOpHistorial(Base):
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
     simulacion: Mapped["LeasingOpSimulacion"] = relationship("LeasingOpSimulacion", back_populates="historial")
+
+
+class LeasingOpRenovacion(Base):
+    __tablename__ = "leasing_op_renovacion"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    contrato_origen_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_contrato.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    contrato_nuevo_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_contrato.id", ondelete="SET NULL"), nullable=True
+    )
+    simulacion_nueva_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_simulacion.id", ondelete="SET NULL"), nullable=True
+    )
+    plazo_meses: Mapped[int] = mapped_column(Integer, nullable=False)
+    renta_mensual: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    indexacion_tipo: Mapped[str] = mapped_column(String(12), nullable=False, default="NINGUNA", server_default="NINGUNA")
+    indexacion_pct: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False, default=Decimal("0"), server_default="0")
+    usuario: Mapped[str] = mapped_column(String(200), nullable=False, default="sistema", server_default="sistema")
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+
+class LeasingOpGestionEvento(Base):
+    __tablename__ = "leasing_op_gestion_evento"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    contrato_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_contrato.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    cuota_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_cuota.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    tipo: Mapped[str] = mapped_column(String(32), nullable=False)
+    estado: Mapped[str] = mapped_column(String(24), nullable=False, default="VIGENTE", server_default="VIGENTE")
+    dias_mora: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    monto_mora: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"), server_default="0")
+    monto_penalidad: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"), server_default="0")
+    monto_recupero: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"), server_default="0")
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    usuario: Mapped[str] = mapped_column(String(200), nullable=False, default="sistema", server_default="sistema")
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    contrato: Mapped["LeasingOpContrato"] = relationship("LeasingOpContrato", back_populates="gestion_eventos")
+    cuota: Mapped["LeasingOpCuota | None"] = relationship("LeasingOpCuota")
