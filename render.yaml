@@ -14,6 +14,10 @@
 #
 # Python nativo en Render (sin Docker): el default 3.14 fuerza build Rust de pydantic-core.
 # Fija versión con .python-version en la raíz o PYTHON_VERSION (evita pydantic-core build en 3.14).
+#
+# Deploy manual (sin commit): Settings → Deploy Hook → copiar URL en RENDER_DEPLOY_HOOK_URL
+#   Local:  python tools/deploy_render.py
+#   GitHub: Actions → "Render manual deploy" (secret RENDER_DEPLOY_HOOK_URL)
 
 services:
   - type: web

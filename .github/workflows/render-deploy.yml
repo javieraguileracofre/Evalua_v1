@@ -1,0 +1,42 @@
+# Deploy manual a Render sin push a main.
+# Requiere secret: RENDER_DEPLOY_HOOK_URL
+#   (Render Dashboard → evalua-v1 → Settings → Deploy Hook)
+name: Render manual deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      clear_cache:
+        description: Limpiar caché de build en Render
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validar secret
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::Configure el secret RENDER_DEPLOY_HOOK_URL en GitHub (Settings → Secrets → Actions)."
+            exit 1
+          fi
+
+      - name: Disparar deploy en Render
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          URL="$RENDER_DEPLOY_HOOK_URL"
+          if [ "${{ inputs.clear_cache }}" = "true" ]; then
+            if echo "$URL" | grep -q '?'; then
+              URL="${URL}&clearCache=true"
+            else
+              URL="${URL}?clearCache=true"
+            fi
+          fi
+          echo "POST $URL"
+          curl -fsS -X POST "$URL"
+          echo ""
+          echo "Deploy solicitado. Ver https://dashboard.render.com/"
