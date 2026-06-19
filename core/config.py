@@ -196,6 +196,9 @@ class Settings:
     remuneracion_cuenta_banco: str
     remuneracion_cuenta_gasto_sueldos: str
 
+    # Leasing operativo comercial v2 (motor indexación, wizard, API preview).
+    lop_comercial_v2: bool
+
     @property
     def is_dev(self) -> bool:
         return self.app_env.lower() in {"dev", "development", "local"}
@@ -309,6 +312,7 @@ class Settings:
             remuneracion_cuenta_sueldos_por_pagar=os.getenv("REMUNERACION_CUENTA_SUELDOS_POR_PAGAR", "").strip(),
             remuneracion_cuenta_banco=os.getenv("REMUNERACION_CUENTA_BANCO", "").strip(),
             remuneracion_cuenta_gasto_sueldos=os.getenv("REMUNERACION_CUENTA_GASTO_SUELDOS", "").strip(),
+            lop_comercial_v2=_to_bool(os.getenv("LOP_COMERCIAL_V2"), default=True),
         )
 
 

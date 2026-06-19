@@ -40,7 +40,65 @@
     <div class="lo-kpi"><div class="label">TIR anual %</div><div class="value">{% if res.tir_anual_pct is not none %}{{ "%.2f"|format(res.tir_anual_pct) }}{% else %}—{% endif %}</div></div>
     <div class="lo-kpi"><div class="label">Payback (mes)</div><div class="value">{{ res.payback_meses if res.payback_meses is not none else '—' }}</div></div>
     <div class="lo-kpi"><div class="label">ROA %</div><div class="value">{{ "%.2f"|format(res.roa_pct or 0) }}</div></div>
+    {% if res.engine_version %}
+    <div class="lo-kpi"><div class="label">Motor</div><div class="value"><span class="badge text-bg-primary-subtle">{{ res.engine_version }}</span></div></div>
+    {% endif %}
+    {% if res.renta_minima_pico %}
+    <div class="lo-kpi"><div class="label">Renta mín. pico</div><div class="value">{{ "{:,.0f}".format(res.renta_minima_pico or 0).replace(",", ".") }}</div></div>
+    {% endif %}
+    {% if res.pie_inicial %}
+    <div class="lo-kpi"><div class="label">Pie inicial</div><div class="value">{{ "{:,.0f}".format(res.pie_inicial or 0).replace(",", ".") }}</div></div>
+    {% endif %}
   </div>
+
+  {% set dec = res.decision or {} %}
+  {% set reglas = dec.decision_reglas or [] %}
+  <div class="card border-0 shadow-sm mb-4 lo-semaforo-card">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+      <span>Semáforo comercial LOP v2</span>
+      <span class="badge fs-6 {% if sim.decision_codigo == 'APROBAR' %}text-bg-success{% elif sim.decision_codigo == 'RECHAZAR' %}text-bg-danger{% elif sim.decision_codigo == 'OBSERVAR' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ sim.decision_codigo }}</span>
+    </div>
+    <div class="card-body">
+      {% if reglas %}
+      <div class="lo-semaforo-grid">
+        {% for r in reglas %}
+        <div class="lo-semaforo-item {% if r.ok %}ok{% else %}{% if r.severidad == 'CRITICO' %}fail{% else %}warn{% endif %}{% endif %}">
+          <span class="lo-semaforo-dot"></span>
+          <div>
+            <div class="fw-semibold small">{{ r.codigo }}</div>
+            <div class="text-muted small">{{ r.detalle }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="small text-muted mb-0">{{ sim.decision_detalle }}</p>
+      {% endif %}
+      {% if res.warnings %}
+      <div class="alert alert-warning small py-2 mt-3 mb-0">
+        {% for w in res.warnings %}<div>{{ w }}</div>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if res.waterfall %}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-semibold">Waterfall renta sugerida (promedio mensual)</div>
+    <div class="card-body">
+      {% set wf_max = (res.waterfall | map(attribute='monto') | max) or 1 %}
+      {% for item in res.waterfall %}
+      <div class="lo-waterfall-row mb-2">
+        <div class="d-flex justify-content-between small mb-1">
+          <span>{{ item.concepto }}</span>
+          <strong>${{ "{:,.0f}".format(item.monto or 0).replace(",", ".") }}</strong>
+        </div>
+        <div class="lo-waterfall-bar"><span style="width: {{ ((item.monto or 0) / wf_max * 100)|round(1) }}%;"></span></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
   <div id="lo-costos" class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white fw-semibold">Desglose costo mensual promedio</div>
@@ -96,8 +154,14 @@
 
   <div id="lo-riesgo" class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white fw-semibold">Riesgo y collateral</div>
-    <div class="card-body small">
-      <pre class="bg-light p-2 rounded mb-0" style="max-height:220px;overflow:auto">{{ res.collateral | tojson(indent=2) }}</pre>
+    <div class="card-body small row g-2">
+      {% set col = res.collateral or {} %}
+      <div class="col-md-4">Valor mercado: <strong>${{ "{:,.0f}".format(col.get('valor_mercado', 0) or 0).replace(",", ".") }}</strong></div>
+      <div class="col-md-4">Recovery rate: <strong>{{ "%.2f"|format(res.recovery_rate_pct or 0) }}%</strong></div>
+      <div class="col-md-4">LGD: <strong>{{ "%.2f"|format(res.lgd_pct or 0) }}%</strong></div>
+      <div class="col-md-4">Net recovery: <strong>${{ "{:,.0f}".format(col.get('net_recovery', 0) or 0).replace(",", ".") }}</strong></div>
+      <div class="col-md-4">Meses liquidación: <strong>{{ col.get('meses_liquidacion', '—') }}</strong></div>
+      <div class="col-md-4">Desc. venta forzada: <strong>{{ col.get('descuento_venta_forzada_pct', 0) }}%</strong></div>
     </div>
   </div>
 

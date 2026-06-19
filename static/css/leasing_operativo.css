@@ -78,3 +78,19 @@
 @media (max-width: 768px) {
   .lo-kanban { grid-template-columns: 1fr; }
 }
+
+/* LOP v2 wizard + preview */
+.lo-wizard-nav .nav-link { font-size: 0.78rem; padding: 0.35rem 0.65rem; cursor: pointer; }
+.lo-preview-panel { border-radius: 0.75rem; }
+.lo-preview-kpi .fs-5 { line-height: 1.2; }
+.lo-semaforo-grid { display: grid; gap: 0.65rem; }
+.lo-semaforo-item { display: flex; gap: 0.65rem; align-items: flex-start; padding: 0.5rem 0.65rem; border-radius: 0.5rem; border: 1px solid #e2e8f0; }
+.lo-semaforo-dot { width: 0.65rem; height: 0.65rem; border-radius: 50%; margin-top: 0.35rem; flex-shrink: 0; }
+.lo-semaforo-item.ok { background: #f0fdf4; border-color: #bbf7d0; }
+.lo-semaforo-item.ok .lo-semaforo-dot { background: #16a34a; }
+.lo-semaforo-item.warn { background: #fffbeb; border-color: #fde68a; }
+.lo-semaforo-item.warn .lo-semaforo-dot { background: #d97706; }
+.lo-semaforo-item.fail { background: #fef2f2; border-color: #fecaca; }
+.lo-semaforo-item.fail .lo-semaforo-dot { background: #dc2626; }
+.lo-waterfall-bar { height: 0.55rem; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+.lo-waterfall-bar span { display: block; height: 100%; background: linear-gradient(90deg, #0d6efd, #6366f1); border-radius: 999px; }

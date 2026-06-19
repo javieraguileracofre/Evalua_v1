@@ -297,6 +297,11 @@ def create_app() -> FastAPI:
 
     include_ui_routers(app)
 
+    from routes.api.lop import router as lop_api_router
+
+    app.include_router(lop_api_router, prefix="/api/comercial/leasing-operativo")
+    logger.info("Router API LOP v2 cargado en /api/comercial/leasing-operativo")
+
     @app.get("/health", tags=["Health"])
     def healthcheck() -> dict[str, str]:
         return {

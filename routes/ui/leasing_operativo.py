@@ -13,6 +13,7 @@ from openpyxl import Workbook
 from sqlalchemy.orm import Session
 
 from core.rbac import usuario_es_admin, usuario_tiene_rol
+from core.config import settings
 from core.paths import TEMPLATES_DIR
 from crud.leasing_operativo import crud as lo_crud
 from crud.maestros.cliente import listar_clientes
@@ -170,7 +171,8 @@ def lo_hub(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(
             503,
             "Esquema LOP incompleto en la base de datos. Ejecute db/supabase/leasing_operativo_108_109.sql "
-            f"en Supabase SQL Editor o reinicie la app tras migración. Detalle: {exc}",
+            "y db/supabase/lop_comercial_v2.sql en Supabase SQL Editor o reinicie la app tras migración. "
+            f"Detalle: {exc}",
         ) from exc
     return templates.TemplateResponse(
         "leasing_operativo/hub.html",
@@ -279,6 +281,7 @@ def lo_simulador_get(request: Request, db: Session = Depends(get_db)):
             "modelos": modelos,
             "anios": anios,
             "active_menu": "leasing_operativo",
+            "lop_v2": settings.lop_comercial_v2,
         },
     )
 
@@ -440,6 +443,10 @@ def lo_simulador_post(
     riesgo_activo_mult: str = Form("1"),
     riesgo_uso_mult: str = Form("1"),
     riesgo_liq_mult: str = Form("1"),
+    indexacion_tipo: str = Form("NINGUNA"),
+    indexacion_pct: str = Form("0"),
+    pie_inicial_pct: str = Form("0"),
+    opcion_compra_pct: str = Form("0"),
 ):
     red = _guard_operacion_write(request)
     if red:
@@ -513,6 +520,10 @@ def lo_simulador_post(
             spread_pct=_dec(spread_pct) if str(metodo_pricing).upper() == "COSTO_SPREAD" else None,
             tir_objetivo=_dec(tir_objetivo_anual) if str(metodo_pricing).upper() == "TIR_OBJETIVO" else None,
             inputs=inputs,
+            indexacion_tipo=str(indexacion_tipo or "NINGUNA").upper(),
+            indexacion_pct=_dec(indexacion_pct),
+            pie_inicial_pct=_dec(pie_inicial_pct),
+            opcion_compra_pct=_dec(opcion_compra_pct),
             usuario=_actor(request),
         )
     except ValueError as e:

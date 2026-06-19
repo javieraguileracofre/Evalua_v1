@@ -55,6 +55,32 @@
     {% endfor %}
   </div>
 
+  {% if margen_pipeline_pct is not none or tir_pipeline_pct is not none %}
+  <div class="row g-3 mb-3">
+    <div class="col-md-4">
+      <div class="lo-hub-kpi p-3 border-primary border-opacity-25">
+        <div class="lbl mb-1">Margen pipeline prom.</div>
+        <div class="val text-primary">{% if margen_pipeline_pct is not none %}{{ margen_pipeline_pct|round(2) }}%{% else %}—{% endif %}</div>
+        <div class="small text-muted">Promedio operaciones simuladas</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="lo-hub-kpi p-3 border-success border-opacity-25">
+        <div class="lbl mb-1">TIR pipeline prom.</div>
+        <div class="val text-success">{% if tir_pipeline_pct is not none %}{{ tir_pipeline_pct|round(2) }}%{% else %}—{% endif %}</div>
+        <div class="small text-muted">Rentabilidad anualizada pipeline</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="lo-hub-kpi p-3 {% if alertas_observar %}border-warning{% endif %}">
+        <div class="lbl mb-1">Casos OBSERVAR</div>
+        <div class="val {% if alertas_observar %}text-warning{% endif %}">{{ alertas_observar or 0 }}</div>
+        <div class="small text-muted">Requieren revisión comercial</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="row g-3 mb-3">
     <div class="col-lg-5">
       <div class="card border-0 shadow-sm h-100">

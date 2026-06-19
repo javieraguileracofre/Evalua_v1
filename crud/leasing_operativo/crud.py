@@ -34,7 +34,7 @@ from models.leasing_operativo.models import (
 )
 from schemas.finanzas.cuentas_por_pagar import DocumentoCreate, DocumentoDetalleCreate
 from services.leasing_operativo.cronograma import generar_cronograma_cuotas, resumen_cronograma
-from services.leasing_operativo.economic_engine import merge_politica, run_economic_engine
+from services.leasing_operativo.economic_engine import merge_politica, preparar_inputs_simulacion, run_economic_engine
 from services.leasing_operativo.amortizacion import calcular_tabla_amortizacion_operacional, totales_amortizacion_operacional
 from services.leasing_operativo.gestion_cartera import (
     procesar_mora_cartera,
@@ -654,6 +654,130 @@ def listar_simulaciones(
     return out
 
 
+def segmento_riesgo_cliente(db: Session, cliente_id: int) -> dict[str, Any] | None:
+    """Última evaluación de crédito del cliente → segmento LOP."""
+    sol = db.scalars(
+        select(CreditoSolicitud)
+        .where(CreditoSolicitud.cliente_id == int(cliente_id))
+        .order_by(CreditoSolicitud.id.desc())
+        .limit(1)
+    ).first()
+    if not sol:
+        return None
+    evals = list(getattr(sol, "evaluaciones", None) or [])
+    score = None
+    if evals:
+        ult = sorted(evals, key=lambda e: int(getattr(e, "id", 0) or 0), reverse=True)
+        score = float(getattr(ult[0], "score_total", 0) or 0)
+    elif getattr(sol, "evaluaciones", None) is None:
+        from models.comercial.credito_riesgo import CreditoEvaluacion
+
+        ev = db.scalars(
+            select(CreditoEvaluacion)
+            .where(CreditoEvaluacion.solicitud_id == int(sol.id))
+            .order_by(CreditoEvaluacion.id.desc())
+            .limit(1)
+        ).first()
+        if ev:
+            score = float(ev.score_total or 0)
+    segmento = "MEDIO"
+    if score is not None:
+        if score >= 700:
+            segmento = "BAJO"
+        elif score >= 450:
+            segmento = "MEDIO"
+        elif score >= 300:
+            segmento = "ALTO"
+        else:
+            segmento = "CRITICO"
+    estado = str(sol.estado or "").upper()
+    if estado in {"RECHAZADA", "RECHAZADO"}:
+        segmento = "CRITICO"
+    return {
+        "cliente_id": int(cliente_id),
+        "solicitud_id": int(sol.id),
+        "solicitud_codigo": sol.codigo,
+        "segmento": segmento,
+        "score": score,
+        "sector_mult": 1.05 if segmento in {"ALTO", "CRITICO"} else 1.0,
+    }
+
+
+def resimular_operacion(
+    db: Session,
+    sim: LeasingOpSimulacion,
+    *,
+    usuario: str = "sistema",
+    motivo: str = "RECALCULO",
+) -> LeasingOpSimulacion:
+    """Re-ejecuta motor v2 y versiona snapshot anterior."""
+    tipo = sim.tipo or obtener_tipo(db, int(sim.tipo_activo_id))
+    if not tipo:
+        raise ValueError("Tipo de activo no encontrado")
+    politica = merge_politica(listar_politica(db))
+    plantillas = plantillas_por_tipo(db, int(sim.tipo_activo_id))
+    inp = dict(sim.inputs_json or {})
+    inp = aplicar_segmento_cliente_inputs(db, inp, sim.cliente_id)
+    tipo_d = {
+        "residual_base_pct": tipo.residual_base_pct,
+        "residual_max_pct": tipo.residual_max_pct,
+        "liquidez_factor": tipo.liquidez_factor,
+        "obsolescencia_factor": tipo.obsolescencia_factor,
+        "desgaste_km_factor": tipo.desgaste_km_factor,
+        "desgaste_hora_factor": tipo.desgaste_hora_factor,
+        "haircut_residual_pct": tipo.haircut_residual_pct,
+    }
+    prev = sim.result_json or {}
+    versions = list(prev.get("result_versions") or [])
+    if prev.get("renta_sugerida") is not None:
+        versions.append(
+            {
+                "van": prev.get("van"),
+                "tir_anual_pct": prev.get("tir_anual_pct"),
+                "renta_sugerida": prev.get("renta_sugerida"),
+                "decision": (prev.get("decision") or {}).get("decision_codigo"),
+            }
+        )
+        versions = versions[-8:]
+    result = run_economic_engine(inputs=inp, tipo_activo=tipo_d, politica=politica, plantillas_costo=plantillas)
+    rj = _json_safe(result)
+    wf = prev.get("workflow_v1") or _workflow_default()
+    rj["workflow_v1"] = wf
+    rj["result_versions"] = versions
+    sim.inputs_json = _json_safe(inp)
+    sim.result_json = rj
+    dec = result.get("decision") or {}
+    sim.decision_codigo = str(dec.get("decision_codigo") or sim.decision_codigo)
+    sim.decision_detalle = str(dec.get("decision_detalle") or sim.decision_detalle)
+    db.add(sim)
+    db.add(
+        LeasingOpHistorial(
+            simulacion_id=int(sim.id),
+            evento=motivo,
+            detalle_json={"renta_sugerida": rj.get("renta_sugerida"), "van": rj.get("van")},
+            usuario=usuario,
+        )
+    )
+    db.commit()
+    db.refresh(sim)
+    return sim
+
+
+def aplicar_segmento_cliente_inputs(db: Session, inp: dict[str, Any], cliente_id: int | None) -> dict[str, Any]:
+    if not cliente_id:
+        return inp
+    seg = segmento_riesgo_cliente(db, int(cliente_id))
+    if not seg:
+        return inp
+    riesgo = dict(inp.get("riesgo") or {})
+    if not riesgo.get("segmento_cliente"):
+        riesgo["segmento_cliente"] = seg["segmento"]
+    if riesgo.get("sector_mult") in (None, "", 0, "0", 1, "1", 1.0):
+        riesgo["sector_mult"] = seg.get("sector_mult", 1)
+    inp["riesgo"] = riesgo
+    return inp
+
+
 def crear_simulacion_y_calcular(
     db: Session,
     *,
@@ -668,6 +792,10 @@ def crear_simulacion_y_calcular(
     tir_objetivo: Any,
     inputs: dict[str, Any],
     usuario: str = "sistema",
+    indexacion_tipo: str | None = None,
+    indexacion_pct: Any | None = None,
+    pie_inicial_pct: Any | None = None,
+    opcion_compra_pct: Any | None = None,
 ) -> LeasingOpSimulacion:
     tipo = obtener_tipo(db, tipo_activo_id)
     if not tipo:
@@ -676,29 +804,26 @@ def crear_simulacion_y_calcular(
     politica_rows = listar_politica(db)
     politica = merge_politica(politica_rows)
     plantillas = plantillas_por_tipo(db, tipo_activo_id)
+    if not plantillas:
+        raise ValueError("El tipo de activo no tiene plantillas de costo operativo configuradas.")
 
-    inp = dict(inputs)
     param_tipo = obtener_parametro_tipo(db, tipo_activo_id)
-    inp["plazo_meses"] = plazo_meses
-    inp["escenario"] = escenario
-    inp["metodo_pricing"] = metodo_pricing
-    if param_tipo:
-        inp.setdefault("moneda", param_tipo.moneda)
-        inp.setdefault("iva_pct", float(param_tipo.iva_pct))
-        base_perfil = param_tipo.perfil_json or {}
-        for k in ("uso", "activo", "collateral", "comercial", "riesgo"):
-            if not isinstance(inp.get(k), dict):
-                inp[k] = {}
-            src = base_perfil.get(k) if isinstance(base_perfil.get(k), dict) else {}
-            for ck, cv in src.items():
-                if inp[k].get(ck) in (None, "", 0, "0"):
-                    inp[k][ck] = cv
-    if margen_pct is not None:
-        inp["margen_pct"] = margen_pct
-    if spread_pct is not None:
-        inp["spread_pct"] = spread_pct
-    if tir_objetivo is not None:
-        inp["tir_objetivo_anual_pct"] = tir_objetivo
+    inp = preparar_inputs_simulacion(
+        inputs=dict(inputs),
+        tipo_activo_id=tipo_activo_id,
+        param_tipo=param_tipo,
+        plazo_meses=plazo_meses,
+        escenario=escenario,
+        metodo_pricing=metodo_pricing,
+        margen_pct=margen_pct,
+        spread_pct=spread_pct,
+        tir_objetivo=tir_objetivo,
+        indexacion_tipo=indexacion_tipo,
+        indexacion_pct=indexacion_pct,
+        pie_inicial_pct=pie_inicial_pct,
+        opcion_compra_pct=opcion_compra_pct,
+    )
+    inp = aplicar_segmento_cliente_inputs(db, inp, cliente_id)
 
     tipo_d = {
         "residual_base_pct": tipo.residual_base_pct,
@@ -843,7 +968,11 @@ def sincronizar_estado_credito(db: Session, sim: LeasingOpSimulacion, *, usuario
         wf["checklist_documental"]["aprobacion_credito"] = False
         wf["etapa_actual"] = "CREDITO_RECHAZADO"
     wf["etapa_actual"] = _recompute_stage(wf)
-    return _save_workflow(db, sim, wf, usuario, "CREDITO_ESTADO_SINCRONIZADO", {"estado_credito": sol.estado, "dictamen": dictamen})
+    sim = _save_workflow(db, sim, wf, usuario, "CREDITO_ESTADO_SINCRONIZADO", {"estado_credito": sol.estado, "dictamen": dictamen})
+    try:
+        return resimular_operacion(db, sim, usuario=usuario, motivo="RECALCULO_POST_CREDITO")
+    except Exception:
+        return sim
 
 
 def registrar_analisis_credito(
@@ -1159,6 +1288,14 @@ def crear_contrato_y_cuotas(
         indexacion_tipo=idx_tipo,
         indexacion_pct=idx_pct,
     )
+    piso = Decimal(str(res.get("renta_minima_pico") or res.get("renta_minima") or 0))
+    if cronograma and piso > 0:
+        primera = Decimal(str(cronograma[0]["monto_renta"]))
+        if primera < piso:
+            raise ValueError(
+                f"Renta indexada del cronograma ({primera:,.0f}) es inferior al piso comercial ({piso:,.0f}). "
+                "Recalcule la simulación o ajuste indexación/pricing."
+            )
     ctr = LeasingOpContrato(
         simulacion_id=int(sim.id),
         codigo="",
@@ -1423,6 +1560,19 @@ def get_hub_resumen(db: Session) -> dict[str, Any]:
     tasa_cierre_pct = (
         Decimal(str(kpis["activadas"])) / Decimal(str(cerradas)) * Decimal("100") if cerradas > 0 else None
     )
+    margenes: list[Decimal] = []
+    tirs: list[Decimal] = []
+    observar = 0
+    for s in sims:
+        r = s.result_json or {}
+        if r.get("margen_operacional_promedio_pct") is not None:
+            margenes.append(Decimal(str(r["margen_operacional_promedio_pct"])))
+        if r.get("tir_anual_pct") is not None:
+            tirs.append(Decimal(str(r["tir_anual_pct"])))
+        if str((r.get("decision") or {}).get("decision_codigo") or s.decision_codigo or "").upper() == "OBSERVAR":
+            observar += 1
+    margen_pipeline = float(sum(margenes, Decimal("0")) / Decimal(len(margenes))) if margenes else None
+    tir_pipeline = float(sum(tirs, Decimal("0")) / Decimal(len(tirs))) if tirs else None
     funnel = [
         {"key": "cotizacion", "label": "Cotización", "count": kpis["abiertas"], "hint": "Simulaciones abiertas"},
         {"key": "credito", "label": "Crédito", "count": kpis["en_credito"], "hint": "Evaluación crédito y riesgo"},
@@ -1436,6 +1586,9 @@ def get_hub_resumen(db: Session) -> dict[str, Any]:
         "pipeline_montos": {k: float(v) for k, v in pipeline_montos.items()},
         "cartera_montos": {k: float(v) for k, v in cartera_montos.items()},
         "tasa_cierre_pct": float(tasa_cierre_pct) if tasa_cierre_pct is not None else None,
+        "margen_pipeline_pct": margen_pipeline,
+        "tir_pipeline_pct": tir_pipeline,
+        "alertas_observar": observar,
         "pendientes_credito": pendientes_credito,
         "pendientes_documentacion": pendientes_documentacion,
         "pendientes_activacion": pendientes_activacion,

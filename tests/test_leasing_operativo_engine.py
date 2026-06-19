@@ -118,3 +118,51 @@ def test_tir_bisec_simple():
     tir_m = tir_mensual_bisec(fl)
     assert tir_m is not None
     assert abs(float(npv_mensual(fl, tir_m))) < 0.02
+
+
+def test_indexacion_ipc_aumenta_renta_minima_pico():
+    p = _politica_base()
+    tipo = _tipo_camioneta()
+    base_inp = {
+        "plazo_meses": 36,
+        "escenario": "BASE",
+        "metodo_pricing": "COSTO_SPREAD",
+        "spread_pct": Decimal("8"),
+        "capex": {"precio_compra": Decimal("30000000")},
+        "uso": {"km_anual": Decimal("40000")},
+        "activo": {},
+        "collateral": {"valor_mercado": Decimal("32000000")},
+        "comercial": {},
+        "riesgo": {"segmento_cliente": "MEDIO"},
+    }
+    plant = [{"codigo": "MANT", "periodicidad": "MENSUAL", "monto_mensual_equiv": 120000}]
+    r0 = run_economic_engine(
+        inputs={**base_inp, "indexacion_tipo": "NINGUNA", "indexacion_pct": Decimal("0")},
+        tipo_activo=tipo,
+        politica=p,
+        plantillas_costo=plant,
+    )
+    r1 = run_economic_engine(
+        inputs={**base_inp, "indexacion_tipo": "IPC", "indexacion_pct": Decimal("0.4")},
+        tipo_activo=tipo,
+        politica=p,
+        plantillas_costo=plant,
+    )
+    assert r1["renta_minima_pico"] >= r0["renta_minima_pico"]
+    assert r1["engine_version"] == "2.0"
+
+
+def test_decision_reglas_incluidas():
+    d = evaluar_decision(
+        van=Decimal("1000"),
+        tir_anual_pct=Decimal("15"),
+        margen_op_promedio_pct=Decimal("10"),
+        ltv_pct=Decimal("70"),
+        params={"van_minimo": 0, "tir_minima_anual_pct": 10, "margen_op_minimo_pct": 5, "ltv_max_pct": 92},
+        spread_sobre_costo_pct=Decimal("5"),
+        payback_meses=24,
+        recovery_rate_pct=Decimal("40"),
+    )
+    assert d["decision_codigo"] == "APROBAR"
+    assert isinstance(d.get("decision_reglas"), list)
+    assert len(d["decision_reglas"]) >= 4
