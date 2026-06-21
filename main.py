@@ -33,6 +33,7 @@ from db.startup_schema import (
     ensure_auth_roles_seed,
     ensure_comercial_leasing_financiero_schema,
     ensure_credito_riesgo_schema,
+    ensure_credito_riesgo_empresarial_schema,
     ensure_leasing_operativo_schema,
     ensure_fin_config_contable_seed,
     ensure_fondos_rendir_asiento_columns,
@@ -292,6 +293,7 @@ def create_app() -> FastAPI:
         ensure_remuneraciones_seed(engine)
         ensure_leasing_financiero_plan_cuentas_min(engine)
         ensure_lf_cotizaciones_cleanup_prueba(engine)
+        ensure_credito_riesgo_empresarial_schema(engine)
     except Exception as exc:
         logger.warning("Bootstrap remuneraciones / seed roles tras arranque: %s", exc, exc_info=True)
 

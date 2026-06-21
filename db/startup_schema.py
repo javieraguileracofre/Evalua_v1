@@ -676,6 +676,27 @@ def ensure_credito_riesgo_schema(engine: Engine) -> None:
         )
 
 
+def ensure_credito_riesgo_empresarial_schema(engine: Engine) -> None:
+    """
+    Parche 125 (columnas v2 empresarial). Idempotente.
+    Se ejecuta siempre al arrancar aunque AUTO_MIGRATE_ON_STARTUP=false,
+    igual que otros bootstrap de columnas críticas.
+    """
+    if engine.dialect.name != "postgresql" or not _PATCH_125.is_file():
+        return
+    if not _has_table(engine, schema="public", table="credito_solicitud"):
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_125)
+        logger.info("Parche verificado: crédito empresarial v2 (125).")
+    except Exception as exc:
+        logger.warning(
+            "No se pudo aplicar 125_credito_riesgo_empresarial.sql. "
+            "Ejecute db/psql/125_credito_riesgo_empresarial.sql o db/supabase/credito_riesgo_125.sql. Detalle: %s",
+            exc,
+        )
+
+
 def ensure_leasing_operativo_schema(engine: Engine) -> None:
     """
     Tablas leasing_op_* (102) y contrato/cuota (103) si aún no están aplicadas.

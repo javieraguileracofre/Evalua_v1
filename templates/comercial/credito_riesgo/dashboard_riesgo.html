@@ -88,7 +88,7 @@
         <div class="col-md-4">
           <div class="rounded-3 p-3 bg-{{ color }}-subtle">
             <div class="small text-secondary">{{ seg.replace('_', ' ') }}</div>
-            <div class="fs-4 fw-bold text-{{ color }}">{{ kpi.distribucion_segmento.get(seg, 0) }}</div>
+            <div class="fs-4 fw-bold text-{{ color }}">{{ (kpi.distribucion_segmento or {}).get(seg, 0) }}</div>
           </div>
         </div>
         {% endfor %}

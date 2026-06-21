@@ -200,7 +200,8 @@
       <div class="card border-0 shadow-sm mb-3">
         <div class="card-header bg-white fw-semibold">Historial / auditoría</div>
         <ul class="list-group list-group-flush small">
-          {% for h in (sol.historial|sort(attribute='creado_en', reverse=true))[:12] %}
+          {% for h in (sol.historial or [])|sort(attribute='creado_en', reverse=true) %}
+          {% if loop.index <= 12 %}
           <li class="list-group-item">
             <div class="d-flex justify-content-between">
               <strong>{{ h.evento }}</strong>
@@ -208,6 +209,7 @@
             </div>
             <div class="text-muted">{{ h.usuario }}</div>
           </li>
+          {% endif %}
           {% else %}
           <li class="list-group-item text-muted">Sin eventos registrados.</li>
           {% endfor %}
