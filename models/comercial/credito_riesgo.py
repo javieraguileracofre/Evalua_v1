@@ -87,6 +87,37 @@ class CreditoSolicitud(Base):
         String(20), nullable=False, default="SIN_INFO", server_default="SIN_INFO"
     )
 
+    segmento_cliente: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="PYME", server_default="PYME"
+    )
+    segmento_manual: Mapped[bool] = mapped_column(default=False, nullable=False, server_default=text("false"))
+    numero_trabajadores: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    deuda_financiera: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0"), server_default="0")
+    gastos_financieros_anual: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    concentracion_proveedores_pct: Mapped[Decimal] = mapped_column(
+        Numeric(6, 2), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    score_buro: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_buro_estado: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="SIN_INFO", server_default="SIN_INFO"
+    )
+    datos_buro_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    evaluacion_cualitativa_input: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    creado_por: Mapped[str] = mapped_column(String(200), nullable=False, default="sistema", server_default="sistema")
+    analista_asignado: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    monto_aprobado: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    plazo_aprobado: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    garantias_requeridas: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    condiciones_aprobacion: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    nivel_comite_requerido: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    justificacion_decision: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+
     estado: Mapped[str] = mapped_column(String(30), nullable=False, default="BORRADOR", server_default="BORRADOR")
     observaciones: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
 
@@ -145,7 +176,23 @@ class CreditoEvaluacion(Base):
     log_reglas_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
-    motor_version: Mapped[str] = mapped_column(String(20), nullable=False, default="v1", server_default="v1")
+    motor_version: Mapped[str] = mapped_column(String(20), nullable=False, default="v2", server_default="v2")
+    segmento_cliente: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    nivel_riesgo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    alertas_json: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    condiciones_sugeridas_json: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    motivos_json: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    evaluacion_financiera_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    evaluacion_cualitativa_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    pricing_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    comite_atribucion: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    evaluado_por: Mapped[str] = mapped_column(String(200), nullable=False, default="sistema", server_default="sistema")
 
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
@@ -178,7 +225,15 @@ class CreditoDocumento(Base):
     solicitud_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("credito_solicitud.id", ondelete="CASCADE"), nullable=False, index=True)
     tipo_documento: Mapped[str] = mapped_column(String(80), nullable=False)
     referencia: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDIENTE", server_default="PENDIENTE")
+    requerido: Mapped[bool] = mapped_column(default=True, nullable=False, server_default=text("true"))
+    observaciones: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    validado_por: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    validado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    actualizado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
 

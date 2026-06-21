@@ -5,7 +5,7 @@
   <div class="mb-3">
     <a href="{{ request.url_for('credito_riesgo_solicitudes_list') }}" class="small text-decoration-none">← Volver al listado</a>
     <h1 class="h5 fw-semibold mt-2">Nueva solicitud de crédito</h1>
-    <p class="text-secondary small">Antecedentes para el motor macro/micro (score 0–1000).</p>
+    <p class="text-secondary small">Antecedentes para el motor empresarial v2 (PYME / Mediana / Gran Empresa).</p>
   </div>
 
   <form method="post" action="{{ request.url_for('credito_riesgo_solicitud_nueva_post') }}" class="card border-0 shadow-sm">
@@ -73,6 +73,27 @@
           <option value="OBSERVADO">Observado</option>
           <option value="IRREGULAR">Irregular</option>
         </select>
+      </div>
+
+      <div class="col-12 mt-2"><h2 class="h6 text-primary">Segmentación empresarial</h2></div>
+      <div class="col-md-4">
+        <label class="form-label">Segmento</label>
+        <select name="segmento_cliente" class="form-select">
+          <option value="PYME">PYME</option>
+          <option value="MEDIANA">Mediana Empresa</option>
+          <option value="GRAN_EMPRESA">Gran Empresa</option>
+        </select>
+        <div class="form-text">Se recalcula automáticamente por ventas/trabajadores si no marca manual.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Nº trabajadores</label>
+        <input name="numero_trabajadores" type="number" class="form-control" value="0" min="0" />
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="segmento_manual" value="1" id="segManual" />
+          <label class="form-check-label" for="segManual">Fijar segmento manualmente</label>
+        </div>
       </div>
 
       <div class="col-12 mt-2"><h2 class="h6 text-primary">Capacidad de pago</h2></div>
@@ -151,12 +172,24 @@
         <input name="deuda_total" class="form-control" value="0" />
       </div>
       <div class="col-md-4">
+        <label class="form-label">Deuda financiera</label>
+        <input name="deuda_financiera" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Gastos financieros anual</label>
+        <input name="gastos_financieros_anual" class="form-control" value="0" />
+      </div>
+      <div class="col-md-4">
         <label class="form-label">Patrimonio</label>
         <input name="patrimonio" class="form-control" value="0" />
       </div>
       <div class="col-md-4">
         <label class="form-label">Liquidez corriente</label>
         <input name="liquidez_corriente" class="form-control" placeholder="Activo CP / Pasivo CP" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Concentración proveedores %</label>
+        <input name="concentracion_proveedores_pct" class="form-control" value="0" />
       </div>
 
       <div class="col-12 mt-2"><h2 class="h6 text-primary">Antigüedad</h2></div>
@@ -167,6 +200,36 @@
       <div class="col-md-6">
         <label class="form-label">Años operación — empresa</label>
         <input name="anios_operacion_empresa" type="number" class="form-control" value="0" min="0" />
+      </div>
+
+      <div class="col-12 mt-2"><h2 class="h6 text-primary">Buró / DICOM (placeholder)</h2></div>
+      <div class="col-md-4">
+        <label class="form-label">Score buró (0–999)</label>
+        <input name="score_buro" type="number" class="form-control" placeholder="Opcional" min="0" max="999" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Estado informe comercial</label>
+        <select name="score_buro_estado" class="form-select">
+          <option value="SIN_INFO" selected>Sin información</option>
+          <option value="FAVORABLE">Favorable</option>
+          <option value="NEUTRO">Neutro</option>
+          <option value="DESFAVORABLE">Desfavorable</option>
+          <option value="CRITICO">Crítico</option>
+        </select>
+      </div>
+
+      <div class="col-12 mt-2"><h2 class="h6 text-primary">Evaluación cualitativa (0–100, opcional)</h2></div>
+      <div class="col-md-4">
+        <label class="form-label">Calidad administración</label>
+        <input name="calidad_administracion" type="number" class="form-control" min="0" max="100" placeholder="Auto si vacío" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Calidad información</label>
+        <input name="calidad_informacion" type="number" class="form-control" min="0" max="100" placeholder="Auto si vacío" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Riesgo reputacional</label>
+        <input name="riesgo_reputacional" type="number" class="form-control" min="0" max="100" placeholder="Auto si vacío" />
       </div>
 
       <div class="col-12 mt-2"><h2 class="h6 text-primary">Garantías</h2></div>

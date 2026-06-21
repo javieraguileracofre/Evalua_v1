@@ -50,6 +50,7 @@ _PATCH_121 = _ROOT / "db" / "psql" / "121_remuneraciones_asiento_provision.sql"
 _PATCH_122 = _ROOT / "db" / "psql" / "122_empleados_transferencia_bancaria.sql"
 _PATCH_123 = _ROOT / "db" / "psql" / "123_fin_plan_cuenta_leasing_fin_min.sql"
 _PATCH_124 = _ROOT / "db" / "psql" / "124_lf_cotizaciones_cleanup_borrador_prueba.sql"
+_PATCH_125 = _ROOT / "db" / "psql" / "125_credito_riesgo_empresarial.sql"
 
 
 def ensure_leasing_financiero_plan_cuentas_min(engine: Engine) -> None:
@@ -647,25 +648,30 @@ def ensure_credito_riesgo_schema(engine: Engine) -> None:
             )
         ).scalar()
     if has:
-        if _PATCH_110.is_file():
-            try:
-                _run_sql_patch_autocommit(engine, _PATCH_110)
-                logger.info("Parche aplicado: mejoras de flujos crédito y riesgo (110).")
-            except Exception as exc:
-                logger.warning(
-                    "No se pudo aplicar 110_credito_riesgo_flujos.sql. Detalle: %s",
-                    exc,
-                )
+        for patch_path, label in (
+            (_PATCH_110, "110_credito_riesgo_flujos.sql"),
+            (_PATCH_125, "125_credito_riesgo_empresarial.sql"),
+        ):
+            if patch_path.is_file():
+                try:
+                    _run_sql_patch_autocommit(engine, patch_path)
+                    logger.info("Parche aplicado: crédito y riesgo (%s).", label)
+                except Exception as exc:
+                    logger.warning("No se pudo aplicar %s. Detalle: %s", label, exc)
         return
     try:
         _run_sql_patch_autocommit(engine, _PATCH_101)
         logger.info("Parche aplicado: crédito y riesgo (101).")
-        if _PATCH_110.is_file():
-            _run_sql_patch_autocommit(engine, _PATCH_110)
-            logger.info("Parche aplicado: mejoras de flujos crédito y riesgo (110).")
+        for patch_path, label in (
+            (_PATCH_110, "110_credito_riesgo_flujos.sql"),
+            (_PATCH_125, "125_credito_riesgo_empresarial.sql"),
+        ):
+            if patch_path.is_file():
+                _run_sql_patch_autocommit(engine, patch_path)
+                logger.info("Parche aplicado: crédito y riesgo (%s).", label)
     except Exception as exc:
         logger.warning(
-            "No se pudo aplicar 101/110 crédito y riesgo. Ejecute manualmente en la base si es necesario. Detalle: %s",
+            "No se pudo aplicar 101/110/125 crédito y riesgo. Ejecute manualmente en la base si es necesario. Detalle: %s",
             exc,
         )
 

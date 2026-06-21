@@ -80,6 +80,22 @@
     </div>
   </div>
 
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3 fw-semibold">Distribución por segmento</div>
+    <div class="card-body">
+      <div class="row g-2 text-center">
+        {% for seg, color in [('PYME','info'),('MEDIANA','primary'),('GRAN_EMPRESA','dark')] %}
+        <div class="col-md-4">
+          <div class="rounded-3 p-3 bg-{{ color }}-subtle">
+            <div class="small text-secondary">{{ seg.replace('_', ' ') }}</div>
+            <div class="fs-4 fw-bold text-{{ color }}">{{ kpi.distribucion_segmento.get(seg, 0) }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
   <div class="card border-0 shadow-sm">
     <div class="card-header bg-white py-3 fw-semibold">Distribución categoría (última evaluación)</div>
     <div class="card-body">

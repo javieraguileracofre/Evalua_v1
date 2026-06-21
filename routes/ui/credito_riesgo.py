@@ -185,6 +185,17 @@ def form_solicitud_post(
     exposicion_usd_pct: str = Form("0"),
     concentracion_ingresos_pct: str = Form("0"),
     historial_tributario: str = Form("SIN_INFO"),
+    segmento_cliente: str = Form(""),
+    segmento_manual: str = Form(""),
+    numero_trabajadores: str = Form("0"),
+    deuda_financiera: str = Form("0"),
+    gastos_financieros_anual: str = Form("0"),
+    concentracion_proveedores_pct: str = Form("0"),
+    score_buro: str = Form(""),
+    score_buro_estado: str = Form("SIN_INFO"),
+    calidad_administracion: str = Form(""),
+    calidad_informacion: str = Form(""),
+    riesgo_reputacional: str = Form(""),
     observaciones: str = Form(""),
 ):
     cid = _parse_int(cliente_id, 0)
@@ -194,6 +205,23 @@ def form_solicitud_post(
     cot_id = _parse_int(comercial_lf_cotizacion_id, 0) or None
     liq_raw = str(liquidez_corriente or "").strip()
     liq = _parse_decimal(liq_raw) if liq_raw else None
+
+    seg_manual = str(segmento_manual or "").lower() in ("1", "true", "on", "si", "sí")
+    seg = (segmento_cliente or "PYME").strip().upper()
+    if seg not in ("PYME", "MEDIANA", "GRAN_EMPRESA"):
+        seg = "PYME"
+
+    cual_input: dict[str, Any] = {}
+    for key, raw in (
+        ("calidad_administracion", calidad_administracion),
+        ("calidad_informacion", calidad_informacion),
+        ("riesgo_reputacional", riesgo_reputacional),
+    ):
+        v = str(raw or "").strip()
+        if v:
+            cual_input[key] = float(_parse_decimal(v))
+
+    score_buro_val = _parse_int(score_buro, 0) or None
 
     sol = CreditoSolicitud(
         cliente_id=cid,
@@ -230,10 +258,19 @@ def form_solicitud_post(
         exposicion_usd_pct=_parse_decimal(exposicion_usd_pct),
         concentracion_ingresos_pct=_parse_decimal(concentracion_ingresos_pct),
         historial_tributario=(historial_tributario or "SIN_INFO")[:20].upper(),
+        segmento_cliente=seg,
+        segmento_manual=seg_manual,
+        numero_trabajadores=_parse_int(numero_trabajadores, 0),
+        deuda_financiera=_parse_decimal(deuda_financiera),
+        gastos_financieros_anual=_parse_decimal(gastos_financieros_anual),
+        concentracion_proveedores_pct=_parse_decimal(concentracion_proveedores_pct),
+        score_buro=score_buro_val,
+        score_buro_estado=(score_buro_estado or "SIN_INFO")[:20].upper(),
+        evaluacion_cualitativa_input=cual_input,
         observaciones=observaciones or "",
         estado="BORRADOR",
     )
-    crud_cr.crear_solicitud(db, sol)
+    crud_cr.crear_solicitud(db, sol, usuario="web")
     return RedirectResponse(
         url=str(request.url_for("credito_riesgo_solicitud_detalle", solicitud_id=int(sol.id))),
         status_code=status.HTTP_303_SEE_OTHER,
@@ -292,6 +329,87 @@ def _redirect_ficha_solicitud(request: Request, solicitud_id: int) -> RedirectRe
         url=str(request.url_for("credito_riesgo_solicitud_detalle", solicitud_id=solicitud_id)),
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@router.post("/solicitudes/{solicitud_id}/documentos/{doc_id}", name="credito_riesgo_documento_actualizar")
+def documento_actualizar(
+    request: Request,
+    solicitud_id: int,
+    doc_id: int,
+    db: Session = Depends(get_db),
+    estado: str = Form("RECIBIDO"),
+    referencia: str = Form(""),
+    observaciones: str = Form(""),
+):
+    sol = crud_cr.obtener_solicitud(db, solicitud_id)
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    doc = crud_cr.obtener_documento(db, doc_id)
+    if not doc or int(doc.solicitud_id) != solicitud_id:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    est = str(estado).strip().upper()
+    if est not in ("PENDIENTE", "RECIBIDO", "VALIDADO", "RECHAZADO", "NO_APLICA"):
+        raise HTTPException(status_code=400, detail="Estado inválido")
+    crud_cr.actualizar_documento(
+        db,
+        doc,
+        estado=est,
+        referencia=referencia or None,
+        observaciones=observaciones or None,
+        usuario="web",
+    )
+    return _redirect_ficha_solicitud(request, solicitud_id)
+
+
+@router.post("/solicitudes/{solicitud_id}/aprobar-con-limites", name="credito_riesgo_aprobar_limites")
+def solicitud_aprobar_limites(
+    request: Request,
+    solicitud_id: int,
+    db: Session = Depends(get_db),
+    monto_aprobado: str = Form("0"),
+    plazo_aprobado: str = Form("12"),
+    condiciones: str = Form(""),
+    justificacion: str = Form(""),
+):
+    sol = crud_cr.obtener_solicitud(db, solicitud_id)
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    try:
+        crud_cr.aplicar_decision_manual(
+            db,
+            sol,
+            "APROBADA",
+            evento="DECISION_APROBADA",
+            monto_aprobado=_parse_decimal(monto_aprobado),
+            plazo_aprobado=_parse_int(plazo_aprobado, sol.plazo_solicitado),
+            condiciones=condiciones,
+            justificacion=justificacion,
+            usuario="web",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _redirect_ficha_solicitud(request, solicitud_id)
+
+
+@router.post("/solicitudes/{solicitud_id}/solicitar-antecedentes", name="credito_riesgo_solicitar_antecedentes")
+def solicitud_solicitar_antecedentes(
+    request: Request,
+    solicitud_id: int,
+    db: Session = Depends(get_db),
+    nota: str = Form(""),
+):
+    sol = crud_cr.obtener_solicitud(db, solicitud_id)
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    crud_cr.aplicar_decision_manual(
+        db,
+        sol,
+        "SOLICITAR_ANTECEDENTES",
+        evento="SOLICITAR_ANTECEDENTES",
+        nota=nota or "Documentación incompleta.",
+        usuario="web",
+    )
+    return _redirect_ficha_solicitud(request, solicitud_id)
 
 
 @router.post("/solicitudes/{solicitud_id}/aprobar", name="credito_riesgo_aprobar")

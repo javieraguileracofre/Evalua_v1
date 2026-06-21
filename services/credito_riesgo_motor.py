@@ -137,6 +137,8 @@ class MotorCreditoRiesgoResultado:
     score_total: Decimal
     categoria: str
     clasificacion_riesgo: str
+    nivel_riesgo: str
+    segmento_cliente: str
     monto_maximo_sugerido: Decimal
     plazo_maximo_sugerido: int
     tasa_sugerida_anual: Decimal
@@ -149,6 +151,12 @@ class MotorCreditoRiesgoResultado:
     stress_cuotas_json: dict[str, Any]
     log_reglas_json: dict[str, Any]
     motivos: list[str] = field(default_factory=list)
+    alertas: list[str] = field(default_factory=list)
+    condiciones_sugeridas: list[str] = field(default_factory=list)
+    evaluacion_financiera_json: dict[str, Any] = field(default_factory=dict)
+    evaluacion_cualitativa_json: dict[str, Any] = field(default_factory=dict)
+    pricing_json: dict[str, Any] = field(default_factory=dict)
+    comite_atribucion: str = ""
 
 
 def _clasificacion_riesgo(categoria: str) -> str:
@@ -269,8 +277,76 @@ def evaluar_credito_riesgo(
     macro: dict[str, Decimal] | None = None,
     ponderaciones: dict[str, Decimal] | None = None,
     reglas_flujos: dict[str, Decimal] | None = None,
+    # --- v2 empresarial ---
+    segmento_cliente: str | None = None,
+    segmento_manual: str | None = None,
+    numero_trabajadores: Any = 0,
+    deuda_financiera: Any = 0,
+    gastos_financieros_anual: Any = 0,
+    ebitda_anual: Any = 0,
+    utilidad_neta_anual: Any = 0,
+    capital_trabajo: Any = 0,
+    concentracion_proveedores_pct: Any = 0,
+    evaluacion_cualitativa_input: dict[str, Any] | None = None,
+    score_buro_estado: str | None = None,
+    politica_segmentacion: dict[str, Any] | None = None,
+    politica_atribuciones: dict[str, Any] | None = None,
+    documentos_pendientes: list[str] | None = None,
 ) -> MotorCreditoRiesgoResultado:
-    motivos: list[str] = []
+    from services.credito_riesgo.decision import (
+        calcular_pricing,
+        clasificacion_riesgo_compat,
+        determinar_comite_atribucion,
+        generar_condiciones_sugeridas,
+        nivel_riesgo_desde_categoria,
+        recomendacion_final,
+    )
+    from services.credito_riesgo.evaluacion_cualitativa import evaluar_cualitativo
+    from services.credito_riesgo.evaluacion_financiera import evaluar_financiero
+    from services.credito_riesgo.segmentacion import clasificar_segmento
+
+    seg_res = clasificar_segmento(
+        ventas_anual=ventas_anual,
+        numero_trabajadores=numero_trabajadores,
+        sector_actividad=sector_actividad,
+        segmento_manual=segmento_manual or segmento_cliente,
+        politica=politica_segmentacion,
+    )
+    segmento = seg_res.segmento
+    motivos: list[str] = list(seg_res.motivos)
+    eval_fin = evaluar_financiero(
+        segmento=segmento,
+        ventas_anual=ventas_anual,
+        ebitda_anual=ebitda_anual,
+        utilidad_neta_anual=utilidad_neta_anual,
+        deuda_total=deuda_total,
+        deuda_financiera=deuda_financiera,
+        patrimonio=patrimonio,
+        liquidez_corriente=liquidez_corriente,
+        flujo_caja_mensual=flujo_caja_mensual,
+        capital_trabajo=capital_trabajo,
+        gastos_financieros_anual=gastos_financieros_anual,
+        cuota_propuesta=cuota_propuesta,
+        mora_max_dias_12m=mora_max_dias_12m,
+    )
+    eval_cual = evaluar_cualitativo(
+        segmento=segmento,
+        input_json=evaluacion_cualitativa_input,
+        sector_actividad=sector_actividad,
+        concentracion_ingresos_pct=concentracion_ingresos_pct,
+        concentracion_proveedores_pct=concentracion_proveedores_pct,
+        historial_tributario=historial_tributario,
+        anios_operacion_empresa=anios_operacion_empresa,
+        antiguedad_meses_natural=antiguedad_meses_natural,
+        tipo_persona=tipo_persona,
+        protestos=protestos,
+        castigos=castigos,
+        score_buro_estado=score_buro_estado,
+    )
+    motivos.extend(eval_cual.motivos)
+    alertas: list[str] = list(eval_fin.alertas) + list(eval_cual.alertas)
+    if documentos_pendientes:
+        alertas.append(f"Documentación pendiente: {len(documentos_pendientes)} ítem(s).")
     macro_use = {k: macro.get(k, v) if macro else v for k, v in MACRO_DEFAULT.items()}
     pond = ponderaciones or PONDERACIONES_DEFAULT
     reglas = dict(REGLAS_FLUJOS_DEFAULT)
@@ -591,25 +667,39 @@ def evaluar_credito_riesgo(
         macro_json["detalle_reglas"] = macro_det
 
         expl = (
-            f"Flujo RAPIDO ejecutado. Decisión automática: {decision_motor}. "
+            f"Flujo RAPIDO · Segmento {segmento}. Decisión automática: {decision_motor}. "
             f"Score rápido {float(score):.0f}/1000 (categoría {cat})."
         )
-        return MotorCreditoRiesgoResultado(
-            score_total=score,
-            categoria=cat,
-            clasificacion_riesgo=clasif,
-            monto_maximo_sugerido=monto_max.quantize(Decimal("1")),
-            plazo_maximo_sugerido=int(plazo_max),
-            tasa_sugerida_anual=tasa_sugerida,
-            recomendacion=reco,
+        cobertura_garantia_pct = Decimal("0")
+        if monto_sol > 0 and gar_liq > 0:
+            cobertura_garantia_pct = (gar_liq / monto_sol) * Decimal("100")
+
+        return _finalizar_resultado_v2(
+            score=score,
+            cat=cat,
+            clasif=clasif,
+            reco=reco,
             decision_motor=decision_motor,
-            flujo_evaluacion="RAPIDO",
-            explicacion=expl,
-            desglose_json=desglose,
+            flujo="RAPIDO",
+            expl=expl,
+            monto_max=monto_max.quantize(Decimal("1")),
+            plazo_max=int(plazo_max),
+            tasa_sugerida=tasa_sugerida,
+            desglose=desglose,
             macro_json=macro_json,
-            stress_cuotas_json=stress_json,
-            log_reglas_json={"reglas_aplicadas": log_reglas},
+            stress_json=stress_json,
+            log_reglas=log_reglas,
             motivos=motivos,
+            alertas=alertas,
+            segmento=segmento,
+            seg_res=seg_res,
+            eval_fin=eval_fin,
+            eval_cual=eval_cual,
+            monto_sol=monto_sol,
+            cobertura_garantia_pct=cobertura_garantia_pct,
+            documentos_pendientes=documentos_pendientes,
+            politica_atribuciones=politica_atribuciones,
+            tpm=macro_use.get("tpm_referencia_anual_pct", Decimal("5.25")),
         )
 
     # Ponderación: cada subscore ya está en su escala máxima (250,250,150,150,100,50,50 = 1000).
@@ -753,27 +843,152 @@ def evaluar_credito_riesgo(
     macro_json["fuente_nota"] = "Valores referencia Chile Feb-2026 (BCCh inflación/PIB; CMF mora/cartera). Ajustar en credito_politica."
 
     expl = (
-        f"Flujo PROFUNDO: categoría {cat} (score {float(score):.0f}/1000), riesgo {clasif}. "
-        f"Decisión automática: {decision_motor}.\n\nMotivos principales:\n"
+        f"Flujo PROFUNDO · Segmento {segmento}: categoría {cat} (score {float(score):.0f}/1000), "
+        f"riesgo {clasif}. Decisión automática: {decision_motor}.\n\nMotivos principales:\n"
         + "\n".join(f"- {m}" for m in motivos[:12])
     )
 
+    return _finalizar_resultado_v2(
+        score=score,
+        cat=cat,
+        clasif=clasif,
+        reco=reco,
+        decision_motor=decision_motor,
+        flujo="PROFUNDO",
+        expl=expl,
+        monto_max=monto_max,
+        plazo_max=plazo_max,
+        tasa_sugerida=tasa_sugerida,
+        desglose=desglose,
+        macro_json=macro_json,
+        stress_json=stress_json,
+        log_reglas=log_reglas,
+        motivos=motivos,
+        alertas=alertas,
+        segmento=segmento,
+        seg_res=seg_res,
+        eval_fin=eval_fin,
+        eval_cual=eval_cual,
+        monto_sol=monto_sol,
+        cobertura_garantia_pct=cobertura_garantia_pct,
+        documentos_pendientes=documentos_pendientes,
+        politica_atribuciones=politica_atribuciones,
+        tpm=tpm,
+    )
+
+
+def _finalizar_resultado_v2(
+    *,
+    score: Decimal,
+    cat: str,
+    clasif: str,
+    reco: str,
+    decision_motor: str,
+    flujo: str,
+    expl: str,
+    monto_max: Decimal,
+    plazo_max: int,
+    tasa_sugerida: Decimal,
+    desglose: dict[str, Any],
+    macro_json: dict[str, Any],
+    stress_json: dict[str, Any],
+    log_reglas: list[dict[str, Any]],
+    motivos: list[str],
+    alertas: list[str],
+    segmento: str,
+    seg_res: Any,
+    eval_fin: Any,
+    eval_cual: Any,
+    monto_sol: Decimal,
+    cobertura_garantia_pct: Decimal,
+    documentos_pendientes: list[str] | None,
+    politica_atribuciones: dict[str, Any] | None,
+    tpm: Decimal,
+) -> MotorCreditoRiesgoResultado:
+    from services.credito_riesgo.decision import (
+        calcular_pricing,
+        clasificacion_riesgo_compat,
+        determinar_comite_atribucion,
+        generar_condiciones_sugeridas,
+        nivel_riesgo_desde_categoria,
+        recomendacion_final,
+    )
+
+    ajuste_cual = (eval_cual.score_total - Decimal("50")) * Decimal("2")
+    score_adj = max(Decimal("0"), min(score + ajuste_cual, Decimal("1000"))).quantize(Decimal("0.01"))
+    cat = _categoria_desde_score(score_adj)
+    clasif = clasificacion_riesgo_compat(cat)
+    nivel = nivel_riesgo_desde_categoria(cat)
+
+    docs_pend = documentos_pendientes or []
+    reco = recomendacion_final(
+        decision_motor=decision_motor,
+        categoria=cat,
+        documentos_criticos_pendientes=len(docs_pend),
+        score_cualitativo=float(eval_cual.score_total),
+    )
+
+    cov_pct = float(cobertura_garantia_pct) if cobertura_garantia_pct else None
+    condiciones = generar_condiciones_sugeridas(
+        segmento=segmento,
+        categoria=cat,
+        eval_fin=eval_fin.to_dict(),
+        eval_cual=eval_cual.to_dict(),
+        documentos_pendientes=docs_pend,
+        garantia_cobertura_pct=cov_pct,
+    )
+
+    comite = determinar_comite_atribucion(
+        segmento=segmento,
+        monto_solicitado=monto_sol,
+        categoria=cat,
+        politica=politica_atribuciones,
+    )
+
+    pricing = calcular_pricing(
+        tasa_base_anual=tasa_sugerida,
+        categoria=cat,
+        segmento=segmento,
+        nivel_riesgo=nivel,
+    )
+
+    desglose["segmento"] = segmento
+    desglose["segmentacion"] = seg_res.detalle
+    desglose["score_cualitativo"] = float(eval_cual.score_total)
+    desglose["ajuste_cualitativo_score"] = float(ajuste_cual)
+    desglose["evaluacion_financiera"] = eval_fin.to_dict()
+    desglose["evaluacion_cualitativa"] = eval_cual.to_dict()
+
+    expl_full = (
+        f"{expl}\n\nSegmento: {segmento} · Nivel riesgo: {nivel} · "
+        f"Comité sugerido: {comite}.\n"
+        f"Score cualitativo: {float(eval_cual.score_total):.0f}/100."
+    )
+
     return MotorCreditoRiesgoResultado(
-        score_total=score,
+        score_total=score_adj,
         categoria=cat,
         clasificacion_riesgo=clasif,
+        nivel_riesgo=nivel,
+        segmento_cliente=segmento,
         monto_maximo_sugerido=monto_max,
         plazo_maximo_sugerido=int(plazo_max),
-        tasa_sugerida_anual=tasa_sugerida,
+        tasa_sugerida_anual=Decimal(str(pricing["tasa_sugerida_anual_pct"])),
         recomendacion=reco,
         decision_motor=decision_motor,
-        flujo_evaluacion="PROFUNDO",
-        explicacion=expl,
+        flujo_evaluacion=flujo,
+        explicacion=expl_full,
         desglose_json=desglose,
         macro_json=macro_json,
         stress_cuotas_json=stress_json,
         log_reglas_json={"reglas_aplicadas": log_reglas},
         motivos=motivos,
+        alertas=alertas,
+        condiciones_sugeridas=condiciones,
+        evaluacion_financiera_json=eval_fin.to_dict(),
+        evaluacion_cualitativa_json=eval_cual.to_dict(),
+        pricing_json=pricing,
+        comite_atribucion=comite,
     )
 
 
@@ -782,6 +997,8 @@ def resultado_a_columnas(r: MotorCreditoRiesgoResultado) -> dict[str, Any]:
         "score_total": r.score_total,
         "categoria": r.categoria,
         "clasificacion_riesgo": r.clasificacion_riesgo,
+        "segmento_cliente": r.segmento_cliente,
+        "nivel_riesgo": r.nivel_riesgo,
         "monto_maximo_sugerido": r.monto_maximo_sugerido,
         "plazo_maximo_sugerido": r.plazo_maximo_sugerido,
         "tasa_sugerida_anual": r.tasa_sugerida_anual,
@@ -793,5 +1010,12 @@ def resultado_a_columnas(r: MotorCreditoRiesgoResultado) -> dict[str, Any]:
         "macro_json": r.macro_json,
         "stress_cuotas_json": r.stress_cuotas_json,
         "log_reglas_json": r.log_reglas_json,
-        "motor_version": "v1",
+        "alertas_json": r.alertas,
+        "condiciones_sugeridas_json": r.condiciones_sugeridas,
+        "motivos_json": r.motivos,
+        "evaluacion_financiera_json": r.evaluacion_financiera_json,
+        "evaluacion_cualitativa_json": r.evaluacion_cualitativa_json,
+        "pricing_json": r.pricing_json,
+        "comite_atribucion": r.comite_atribucion,
+        "motor_version": "v2",
     }

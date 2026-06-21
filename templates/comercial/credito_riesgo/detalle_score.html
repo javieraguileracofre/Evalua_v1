@@ -18,6 +18,11 @@
           <div class="fs-5 mt-1">Categoría <span class="badge bg-{{ sem }}">{{ cat }}</span></div>
           <div class="mt-2 small">Riesgo: <strong>{{ ev.clasificacion_riesgo }}</strong></div>
           <div class="mt-1 small">Recomendación: <strong>{{ ev.recomendacion }}</strong></div>
+          <div class="mt-1 small">Segmento: <strong>{{ ev.segmento_cliente or sol.segmento_cliente or 'PYME' }}</strong></div>
+          <div class="mt-1 small">Nivel riesgo: <strong>{{ ev.nivel_riesgo or ev.clasificacion_riesgo }}</strong></div>
+          {% if ev.comite_atribucion %}
+          <div class="mt-1 small">Comité: <strong>{{ ev.comite_atribucion }}</strong></div>
+          {% endif %}
         </div>
         <div class="card-body small text-start">
           <div class="d-flex justify-content-between border-bottom py-2"><span>Monto máx. sugerido</span><strong>{{ "{:,.0f}".format(ev.monto_maximo_sugerido).replace(",", ".") }}</strong></div>
@@ -74,6 +79,63 @@
           <pre class="mb-0 bg-light p-2 rounded small">{{ (ev.stress_cuotas_json or {}) | tojson(indent=2) }}</pre>
         </div>
       </div>
+
+      {% if ev.alertas_json %}
+      <div class="card border-0 shadow-sm mb-3 border-warning">
+        <div class="card-header bg-warning-subtle fw-semibold">Alertas de riesgo</div>
+        <ul class="list-group list-group-flush small">
+          {% for a in ev.alertas_json %}<li class="list-group-item">{{ a }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if ev.condiciones_sugeridas_json %}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Condiciones sugeridas</div>
+        <ul class="list-group list-group-flush small">
+          {% for c in ev.condiciones_sugeridas_json %}<li class="list-group-item">{{ c }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if ev.evaluacion_financiera_json %}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Evaluación financiera</div>
+        <div class="card-body small row g-2">
+          {% set fin = ev.evaluacion_financiera_json %}
+          <div class="col-md-4"><span class="text-secondary">Liquidez corriente</span><br><strong>{{ fin.liquidez_corriente or '—' }}</strong></div>
+          <div class="col-md-4"><span class="text-secondary">Endeud. total %</span><br><strong>{{ "%.1f"|format(fin.endeudamiento_total_pct) if fin.endeudamiento_total_pct else '—' }}</strong></div>
+          <div class="col-md-4"><span class="text-secondary">Margen EBITDA %</span><br><strong>{{ "%.1f"|format(fin.margen_ebitda_pct) if fin.margen_ebitda_pct else '—' }}</strong></div>
+          <div class="col-md-4"><span class="text-secondary">DSCR</span><br><strong>{{ "%.2f"|format(fin.dscr) if fin.dscr else '—' }}</strong></div>
+          <div class="col-md-4"><span class="text-secondary">Cobertura GF</span><br><strong>{{ "%.2f"|format(fin.cobertura_gastos_financieros) if fin.cobertura_gastos_financieros else '—' }}</strong></div>
+          <div class="col-md-4"><span class="text-secondary">Rentabilidad neta %</span><br><strong>{{ "%.1f"|format(fin.rentabilidad_neta_pct) if fin.rentabilidad_neta_pct else '—' }}</strong></div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if ev.evaluacion_cualitativa_json %}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Evaluación cualitativa (score {{ "%.0f"|format(ev.evaluacion_cualitativa_json.score_total or 0) }}/100)</div>
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <tbody>
+              {% for k, v in (ev.evaluacion_cualitativa_json.dimensiones or {})|dictsort %}
+              <tr><td>{{ k.replace('_', ' ')|title }}</td><td class="text-end">{{ "%.0f"|format(v) }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if ev.pricing_json %}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Pricing sugerido</div>
+        <div class="card-body small">
+          Tasa sugerida: <strong>{{ "%.2f"|format(ev.pricing_json.tasa_sugerida_anual_pct or ev.tasa_sugerida_anual) }}%</strong> anual CLP
+        </div>
+      </div>
+      {% endif %}
 
       <div class="card border-0 shadow-sm mb-3">
         <div class="card-header bg-white fw-semibold">Variables macro (referencia)</div>
