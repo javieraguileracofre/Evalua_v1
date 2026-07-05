@@ -1,4 +1,50 @@
-{# Fragmentos de navegación ERP — una sola fuente para sidebar desktop y offcanvas móvil. #}
+{# Fragmentos de navegación ERP — sidebar acordeón + filtro por módulos visibles. #}
+
+{% macro _auth_user(request) -%}
+  {{ request.state.auth_user if request.state.auth_user is defined else none }}
+{%- endmacro %}
+
+{% macro _nav_module_visible(auth, module_key) -%}
+  {%- if not auth -%}0
+  {%- elif 'ADMIN' in (auth.roles or []) -%}1
+  {%- elif auth.visibleModules is defined and auth.visibleModules -%}
+    {%- if module_key in auth.visibleModules -%}1{%- else -%}0{%- endif -%}
+  {%- else -%}1
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro _section_has_active(current_menu, active_keys) -%}
+  {%- if active_keys is string -%}
+    {{- current_menu == active_keys -}}
+  {%- else -%}
+    {{- current_menu in active_keys -}}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro _sidebar_section_open(section_id, title, module_key, auth, current_menu, active_keys, with_title=false, pill=none) -%}
+  {%- if _nav_module_visible(auth, module_key) | trim == '1' -%}
+  <div class="sidebar-section" data-section-id="{{ section_id }}">
+    <button type="button"
+            class="sidebar-section-title sidebar-section-toggle"
+            aria-expanded="true"
+            aria-controls="sidebar-section-{{ section_id }}-items">
+      <span class="sidebar-section-title-inner">
+        <span class="sidebar-section-text">{{ title }}</span>
+        {%- if pill %}<span class="sidebar-section-pill">{{ pill }}</span>{% endif -%}
+      </span>
+      <i class="bi bi-chevron-down sidebar-section-chevron" aria-hidden="true"></i>
+    </button>
+    <div class="sidebar-section-items" id="sidebar-section-{{ section_id }}-items" data-active="{% if _section_has_active(current_menu, active_keys) %}1{% else %}0{% endif %}">
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro _sidebar_section_close(module_key, auth) -%}
+  {%- if _nav_module_visible(auth, module_key) | trim == '1' -%}
+    </div>
+  </div>
+  {%- endif -%}
+{%- endmacro %}
+
 
 {% macro _nav_item(request, route_name, active_menus, label, icon_bi, current_menu, with_title=false, href_override=none, badge=none) %}
   {% if active_menus is string %}
@@ -34,14 +80,17 @@
 
 
 {% macro inicio(request, current_menu, with_title=false) %}
-  <div class="sidebar-section-title"><span class="sidebar-section-text">Inicio</span></div>
+  {% set auth = _auth_user(request) %}
+  {{ _sidebar_section_open('principal', 'Inicio', 'PRINCIPAL', auth, current_menu, ['home', 'menu_principal', 'inicio'], with_title) }}
   {{ _nav_item(request, 'menu_principal', ['home', 'menu_principal', 'inicio'], 'Inicio', 'bi-house-door', current_menu, with_title) }}
+  {{ _sidebar_section_close('PRINCIPAL', auth) }}
 {% endmacro %}
 
 
 {% macro comercial_clientes(request, current_menu, with_title=false) %}
-  <div class="sidebar-section-title"><span class="sidebar-section-text">Comercial y clientes</span></div>
-
+  {% set auth = _auth_user(request) %}
+  {% set active_keys = ['comercial', 'ventas', 'clientes', 'postventa', 'credito_riesgo', 'leasing_financiero', 'leasing_operativo', 'proveedores'] %}
+  {{ _sidebar_section_open('comercial', 'Comercial y clientes', 'COMERCIAL', auth, current_menu, active_keys, with_title) }}
   {{ _nav_item(request, 'comercial_hub', 'comercial', 'Área comercial', 'bi-briefcase', current_menu, with_title) }}
   {{ _nav_item(request, 'nota_venta_form', 'ventas', 'Nota de venta', 'bi-shop', current_menu, with_title) }}
   {{ _nav_item(request, 'clientes_list', 'clientes', 'Clientes', 'bi-people', current_menu, with_title) }}
@@ -50,12 +99,14 @@
   {{ _nav_item(request, 'leasing_financiero_hub', 'leasing_financiero', 'Leasing financiero', 'bi-currency-dollar', current_menu, with_title) }}
   {{ _nav_item(request, 'leasing_operativo_hub', 'leasing_operativo', 'Leasing operativo', 'bi-truck-front', current_menu, with_title) }}
   {{ _nav_item(request, 'proveedor_lista', 'proveedores', 'Proveedores', 'bi-truck', current_menu, with_title) }}
+  {{ _sidebar_section_close('COMERCIAL', auth) }}
 {% endmacro %}
 
 
 {% macro operaciones(request, current_menu, with_title=false) %}
-  <div class="sidebar-section-title"><span class="sidebar-section-text">Operaciones</span></div>
-
+  {% set auth = _auth_user(request) %}
+  {% set active_keys = ['inventario', 'inventario_categorias', 'inventario_unidades', 'taller', 'transporte', 'fondos_rendir'] %}
+  {{ _sidebar_section_open('operaciones', 'Operaciones', 'OPERACIONES', auth, current_menu, active_keys, with_title) }}
   {{ _nav_item(request, 'productos_list', ['inventario', 'inventario_categorias', 'inventario_unidades'], 'Inventario', 'bi-box-seam', current_menu, with_title) }}
   {{ _nav_subitem(request, 'productos_list', 'inventario', 'Productos', current_menu, with_title) }}
   {{ _nav_subitem(request, 'categorias_list', 'inventario_categorias', 'Categorías', current_menu, with_title) }}
@@ -63,13 +114,22 @@
   {{ _nav_item(request, 'taller_hub', 'taller', 'Taller', 'bi-wrench-adjustable', current_menu, with_title) }}
   {{ _nav_item(request, 'transporte_hub', 'transporte', 'Transporte', 'bi-signpost-split-fill', current_menu, with_title) }}
   {{ _nav_item(request, 'fondos_rendir_hub', 'fondos_rendir', 'Fondos por rendir', 'bi-cash-coin', current_menu, with_title) }}
+  {{ _sidebar_section_close('OPERACIONES', auth) }}
+{% endmacro %}
+
+
+{% macro rrhh(request, current_menu, with_title=false) %}
+  {% set auth = _auth_user(request) %}
+  {{ _sidebar_section_open('rrhh', 'Recursos humanos', 'RRHH', auth, current_menu, 'remuneraciones', with_title) }}
   {{ _nav_item(request, 'remuneraciones_rrhh_dashboard', 'remuneraciones', 'Remuneraciones', 'bi-people-fill', current_menu, with_title) }}
+  {{ _sidebar_section_close('RRHH', auth) }}
 {% endmacro %}
 
 
 {% macro finanzas(request, current_menu, with_title=false) %}
-  <div class="sidebar-section-title"><span class="sidebar-section-text">Finanzas</span></div>
-
+  {% set auth = _auth_user(request) %}
+  {% set active_keys = ['finanzas_hub', 'fin_dashboard', 'cobranza', 'cobranza_dashboard', 'cxp', 'fin_periodos'] %}
+  {{ _sidebar_section_open('finanzas', 'Finanzas', 'FINANZAS', auth, current_menu, active_keys, with_title) }}
   {{ _nav_item(request, 'finanzas_hub', 'finanzas_hub', 'Finanzas', 'bi-grid-1x2', current_menu, with_title, href_override='/finanzas/hub') }}
   {{ _nav_item(request, 'fin_dashboard', 'fin_dashboard', 'Dashboard', 'bi-bank', current_menu, with_title) }}
   {{ _nav_item(request, 'cobranza_resumen', ['cobranza', 'cobranza_dashboard'], 'Cobranza', 'bi-cash-stack', current_menu, with_title) }}
@@ -77,26 +137,40 @@
   {{ _nav_subitem(request, 'cobranza_dashboard', 'cobranza_dashboard', 'Dashboard', current_menu, with_title) }}
   {{ _nav_item(request, 'cxp_lista', 'cxp', 'Cuentas por pagar', 'bi-wallet2', current_menu, with_title) }}
   {{ _nav_item(request, 'fin_periodos', 'fin_periodos', 'Cierre mensual', 'bi-calendar-month', current_menu, with_title) }}
+  {{ _sidebar_section_close('FINANZAS', auth) }}
 {% endmacro %}
 
 
 {% macro contabilidad(request, current_menu, with_title=false) %}
-  <div class="sidebar-section-title"><span class="sidebar-section-text">Contabilidad</span></div>
-
-  {{ _nav_item(request, 'contabilidad_plan_cuentas', ['contabilidad_plan_cuentas', 'contabilidad_asientos', 'contabilidad_estado_resultados', 'contabilidad_balance_general'], 'Contabilidad', 'bi-journal-richtext', current_menu, with_title) }}
+  {% set auth = _auth_user(request) %}
+  {% set active_keys = ['contabilidad_plan_cuentas', 'contabilidad_asientos', 'contabilidad_estado_resultados', 'contabilidad_balance_general'] %}
+  {{ _sidebar_section_open('contabilidad', 'Contabilidad', 'CONTABILIDAD', auth, current_menu, active_keys, with_title) }}
+  {{ _nav_item(request, 'contabilidad_plan_cuentas', active_keys, 'Contabilidad', 'bi-journal-richtext', current_menu, with_title) }}
   {{ _nav_subitem(request, 'contabilidad_plan_cuentas', 'contabilidad_plan_cuentas', 'Plan de cuentas', current_menu, with_title) }}
   {{ _nav_subitem(request, 'contabilidad_asientos', 'contabilidad_asientos', 'Asientos', current_menu, with_title) }}
   {{ _nav_subitem(request, 'contabilidad_estado_resultados', 'contabilidad_estado_resultados', 'Estado de resultados', current_menu, with_title) }}
   {{ _nav_subitem(request, 'contabilidad_balance_general', 'contabilidad_balance_general', 'Balance general', current_menu, with_title) }}
+  {{ _sidebar_section_close('CONTABILIDAD', auth) }}
 {% endmacro %}
 
 
 {% macro administracion(request, current_menu, with_title=false) %}
-  {% if request.state.auth_user and 'ADMIN' in (request.state.auth_user.roles or []) %}
-  <div class="sidebar-section-title">
-    <span class="sidebar-section-text">Administración</span>
-    <span class="sidebar-section-pill">ADMIN</span>
+  {% set auth = _auth_user(request) %}
+  {% if auth and 'ADMIN' in (auth.roles or []) and (_nav_module_visible(auth, 'ADMINISTRACION') | trim == '1') %}
+  <div class="sidebar-section" data-section-id="administracion">
+    <button type="button"
+            class="sidebar-section-title sidebar-section-toggle"
+            aria-expanded="true"
+            aria-controls="sidebar-section-administracion-items">
+      <span class="sidebar-section-title-inner">
+        <span class="sidebar-section-text">Administración</span>
+        <span class="sidebar-section-pill">ADMIN</span>
+      </span>
+      <i class="bi bi-chevron-down sidebar-section-chevron" aria-hidden="true"></i>
+    </button>
+    <div class="sidebar-section-items" id="sidebar-section-administracion-items" data-active="{% if current_menu == 'seguridad' %}1{% else %}0{% endif %}">
+      {{ _nav_item(request, 'seguridad_usuarios', 'seguridad', 'Usuarios y roles', 'bi-shield-lock', current_menu, with_title, badge='ADMIN') }}
+    </div>
   </div>
-  {{ _nav_item(request, 'seguridad_usuarios', 'seguridad', 'Usuarios y roles', 'bi-shield-lock', current_menu, with_title, badge='ADMIN') }}
   {% endif %}
 {% endmacro %}

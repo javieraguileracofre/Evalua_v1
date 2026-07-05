@@ -92,17 +92,20 @@ def listar_roles_codigos(usuario: Usuario) -> list[str]:
     return sorted({str(r.codigo) for r in (usuario.roles or []) if r.codigo is not None})
 
 
-def serializar_sesion_usuario(usuario: Usuario) -> dict[str, Any]:
+def serializar_sesion_usuario(usuario: Usuario, *, visible_modules: list[str] | None = None) -> dict[str, Any]:
     try:
         roles = listar_roles_codigos(usuario)
     except Exception:
         roles = []
-    return {
+    payload: dict[str, Any] = {
         "uid": int(usuario.id),
         "email": str(usuario.email or ""),
         "nombre": str(getattr(usuario, "nombre_completo", None) or usuario.email or ""),
         "roles": roles,
     }
+    if visible_modules is not None:
+        payload["visibleModules"] = list(visible_modules)
+    return payload
 
 
 def autenticar(db: Session, email: str, password: str) -> Usuario | None:
@@ -149,6 +152,7 @@ def crear_usuario(
     nombre_completo: str,
     rol_codigos: list[str],
     activo: bool = True,
+    modulo_keys: list[str] | None = None,
 ) -> Usuario:
     e = (email or "").strip().lower()
     if not e or "@" not in e:
@@ -168,6 +172,9 @@ def crear_usuario(
         u.roles.append(r)
     db.add(u)
     db.flush()
+    from crud.auth import modulos_visibles as crud_modulos
+
+    crud_modulos.resolve_visible_modules_for_user(db, u, modulo_keys)
     return u
 
 
@@ -179,6 +186,7 @@ def actualizar_usuario(
     activo: bool,
     rol_codigos: list[str],
     actor_uid: int | None = None,
+    modulo_keys: list[str] | None = None,
 ) -> Usuario:
     u = get_usuario_por_id(db, int(usuario_id))
     if not u:
@@ -209,6 +217,15 @@ def actualizar_usuario(
         u.roles.append(r)
     db.add(u)
     db.flush()
+    if modulo_keys is not None:
+        from crud.auth import modulos_visibles as crud_modulos
+
+        crud_modulos.set_user_visible_modules(
+            db,
+            u,
+            modulo_keys,
+            assigned_by_id=actor_uid,
+        )
     return u
 
 

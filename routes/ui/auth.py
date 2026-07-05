@@ -148,7 +148,10 @@ def login_post(
         return RedirectResponse(url=f"/login{q}", status_code=status.HTTP_303_SEE_OTHER)
 
     try:
-        auth_payload = jsonable_encoder(crud_auth.serializar_sesion_usuario(u))
+        from crud.auth import modulos_visibles as crud_modulos
+
+        visible = crud_modulos.user_visible_modules_list(u, db)
+        auth_payload = jsonable_encoder(crud_auth.serializar_sesion_usuario(u, visible_modules=visible))
         auth_payload["tenant_code"] = (
             (get_current_tenant_code() or settings.default_tenant_code).strip().lower()
         )

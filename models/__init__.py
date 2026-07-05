@@ -7,6 +7,7 @@ from __future__ import annotations
 # ============================================================
 
 from .auth.usuario import Rol, Usuario
+from .auth.modulo_visible import UsuarioModuloVisible
 
 # ============================================================
 # MAESTROS
@@ -150,6 +151,7 @@ from .transporte.viaje import ESTADOS_VIAJE, TransporteViaje
 __all__ = [
     "Rol",
     "Usuario",
+    "UsuarioModuloVisible",
     "Cliente",
     "Proveedor",
     "ProveedorBanco",

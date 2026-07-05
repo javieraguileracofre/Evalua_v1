@@ -74,3 +74,9 @@ class Usuario(Base):
         secondary=usuario_rol,
         back_populates="usuarios",
     )
+    modulos_visibles: Mapped[list["UsuarioModuloVisible"]] = relationship(  # noqa: F821
+        "UsuarioModuloVisible",
+        back_populates="usuario",
+        foreign_keys="UsuarioModuloVisible.usuario_id",
+        cascade="all, delete-orphan",
+    )

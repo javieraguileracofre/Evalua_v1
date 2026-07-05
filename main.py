@@ -31,6 +31,7 @@ from db.session import get_engine
 from db.startup_schema import (
     ensure_ap_documento_contabilidad_columns,
     ensure_auth_roles_seed,
+    ensure_auth_usuario_modulos_visibles,
     ensure_comercial_leasing_financiero_schema,
     ensure_credito_riesgo_schema,
     ensure_credito_riesgo_empresarial_schema,
@@ -267,6 +268,7 @@ def create_app() -> FastAPI:
             ensure_remuneraciones_asiento_provision_column(engine)
             ensure_empleados_transferencia_bancaria_columns(engine)
             ensure_auth_roles_seed(engine)
+            ensure_auth_usuario_modulos_visibles(engine)
             ensure_remuneraciones_seed(engine)
             ensure_fin_config_contable_seed(engine)
             ensure_comercial_leasing_financiero_schema(engine)
@@ -290,6 +292,7 @@ def create_app() -> FastAPI:
         ensure_remuneraciones_asiento_provision_column(engine)
         ensure_empleados_transferencia_bancaria_columns(engine)
         ensure_auth_roles_seed(engine)
+        ensure_auth_usuario_modulos_visibles(engine)
         ensure_remuneraciones_seed(engine)
         ensure_leasing_financiero_plan_cuentas_min(engine)
         ensure_lf_cotizaciones_cleanup_prueba(engine)

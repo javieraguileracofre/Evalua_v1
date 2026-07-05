@@ -267,6 +267,39 @@
       justify-content:space-between;
       gap:.5rem;
       transition:opacity .2s ease, padding .28s ease, font-size .28s ease;
+      width:100%;
+      border:none;
+      background:transparent;
+      text-align:left;
+      cursor:pointer;
+    }
+
+    .sidebar-section-title-inner{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:.5rem;
+      min-width:0;
+      flex:1;
+    }
+
+    .sidebar-section-chevron{
+      font-size:.75rem;
+      opacity:.65;
+      transition:transform .22s ease, opacity .18s ease;
+      flex-shrink:0;
+    }
+
+    .sidebar-section.is-collapsed .sidebar-section-chevron{
+      transform:rotate(-90deg);
+    }
+
+    .sidebar-section.is-collapsed .sidebar-section-items{
+      display:none;
+    }
+
+    .sidebar-section-items{
+      padding-bottom:.15rem;
     }
 
     .sidebar-section-text{
@@ -293,6 +326,13 @@
       font-size:0;
       letter-spacing:0;
       color:transparent;
+      cursor:default;
+      pointer-events:none;
+    }
+
+    body.evalua-sidebar-collapsed .sidebar-section-chevron,
+    body.evalua-sidebar-collapsed .sidebar-section-items{
+      display:none;
     }
 
     body.evalua-sidebar-collapsed .sidebar-section-title::after{
@@ -930,6 +970,7 @@
       {{ erp_nav.inicio(request, current_menu, true) }}
       {{ erp_nav.comercial_clientes(request, current_menu, true) }}
       {{ erp_nav.operaciones(request, current_menu, true) }}
+      {{ erp_nav.rrhh(request, current_menu, true) }}
       {{ erp_nav.finanzas(request, current_menu, true) }}
       {{ erp_nav.contabilidad(request, current_menu, true) }}
       {% block sidebar_maestros_extra %}{% endblock %}
@@ -964,6 +1005,7 @@
         {{ erp_nav.inicio(request, current_menu, false) }}
         {{ erp_nav.comercial_clientes(request, current_menu, false) }}
         {{ erp_nav.operaciones(request, current_menu, false) }}
+        {{ erp_nav.rrhh(request, current_menu, false) }}
         {{ erp_nav.finanzas(request, current_menu, false) }}
         {{ erp_nav.contabilidad(request, current_menu, false) }}
         {% block mobile_sidebar_maestros_extra %}{% endblock %}
@@ -1168,6 +1210,58 @@
         apply(next);
         localStorage.setItem(KEY, next ? '1' : '0');
       });
+    })();
+  </script>
+  <script>
+    (function () {
+      var SECTIONS_KEY = 'evalua-sidebar-sections';
+
+      function readSectionCollapseState() {
+        try {
+          var raw = localStorage.getItem(SECTIONS_KEY);
+          return raw ? JSON.parse(raw) : {};
+        } catch (e) {
+          return {};
+        }
+      }
+
+      function applySectionCollapse(section, collapsed) {
+        var btn = section.querySelector('.sidebar-section-toggle');
+        section.classList.toggle('is-collapsed', collapsed);
+        if (btn) {
+          btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        }
+      }
+
+      function bindSidebarAccordions(root) {
+        if (!root) return;
+        var saved = readSectionCollapseState();
+
+        root.querySelectorAll('.sidebar-section').forEach(function (section) {
+          var id = section.getAttribute('data-section-id');
+          if (!id) return;
+
+          var itemsPanel = section.querySelector('.sidebar-section-items');
+          var hasActive = !!(itemsPanel && itemsPanel.getAttribute('data-active') === '1')
+            || !!section.querySelector('.nav-item-evalua.active, .nav-subitem-evalua.active');
+          var collapsed = hasActive ? false : saved[id] === true;
+          applySectionCollapse(section, collapsed);
+
+          var btn = section.querySelector('.sidebar-section-toggle');
+          if (!btn) return;
+
+          btn.addEventListener('click', function () {
+            if (document.body.classList.contains('evalua-sidebar-collapsed')) return;
+            var next = !section.classList.contains('is-collapsed');
+            applySectionCollapse(section, next);
+            saved[id] = next;
+            localStorage.setItem(SECTIONS_KEY, JSON.stringify(saved));
+          });
+        });
+      }
+
+      bindSidebarAccordions(document.querySelector('.sidebar .sidebar-nav-wrap'));
+      bindSidebarAccordions(document.querySelector('#mobileSidebar .offcanvas-body nav'));
     })();
   </script>
   {% block scripts %}{% endblock %}

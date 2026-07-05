@@ -51,6 +51,7 @@ _PATCH_122 = _ROOT / "db" / "psql" / "122_empleados_transferencia_bancaria.sql"
 _PATCH_123 = _ROOT / "db" / "psql" / "123_fin_plan_cuenta_leasing_fin_min.sql"
 _PATCH_124 = _ROOT / "db" / "psql" / "124_lf_cotizaciones_cleanup_borrador_prueba.sql"
 _PATCH_125 = _ROOT / "db" / "psql" / "125_credito_riesgo_empresarial.sql"
+_PATCH_126 = _ROOT / "db" / "psql" / "126_auth_usuario_modulos_visibles.sql"
 
 
 def ensure_leasing_financiero_plan_cuentas_min(engine: Engine) -> None:
@@ -308,6 +309,53 @@ def ensure_auth_roles_seed(engine: Engine) -> None:
                 )
         except Exception:
             pass
+
+
+def ensure_auth_usuario_modulos_visibles(engine: Engine) -> None:
+    """Tabla auth_usuario_modulo_visible + backfill de defaults por rol."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_126.is_file():
+        logger.warning("No se encontró %s; omitiendo módulos visibles por usuario.", _PATCH_126)
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_126)
+        logger.info("Parche aplicado/verificado: auth_usuario_modulo_visible (126).")
+    except Exception as exc:
+        logger.warning(
+            "No se pudo aplicar 126_auth_usuario_modulos_visibles.sql. Detalle: %s",
+            exc,
+        )
+        return
+
+    try:
+        from crud.auth.modulos_visibles import backfill_visible_modules_from_roles
+        from models.auth.usuario import Usuario
+    except Exception as exc:
+        logger.debug("Modelos módulos visibles no disponibles: %s", exc)
+        return
+
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    with SessionLocal() as db:
+        try:
+            has_table = db.execute(
+                text(
+                    """
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = 'auth_usuario_modulo_visible'
+                    LIMIT 1
+                    """
+                )
+            ).scalar()
+            if not has_table:
+                return
+            n = backfill_visible_modules_from_roles(db)
+            db.commit()
+            if n:
+                logger.info("Backfill módulos visibles: %s usuario(s) actualizado(s).", n)
+        except Exception as exc:
+            db.rollback()
+            logger.warning("No se pudo hacer backfill de módulos visibles: %s", exc)
 
 
 def _has_table(engine: Engine, *, schema: str, table: str) -> bool:
