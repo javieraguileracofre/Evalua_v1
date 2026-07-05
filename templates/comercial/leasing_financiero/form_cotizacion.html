@@ -1,8 +1,6 @@
 {# templates/comercial/leasing_financiero/form_cotizacion.html #}
 {% extends "layout/base.html" %}
-{% set is_edit = modo is defined and modo == 'editar' and cotizacion is defined %}
-{% set c = cotizacion if is_edit else none %}
-{% block title %}{% if is_edit %}Editar cotización #{{ cotizacion.id }}{% else %}Nueva cotización leasing financiero{% endif %}{% endblock %}
+{% block title %}{% if modo is defined and modo == 'editar' and cotizacion is defined %}Editar cotización #{{ cotizacion.id }}{% else %}Nueva cotización leasing financiero{% endif %}{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="/static/css/leasing_financiero.css">
@@ -46,6 +44,10 @@
 {% endblock head %}
 
 {% block content %}
+{% set is_edit = modo is defined and modo == 'editar' and cotizacion is defined %}
+{% set c = cotizacion if is_edit else none %}
+{% set lf_api_sim = '/comercial/leasing/cotizaciones/api/simular' %}
+{% set lf_api_rates = '/comercial/leasing/cotizaciones/api/rates/today' %}
 {% set has_clientes = (clientes is defined and clientes and (clientes|length > 0)) %}
 {% set fecha_hoy = fecha_hoy if fecha_hoy is defined else '' %}
 {% set mon_sel = (c.moneda if c and c.moneda else (moneda_default if moneda_default is defined else 'CLP'))|upper %}
@@ -89,8 +91,8 @@
             class="card eva-card shadow-sm border-0"
             data-has-clientes="{{ '1' if has_clientes else '0' }}"
             data-moneda-default="{{ mon_sel }}"
-            data-sim-url="{{ request.url_for('api_lf_cotizacion_simular') }}"
-            data-rates-url="{{ request.url_for('api_lf_rates_today') }}">
+            data-sim-url="{{ lf_api_sim }}"
+            data-rates-url="{{ lf_api_rates }}">
 
         <div class="card-body">
           <div class="eva-section mb-2">Datos comerciales</div>
@@ -450,8 +452,8 @@
 document.addEventListener("DOMContentLoaded", function () {
   LfSimulador.init({
     formId: "cotForm",
-    simUrl: {{ request.url_for('api_lf_cotizacion_simular') | tojson }},
-    ratesUrl: {{ request.url_for('api_lf_rates_today') | tojson }},
+    simUrl: {{ lf_api_sim | tojson }},
+    ratesUrl: {{ lf_api_rates | tojson }},
     monedaDefault: {{ mon_sel | tojson }},
     hasClientes: {{ 'true' if has_clientes else 'false' }},
     isEdit: {{ 'true' if is_edit else 'false' }},

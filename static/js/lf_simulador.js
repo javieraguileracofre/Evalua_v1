@@ -60,6 +60,8 @@
     const ratesUrl = cfg.ratesUrl || form.getAttribute("data-rates-url") || "";
     const hasClientes = cfg.hasClientes != null ? !!cfg.hasClientes : (form.getAttribute("data-has-clientes") || "").trim() === "1";
     const isEdit = !!cfg.isEdit;
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrf = csrfMeta ? csrfMeta.getAttribute("content") || "" : "";
     const inputSearch = document.getElementById("cliente_search");
     const selectList = document.getElementById("cliente_select");
     const hiddenId = document.getElementById("cliente_id");
@@ -198,7 +200,11 @@
       try {
         const res = await fetch(simUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "X-CSRF-Token": csrf,
+          },
           body: JSON.stringify(payloadSim()),
           signal: simAbort.signal,
         });

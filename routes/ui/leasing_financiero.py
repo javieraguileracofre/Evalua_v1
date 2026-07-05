@@ -223,7 +223,7 @@ def leasing_financiero_hub(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/api/rates/today")
+@router.get("/api/rates/today", name="api_lf_rates_today")
 def api_lf_rates_today():
     try:
         return obtener_uf_dolar_hoy()
@@ -572,7 +572,7 @@ def lf_cotizacion_nueva_post_cliente(
     )
 
 
-@router.post("/api/simular", response_model=LeasingSimulacionResumen)
+@router.post("/api/simular", response_model=LeasingSimulacionResumen, name="api_lf_cotizacion_simular")
 def api_lf_cotizacion_simular(obj_in: LeasingSimulacionInput):
     moneda = _normalizar_moneda(obj_in.moneda)
     uf_val = obj_in.uf_valor

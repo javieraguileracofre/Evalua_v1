@@ -18,6 +18,16 @@ from services.leasing_financiero_metricas import calcular_cae_tir_operacion, cal
 from services.leasing_financiero_tributario import calcular_desglose_tributario
 
 
+from routes.ui import leasing_financiero as lf_routes
+
+
+def test_rutas_api_lf_registradas_con_nombre():
+    names = {getattr(r, "name", None) for r in lf_routes.router.routes}
+    assert "api_lf_rates_today" in names
+    assert "api_lf_cotizacion_simular" in names
+    assert "lf_cotizacion_nueva_form" in names
+
+
 def test_tabla_amortizacion_cierra_en_residual():
     cot = SimpleNamespace(
         plazo=12,
