@@ -59,6 +59,7 @@
     const simUrl = cfg.simUrl || form.getAttribute("data-sim-url") || "";
     const ratesUrl = cfg.ratesUrl || form.getAttribute("data-rates-url") || "";
     const hasClientes = cfg.hasClientes != null ? !!cfg.hasClientes : (form.getAttribute("data-has-clientes") || "").trim() === "1";
+    const isEdit = !!cfg.isEdit;
     const inputSearch = document.getElementById("cliente_search");
     const selectList = document.getElementById("cliente_select");
     const hiddenId = document.getElementById("cliente_id");
@@ -235,8 +236,8 @@
 
     function validar() {
       const ok = !!(hiddenId && hiddenId.value && hiddenId.value.trim() !== "");
-      if (btn) btn.disabled = !hasClientes || !ok;
-      return ok;
+      if (btn) btn.disabled = !hasClientes || (!isEdit && !ok);
+      return ok || isEdit;
     }
 
     function setCliente(id, razon, rut) {
@@ -321,7 +322,7 @@
       });
     } else {
       form.addEventListener("submit", function (e) {
-        if (!validar()) {
+        if (!isEdit && !validar()) {
           e.preventDefault();
           alert("Selecciona un cliente válido.");
           return;
@@ -341,6 +342,10 @@
         }
         unformatFormNumbers();
       });
+    }
+
+    if (isEdit && montoFinInput && parseNum(montoFinInput.value)) {
+      montoFinManual = true;
     }
 
     if (monedaSelect && monedaDefault) monedaSelect.value = monedaDefault;

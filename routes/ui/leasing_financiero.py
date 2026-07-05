@@ -1014,11 +1014,19 @@ def lf_cotizacion_editar_form(
     cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    clientes, _hay_mas = crud_cliente.listar_clientes(db, activos_solo=False, busqueda=None, skip=0, limit=500)
+    cliente = cotizacion.cliente
     return templates.TemplateResponse(
-        "comercial/leasing_financiero/form_cotizacion_edit.html",
+        "comercial/leasing_financiero/form_cotizacion.html",
         {
             "request": request,
+            "modo": "editar",
             "cotizacion": cotizacion,
+            "cliente": cliente,
+            "clientes": clientes,
+            "has_clientes": bool(clientes),
+            "moneda_default": cotizacion.moneda or "CLP",
+            "fecha_hoy": date.today().isoformat(),
             "active_menu": "leasing_financiero",
         },
     )
@@ -1036,10 +1044,30 @@ def lf_cotizacion_editar_post(
     periodos_gracia: str = Form(""),
     fecha_inicio: str = Form(""),
     valor_neto: str = Form(""),
-    monto_financiado: str = Form(""),
-    estado: str = Form("BORRADOR"),
+    pago_inicial_tipo: str = Form(""),
+    pago_inicial_valor: str = Form(""),
+    financia_seguro: object = Form(False),
+    seguro_monto_uf: str = Form(""),
+    otros_montos_pesos: str = Form(""),
+    concesionario: str = Form(""),
+    ejecutivo: str = Form(""),
+    fecha_cotizacion: str = Form(""),
     uf_valor: str = Form(""),
+    monto_financiado: str = Form(""),
     dolar_valor: str = Form(""),
+    bien_descripcion: str = Form(""),
+    bien_tipo: str = Form(""),
+    fecha_primera_cuota: str = Form(""),
+    periodicidad: str = Form("MENSUAL"),
+    comision_apertura: str = Form(""),
+    comision_apertura_tipo: str = Form(""),
+    financia_comision: object = Form(False),
+    gastos_operacionales: str = Form(""),
+    iva_aplica: object = Form(False),
+    iva_tasa: str = Form(""),
+    iva_recuperable: object = Form(True),
+    observaciones: str = Form(""),
+    estado: str = Form("BORRADOR"),
     db: Session = Depends(get_db),
 ):
     if (redir := guard_leasing_fin_mutacion(request)) is not None:
@@ -1047,19 +1075,45 @@ def lf_cotizacion_editar_post(
     cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
+
+    moneda_norm = _normalizar_moneda(moneda)
+    uf_val = _parse_decimal(uf_valor)
+    usd_val = _parse_decimal(dolar_valor)
+    _validar_fx_moneda(moneda_norm, uf_val, usd_val)
+
     obj = LeasingCotizacionUpdate(
         monto=_parse_decimal(monto, money=True),
-        moneda=_normalizar_moneda(moneda),
+        moneda=moneda_norm,
         tasa=_parse_decimal(tasa),
         plazo=_parse_int(plazo),
         opcion_compra=_parse_decimal(opcion_compra, money=True),
         periodos_gracia=_parse_int(periodos_gracia),
+        periodicidad=_normalizar_periodicidad(periodicidad),
         fecha_inicio=_parse_date(fecha_inicio),
+        fecha_primera_cuota=_parse_date(fecha_primera_cuota),
+        bien_descripcion=(bien_descripcion or None),
+        bien_tipo=(bien_tipo or None),
         valor_neto=_parse_decimal(valor_neto, money=True),
+        pago_inicial_tipo=(pago_inicial_tipo or None),
+        pago_inicial_valor=_parse_decimal(pago_inicial_valor, money=True),
+        financia_seguro=_parse_bool(financia_seguro),
+        seguro_monto_uf=_parse_decimal(seguro_monto_uf, money=True),
+        otros_montos_pesos=_parse_decimal(otros_montos_pesos, money=True),
+        comision_apertura=_parse_decimal(comision_apertura, money=True),
+        comision_apertura_tipo=(comision_apertura_tipo or None),
+        financia_comision=_parse_bool(financia_comision),
+        gastos_operacionales=_parse_decimal(gastos_operacionales, money=True),
+        iva_aplica=_parse_bool(iva_aplica),
+        iva_tasa=_parse_decimal(iva_tasa),
+        iva_recuperable=_parse_bool(iva_recuperable),
+        observaciones=(observaciones or None),
+        concesionario=(concesionario or None),
+        ejecutivo=(ejecutivo or None),
+        fecha_cotizacion=_parse_date(fecha_cotizacion),
+        uf_valor=uf_val,
         monto_financiado=_parse_decimal(monto_financiado, money=True),
+        dolar_valor=usd_val,
         estado=_normalizar_estado(estado),
-        uf_valor=_parse_decimal(uf_valor),
-        dolar_valor=_parse_decimal(dolar_valor),
     )
     try:
         crud_lf.actualizar_cotizacion(db, cotizacion=cotizacion, obj_in=obj)
