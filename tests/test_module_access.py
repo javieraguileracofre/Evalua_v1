@@ -8,11 +8,16 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.module_catalog import (
+    ALL_ASSIGNABLE_KEYS,
     ALL_MODULE_KEYS,
     default_visible_modules_for_roles,
     normalize_module_keys,
 )
-from core.nav_visibility import modulos_visibles_en_sesion, usuario_puede_ver_modulo_nav
+from core.nav_visibility import (
+    modulos_visibles_en_sesion,
+    usuario_puede_ver_modulo_nav,
+    usuario_puede_ver_submodulo_nav,
+)
 from core.rbac import (
     usuario_puede_consultar_modulos_finanzas,
     usuario_puede_mutar_modulos_finanzas,
@@ -92,7 +97,7 @@ def test_defaults_por_rol() -> None:
     assert rrhh == frozenset({"PRINCIPAL", "RRHH"})
 
     admin = default_visible_modules_for_roles(["ADMIN"])
-    assert admin == frozenset(ALL_MODULE_KEYS)
+    assert admin == frozenset(ALL_ASSIGNABLE_KEYS)
 
 
 def test_normalize_module_keys_descarta_desconocidos() -> None:
@@ -196,3 +201,15 @@ def test_sesion_legacy_usa_defaults_por_rol() -> None:
     visible = modulos_visibles_en_sesion(auth)
     assert "RRHH" in visible
     assert "FINANZAS" not in visible
+
+
+def test_submodulo_nav_retrocompat_comercial_sin_subs() -> None:
+    auth = {"roles": ["FINANZAS"], "visibleModules": ["PRINCIPAL", "COMERCIAL"]}
+    assert usuario_puede_ver_submodulo_nav(auth, "LEASING_FINANCIERO") is True
+    assert usuario_puede_ver_submodulo_nav(auth, "LEASING_OPERATIVO") is True
+
+
+def test_submodulo_nav_filtrado_explicito() -> None:
+    auth = {"roles": ["FINANZAS"], "visibleModules": ["PRINCIPAL", "COMERCIAL", "LEASING_FINANCIERO"]}
+    assert usuario_puede_ver_submodulo_nav(auth, "LEASING_FINANCIERO") is True
+    assert usuario_puede_ver_submodulo_nav(auth, "LEASING_OPERATIVO") is False

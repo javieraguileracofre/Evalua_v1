@@ -4,6 +4,19 @@
   {{ request.state.auth_user if request.state.auth_user is defined else none }}
 {%- endmacro %}
 
+{% macro _nav_submodule_visible(auth, sub_key) -%}
+  {%- if not auth -%}0
+  {%- elif 'ADMIN' in (auth.roles or []) -%}1
+  {%- elif auth.visibleModules is defined and auth.visibleModules -%}
+    {%- set sk = sub_key | upper -%}
+    {%- set mods = auth.visibleModules | map('upper') | list -%}
+    {%- if sk in mods -%}1
+    {%- elif 'COMERCIAL' in mods and 'LEASING_FINANCIERO' not in mods and 'LEASING_OPERATIVO' not in mods and 'CREDITO_RIESGO' not in mods -%}1
+    {%- else -%}0{%- endif -%}
+  {%- else -%}1
+  {%- endif -%}
+{%- endmacro %}
+
 {% macro _nav_module_visible(auth, module_key) -%}
   {%- if not auth -%}0
   {%- elif 'ADMIN' in (auth.roles or []) -%}1
@@ -96,8 +109,12 @@
   {{ _nav_item(request, 'clientes_list', 'clientes', 'Clientes', 'bi-people', current_menu, with_title) }}
   {{ _nav_item(request, 'postventa_hub', 'postventa', 'Postventa', 'bi-headset', current_menu, with_title) }}
   {{ _nav_item(request, 'credito_riesgo_dashboard', 'credito_riesgo', 'Crédito y riesgo', 'bi-clipboard-data', current_menu, with_title) }}
+  {% if _nav_submodule_visible(auth, 'leasing_financiero') | trim == '1' %}
   {{ _nav_item(request, 'leasing_financiero_hub', 'leasing_financiero', 'Leasing financiero', 'bi-currency-dollar', current_menu, with_title) }}
+  {% endif %}
+  {% if _nav_submodule_visible(auth, 'leasing_operativo') | trim == '1' %}
   {{ _nav_item(request, 'leasing_operativo_hub', 'leasing_operativo', 'Leasing operativo', 'bi-truck-front', current_menu, with_title) }}
+  {% endif %}
   {{ _nav_item(request, 'proveedor_lista', 'proveedores', 'Proveedores', 'bi-truck', current_menu, with_title) }}
   {{ _sidebar_section_close('COMERCIAL', auth) }}
 {% endmacro %}

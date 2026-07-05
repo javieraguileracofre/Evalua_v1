@@ -131,6 +131,22 @@ class _Req:
         return "/"
 
 
+_LF_FORM_DEFAULTS = {
+    "bien_descripcion": "",
+    "bien_tipo": "",
+    "fecha_primera_cuota": "",
+    "periodicidad": "MENSUAL",
+    "comision_apertura": "",
+    "comision_apertura_tipo": "",
+    "financia_comision": False,
+    "gastos_operacionales": "",
+    "iva_aplica": False,
+    "iva_tasa": "",
+    "iva_recuperable": True,
+    "observaciones": "",
+}
+
+
 def test_nueva_cotizacion_post_redirects_and_not_500(monkeypatch: pytest.MonkeyPatch):
     fake_db = object()
 
@@ -164,6 +180,7 @@ def test_nueva_cotizacion_post_redirects_and_not_500(monkeypatch: pytest.MonkeyP
         uf_valor="",
         monto_financiado="",
         dolar_valor="",
+        **_LF_FORM_DEFAULTS,
     )
     assert resp.status_code == 303
     assert "/comercial/leasing/cotizaciones/99" in resp.headers.get("location", "")
@@ -202,6 +219,7 @@ def test_nueva_cotizacion_post_handles_sqlalchemy_error(monkeypatch: pytest.Monk
             uf_valor="",
             monto_financiado="",
             dolar_valor="",
+            **_LF_FORM_DEFAULTS,
         )
     assert err.value.status_code == 503
 

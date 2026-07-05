@@ -45,11 +45,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return RedirectResponse(url=loc, status_code=302)
 
         if "visibleModules" not in auth:
-            from core.module_catalog import ALL_MODULE_KEYS, default_visible_modules_for_roles
+            from core.module_catalog import ALL_ASSIGNABLE_KEYS, ALL_MODULE_KEYS, default_visible_modules_for_roles
             from core.rbac import auth_roles, usuario_es_admin
 
             if usuario_es_admin(auth):
-                enriched = {**auth, "visibleModules": list(ALL_MODULE_KEYS)}
+                enriched = {**auth, "visibleModules": list(ALL_ASSIGNABLE_KEYS)}
             else:
                 enriched = {
                     **auth,

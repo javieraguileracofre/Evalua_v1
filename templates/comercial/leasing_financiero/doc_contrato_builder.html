@@ -1,0 +1,23 @@
+{% extends "layout/base.html" %}
+{% block title %}Contrato leasing — Cotización {{ cotizacion.id }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/css/leasing_financiero.css">{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=cotizacion.id) }}" class="small text-decoration-none">← Volver al detalle</a>
+  <h1 class="h5 lf-title mt-2 mb-3">Contrato leasing financiero — Cotización #{{ cotizacion.id }}</h1>
+  <div class="card lf-card shadow-sm border-0">
+    <div class="card-body">
+      <form method="post" action="{{ request.url_for('lf_doc_contrato_save', cotizacion_id=cotizacion.id) }}" class="row g-3">
+        <div class="col-md-4"><label class="form-label">N° contrato</label><input name="numero_documento" class="form-control" value="{{ doc.get('numero_documento', cotizacion.numero_contrato or '') }}" required></div>
+        <div class="col-md-4"><label class="form-label">Fecha firma</label><input type="date" name="fecha_documento" class="form-control" value="{{ doc.get('fecha_documento', '') }}" required></div>
+        <div class="col-md-4"><label class="form-label">N° operación interna</label><input name="numero_operacion" class="form-control" value="{{ doc.get('numero_operacion', cotizacion.numero_operacion or '') }}"></div>
+        <div class="col-md-4"><label class="form-label">Plazo (meses)</label><input name="plazo_meses" class="form-control" value="{{ doc.get('plazo_meses', cotizacion.plazo or '') }}" readonly></div>
+        <div class="col-md-4"><label class="form-label">Monto financiado</label><input name="monto_financiado" class="form-control" value="{{ doc.get('monto_financiado', cotizacion.monto_financiado or '') }}" readonly></div>
+        <div class="col-md-4"><label class="form-label">Estado</label><select name="estado_documento" class="form-select"><option>FIRMADO</option><option>RECIBIDO</option><option>PENDIENTE</option></select></div>
+        <div class="col-12"><label class="form-label">Cláusulas / observaciones</label><textarea name="observacion" class="form-control" rows="3">{{ doc.get('observacion', '') }}</textarea></div>
+        <div class="col-12"><button class="btn btn-lf-primary" type="submit">Registrar contrato firmado</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

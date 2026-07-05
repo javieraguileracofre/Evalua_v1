@@ -15,12 +15,12 @@ from models.comercial.leasing_financiero_cotizacion import (
     LeasingFinancieroDocumentoProceso,
     LeasingFinancieroHistorial,
 )
-from schemas.comercial.leasing_cotizacion import ESTADOS_LF, LeasingCotizacionCreate, LeasingCotizacionUpdate
+from schemas.comercial.leasing_cotizacion import ESTADOS_LF, LeasingCotizacionCreate, LeasingCotizacionUpdate, LeasingSimulacionInput
 from services.leasing_financiero_contabilidad import (
     activar_contabilidad_leasing_financiero,
     regenerar_proyeccion_contable,
 )
-from services.leasing_financiero import aplicar_parametros_financieros
+from services.leasing_financiero import aplicar_parametros_financieros, normalizar_periodicidad, simular_cotizacion
 
 _WORKFLOW_ETAPAS = [
     "ANALISIS_CREDITO",
@@ -33,6 +33,79 @@ _ESTADOS_EDITABLES = ESTADOS_LF - {"ACTIVADA", "VIGENTE"}
 _ESTADOS_NO_ELIMINABLES = {"ACTIVADA", "VIGENTE"}
 _ESTADOS_APROBACION_CREDITO = {"APROBADO", "APROBADA_CONDICIONES"}
 _CUENTAS_CONTABLES_REQUERIDAS = ("113701", "210701", "210702", "410701", "110201")
+
+
+def _aplicar_metricas_persistidas(cotizacion: LeasingFinancieroCotizacion) -> None:
+    """Calcula TIR/CAE y desglose tributario para persistir en la cotización."""
+    try:
+        periodicidad = normalizar_periodicidad(getattr(cotizacion, "periodicidad", "MENSUAL"))
+    except ValueError:
+        periodicidad = "MENSUAL"
+    payload = LeasingSimulacionInput(
+        moneda=str(cotizacion.moneda or "CLP"),
+        tasa=cotizacion.tasa,
+        plazo=cotizacion.plazo,
+        opcion_compra=cotizacion.opcion_compra,
+        periodos_gracia=cotizacion.periodos_gracia or 0,
+        periodicidad=periodicidad,
+        fecha_inicio=cotizacion.fecha_inicio,
+        fecha_primera_cuota=getattr(cotizacion, "fecha_primera_cuota", None),
+        valor_neto=cotizacion.valor_neto,
+        pago_inicial_tipo=cotizacion.pago_inicial_tipo,
+        pago_inicial_valor=cotizacion.pago_inicial_valor,
+        financia_seguro=bool(cotizacion.financia_seguro),
+        seguro_monto_uf=cotizacion.seguro_monto_uf,
+        otros_montos_pesos=cotizacion.otros_montos_pesos,
+        comision_apertura=getattr(cotizacion, "comision_apertura", None),
+        comision_apertura_tipo=getattr(cotizacion, "comision_apertura_tipo", None),
+        financia_comision=bool(getattr(cotizacion, "financia_comision", False)),
+        gastos_operacionales=getattr(cotizacion, "gastos_operacionales", None),
+        iva_aplica=bool(getattr(cotizacion, "iva_aplica", False)),
+        iva_tasa=getattr(cotizacion, "iva_tasa", None),
+        iva_recuperable=bool(getattr(cotizacion, "iva_recuperable", True)),
+        uf_valor=cotizacion.uf_valor,
+        monto_financiado=cotizacion.monto_financiado,
+        dolar_valor=cotizacion.dolar_valor,
+    )
+    resumen = simular_cotizacion(payload)
+    if resumen.tir_anual_pct is not None:
+        cotizacion.tir_anual_pct = resumen.tir_anual_pct
+    if resumen.cae_anual_pct is not None:
+        cotizacion.cae_anual_pct = resumen.cae_anual_pct
+    if resumen.desglose_tributario:
+        cotizacion.metadata_tributaria = resumen.desglose_tributario
+
+
+def cambiar_estado_cotizacion(
+    db: Session,
+    *,
+    cotizacion: LeasingFinancieroCotizacion,
+    estado_nuevo: str,
+    comentario: str | None = None,
+    usuario: str = "sistema",
+) -> LeasingFinancieroCotizacion:
+    estado_nuevo = str(estado_nuevo or "").strip().upper()
+    if estado_nuevo not in ESTADOS_LF:
+        raise ValueError("Estado de leasing financiero inválido.")
+    estado_actual = str(cotizacion.estado or "").upper()
+    if estado_actual in {"ACTIVADA", "VIGENTE"} and estado_nuevo not in {"ANULADA", "VIGENTE", "ACTIVADA"}:
+        raise ValueError("No se puede cambiar el estado de una operación activada excepto a ANULADA.")
+    if estado_nuevo == estado_actual:
+        return cotizacion
+    cotizacion.estado = estado_nuevo
+    _registrar_historial(
+        db,
+        cotizacion=cotizacion,
+        tipo_evento="CAMBIO_ESTADO",
+        estado_desde=estado_actual,
+        estado_hasta=estado_nuevo,
+        comentario=comentario or f"Estado actualizado a {estado_nuevo}",
+        usuario=usuario,
+    )
+    db.add(cotizacion)
+    db.commit()
+    db.refresh(cotizacion)
+    return get_cotizacion(db, int(cotizacion.id)) or cotizacion
 
 
 def get_cotizacion(db: Session, cotizacion_id: int) -> Optional[LeasingFinancieroCotizacion]:
@@ -189,6 +262,7 @@ def crear_cotizacion(db: Session, *, obj_in: LeasingCotizacionCreate) -> Leasing
             comentario="Creación de cotización leasing financiero",
         )
 
+        _aplicar_metricas_persistidas(cot)
         regenerar_proyeccion_contable(db, cot)
 
         db.commit()
@@ -270,6 +344,8 @@ def actualizar_cotizacion(
         )
 
     db.add(cotizacion)
+    db.flush()
+    _aplicar_metricas_persistidas(cotizacion)
     db.commit()
     db.refresh(cotizacion)
 
@@ -676,6 +752,22 @@ def eliminar_cotizaciones(db: Session, *, ids: list[int]) -> dict[str, Any]:
         "no_encontradas": len(no_encontradas),
         "ids_eliminados": elim_ids,
     }
+
+
+def obtener_ultimo_documento_payload(db: Session, cotizacion_id: int, modulo: str) -> dict:
+    stmt = (
+        select(LeasingFinancieroDocumentoProceso)
+        .where(
+            LeasingFinancieroDocumentoProceso.cotizacion_id == cotizacion_id,
+            LeasingFinancieroDocumentoProceso.modulo == str(modulo or "").strip().lower(),
+        )
+        .order_by(LeasingFinancieroDocumentoProceso.version_n.desc())
+        .limit(1)
+    )
+    row = db.scalars(stmt).first()
+    if row and isinstance(row.payload_json, dict):
+        return dict(row.payload_json)
+    return {}
 
 
 def listar_historial(db: Session, cotizacion_id: int) -> list[LeasingFinancieroHistorial]:

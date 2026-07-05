@@ -52,6 +52,8 @@ _PATCH_123 = _ROOT / "db" / "psql" / "123_fin_plan_cuenta_leasing_fin_min.sql"
 _PATCH_124 = _ROOT / "db" / "psql" / "124_lf_cotizaciones_cleanup_borrador_prueba.sql"
 _PATCH_125 = _ROOT / "db" / "psql" / "125_credito_riesgo_empresarial.sql"
 _PATCH_126 = _ROOT / "db" / "psql" / "126_auth_usuario_modulos_visibles.sql"
+_PATCH_127 = _ROOT / "db" / "psql" / "127_leasing_financiero_operacion_premium.sql"
+_PATCH_128 = _ROOT / "db" / "psql" / "128_auth_submodulos_nav.sql"
 
 
 def ensure_leasing_financiero_plan_cuentas_min(engine: Engine) -> None:
@@ -327,6 +329,12 @@ def ensure_auth_usuario_modulos_visibles(engine: Engine) -> None:
             exc,
         )
         return
+    if _PATCH_128.is_file():
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_128)
+            logger.info("Parche aplicado: sub-módulos nav auth (128).")
+        except Exception as exc:
+            logger.warning("No se pudo aplicar 128_auth_submodulos_nav.sql. Detalle: %s", exc)
 
     try:
         from crud.auth.modulos_visibles import backfill_visible_modules_from_roles
@@ -656,6 +664,15 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
         except Exception as exc:
             logger.warning(
                 "No se pudo aplicar 109_leasing_financiero_workflow.sql. Detalle: %s",
+                exc,
+            )
+    if _PATCH_127.is_file() and _has_table(engine, schema="public", table="comercial_lf_cotizaciones"):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_127)
+            logger.info("Parche aplicado: leasing financiero operación premium (127).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 127_leasing_financiero_operacion_premium.sql. Detalle: %s",
                 exc,
             )
 

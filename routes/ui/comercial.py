@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from core.paths import TEMPLATES_DIR
-from core.rbac import guard_operacion_consulta
+from core.rbac import guard_leasing_fin_consulta, guard_operacion_consulta
 from crud.comercial import leasing_fin as crud_lf
 from db.session import get_db
 from services.indicadores_mercado import obtener_uf_dolar_hoy
@@ -33,7 +33,7 @@ def comercial_hub(request: Request):
 
 @router.get("/comercial/leasing-financiero", response_class=HTMLResponse, name="leasing_financiero_hub")
 def leasing_financiero_hub(request: Request, db: Session = Depends(get_db)):
-    if (redir := guard_operacion_consulta(request)) is not None:
+    if (redir := guard_leasing_fin_consulta(request)) is not None:
         return redir
     resumen = crud_lf.get_hub_resumen(db)
     mercado = None
@@ -49,6 +49,15 @@ def leasing_financiero_hub(request: Request, db: Session = Depends(get_db)):
             "mercado": mercado,
             "active_menu": "leasing_financiero",
         },
+    )
+
+
+@router.get("/comercial/leasing", include_in_schema=False)
+def leasing_financiero_alias(request: Request):
+    """Alias corto → hub leasing financiero."""
+    return RedirectResponse(
+        url=str(request.url_for("leasing_financiero_hub")),
+        status_code=302,
     )
 
 

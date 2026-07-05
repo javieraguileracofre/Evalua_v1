@@ -11,7 +11,14 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from core.module_catalog import ALL_MODULE_KEYS, MODULE_LABELS
+from core.module_catalog import (
+    ALL_ASSIGNABLE_KEYS,
+    ALL_MODULE_KEYS,
+    MODULE_LABELS,
+    NAV_SUBMODULE_KEYS,
+    SUBMODULE_LABELS,
+    module_label,
+)
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
 from core.rbac import usuario_es_admin
@@ -25,7 +32,12 @@ logger = logging.getLogger("evalua.seguridad")
 
 
 def _modulos_catalogo() -> list[dict[str, str]]:
-    return [{"key": k, "label": MODULE_LABELS.get(k, k)} for k in ALL_MODULE_KEYS]
+    out: list[dict[str, str]] = []
+    for k in ALL_MODULE_KEYS:
+        out.append({"key": k, "label": MODULE_LABELS.get(k, k), "grupo": "Área principal"})
+    for k in NAV_SUBMODULE_KEYS:
+        out.append({"key": k, "label": SUBMODULE_LABELS.get(k, k), "grupo": "Comercial · sub-módulo"})
+    return out
 
 
 def _form_context(

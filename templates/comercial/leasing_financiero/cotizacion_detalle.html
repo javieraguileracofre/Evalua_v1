@@ -2,6 +2,7 @@
 {% block title %}Cotización {{ cotizacion.id }}{% endblock %}
 
 {% block head %}
+<link rel="stylesheet" href="/static/css/leasing_financiero.css">
 <style>
   :root{ --eva-navy:#0B1F3B; --eva-border:#E5E7EB; --eva-muted:#6B7280; }
   .eva-title{ color: var(--eva-navy); }
@@ -50,25 +51,86 @@
     </div>
   </div>
 
-  <div class="row g-3">
+  <div class="row g-3 mb-3">
     <div class="col-12">
       {% set steps = ['COTIZADA','EN_ANALISIS_CREDITO','APROBADA','EN_FORMALIZACION','DOCUMENTACION_COMPLETA','ACTIVADA','VIGENTE'] %}
       {% set current = (cotizacion.estado or 'BORRADOR')|upper %}
-      <div class="card eva-card shadow-sm border-0">
+      <div class="card eva-card lf-card shadow-sm border-0">
         <div class="card-body small">
           <strong>Etapas:</strong>
           {% for s in steps %}
-            <span class="eva-badge {% if current == s %}eva-badge--ok{% endif %}">{{ s }}</span>
+            <span class="eva-badge lf-badge {% if current == s %}eva-badge--ok lf-badge--ok{% endif %}">{{ s }}</span>
             {% if not loop.last %}<span class="text-muted">→</span>{% endif %}
           {% endfor %}
         </div>
       </div>
     </div>
+
+    {% if resumen is defined and resumen %}
+    <div class="col-12">
+      <div class="card eva-card lf-card shadow-sm border-0">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold lf-title mb-3">Resumen ejecutivo</h2>
+          <div class="row g-2">
+            <div class="col-6 col-md-4 col-lg-2">
+              <div class="lf-kpi">
+                <div class="lbl">Monto financiado</div>
+                <div class="val">{{ "{:,.0f}".format(resumen.monto_financiado).replace(",", ".") }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <div class="lf-kpi">
+                <div class="lbl">Cuota estimada</div>
+                <div class="val val--highlight">{{ "{:,.0f}".format(resumen.renta_mensual or 0).replace(",", ".") }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <div class="lf-kpi">
+                <div class="lbl">Total intereses</div>
+                <div class="val">{{ "{:,.0f}".format(resumen.total_intereses).replace(",", ".") }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <div class="lf-kpi">
+                <div class="lbl">Costo total</div>
+                <div class="val">{{ "{:,.0f}".format(resumen.total_desembolso).replace(",", ".") }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <div class="lf-kpi">
+                <div class="lbl">Opción compra</div>
+                <div class="val">{{ "{:,.0f}".format(resumen.total_opcion_compra).replace(",", ".") }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+              <div class="lf-kpi">
+                <div class="lbl">CAE / TIR aprox.</div>
+                <div class="val">
+                  {% if resumen.cae_anual_pct is not none %}{{ resumen.cae_anual_pct }}%{% else %}—{% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+          {% if resumen.desglose_tributario and resumen.desglose_tributario.get('iva_monto', 0)|float > 0 %}
+          <div class="small text-muted mt-2">
+            IVA estimado: {{ "{:,.0f}".format(resumen.desglose_tributario.get('iva_monto', 0)|float).replace(",", ".") }}
+            ({{ resumen.desglose_tributario.get('iva_tasa_pct', 0) }}%)
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="col-lg-8">
       <div class="card eva-card shadow-sm border-0 mb-3">
         <div class="card-body">
           <h2 class="h6 fw-semibold mb-3">Datos generales</h2>
           <dl class="row small mb-0 eva-kv">
+            {% if cotizacion.bien_descripcion %}
+            <dt class="col-sm-4">Bien financiado</dt>
+            <dd class="col-sm-8">{{ cotizacion.bien_descripcion }}{% if cotizacion.bien_tipo %} <span class="text-muted">({{ cotizacion.bien_tipo }})</span>{% endif %}</dd>
+            {% endif %}
             <dt class="col-sm-4">Cliente</dt>
             <dd class="col-sm-8">{{ cli_nombre }}<br><small class="text-muted">{{ cli_rut }}</small></dd>
             <dt class="col-sm-4">Moneda</dt>
@@ -222,9 +284,35 @@
         </div>
       </div>
 
+      <div class="card eva-card lf-card shadow-sm border-0 mb-3">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-2">Cambiar estado</h2>
+          <form method="post" action="{{ request.url_for('lf_cotizacion_cambiar_estado', cotizacion_id=cotizacion.id) }}" class="small">
+            <select name="estado_nuevo" class="form-select form-select-sm mb-2" required>
+              {% for e in estados_lf %}
+              <option value="{{ e }}" {% if (cotizacion.estado or '')|upper == e %}selected{% endif %}>{{ e }}</option>
+              {% endfor %}
+            </select>
+            <textarea name="comentario" class="form-control form-control-sm mb-2" rows="2" placeholder="Comentario (opcional)"></textarea>
+            <button class="btn btn-sm btn-outline-secondary w-100" type="submit">Actualizar estado</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card eva-card lf-card shadow-sm border-0 mb-3">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-2">Documentos del proceso</h2>
+          <div class="d-grid gap-2 small">
+            <a href="{{ request.url_for('lf_doc_oc', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Orden de compra</a>
+            <a href="{{ request.url_for('lf_doc_contrato', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Contrato firmado</a>
+            <a href="{{ request.url_for('lf_doc_acta', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Acta de recepción</a>
+          </div>
+        </div>
+      </div>
+
       <div class="card eva-card shadow-sm border-0 mb-3">
         <div class="card-body">
-          <h2 class="h6 fw-semibold mb-2">Registro orden de compra</h2>
+          <h2 class="h6 fw-semibold mb-2">Registro orden de compra (rápido)</h2>
           <form method="post" action="{{ request.url_for('lf_cotizacion_workflow_documento', cotizacion_id=cotizacion.id, modulo='orden_compra') }}">
             <input type="hidden" name="tipo_documento" value="ORDEN_COMPRA">
             <input class="form-control form-control-sm mb-2" name="numero_documento" placeholder="N° orden">

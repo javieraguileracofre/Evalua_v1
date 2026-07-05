@@ -7,9 +7,10 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from core.module_catalog import (
+    ALL_ASSIGNABLE_KEYS,
     ALL_MODULE_KEYS,
     default_visible_modules_for_roles,
-    normalize_module_keys,
+    normalize_assignable_module_keys,
 )
 from core.rbac import usuario_es_admin
 from models.auth.modulo_visible import UsuarioModuloVisible
@@ -33,7 +34,7 @@ def visible_module_keys(usuario: Usuario, db: Session) -> frozenset[str]:
 
 def user_visible_modules_list(usuario: Usuario, db: Session) -> list[str]:
     keys = visible_module_keys(usuario, db)
-    order = {k: i for i, k in enumerate(ALL_MODULE_KEYS)}
+    order = {k: i for i, k in enumerate(ALL_ASSIGNABLE_KEYS)}
     return sorted(keys, key=lambda k: order.get(k, 999))
 
 
@@ -44,7 +45,7 @@ def set_user_visible_modules(
     *,
     assigned_by_id: int | None = None,
 ) -> list[str]:
-    normalized = normalize_module_keys(module_keys)
+    normalized = normalize_assignable_module_keys(module_keys)
     db.execute(delete(UsuarioModuloVisible).where(UsuarioModuloVisible.usuario_id == usuario.id))
     db.flush()
     for key in normalized:

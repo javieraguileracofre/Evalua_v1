@@ -61,9 +61,16 @@ class LeasingFinancieroCotizacion(Base):
     opcion_compra: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
 
     periodos_gracia: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    periodicidad: Mapped[str] = mapped_column(
+        String(20), default="MENSUAL", server_default="MENSUAL", nullable=False
+    )
 
     fecha_inicio: Mapped[date | None] = mapped_column(Date)
+    fecha_primera_cuota: Mapped[date | None] = mapped_column(Date)
     valor_neto: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    bien_descripcion: Mapped[str | None] = mapped_column(String(500))
+    bien_tipo: Mapped[str | None] = mapped_column(String(80))
 
     pago_inicial_tipo: Mapped[str | None] = mapped_column(String(20))
     pago_inicial_valor: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
@@ -71,6 +78,18 @@ class LeasingFinancieroCotizacion(Base):
     financia_seguro: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     seguro_monto_uf: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
     otros_montos_pesos: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    comision_apertura: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    comision_apertura_tipo: Mapped[str | None] = mapped_column(String(20))
+    financia_comision: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    gastos_operacionales: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    iva_aplica: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    iva_tasa: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    iva_recuperable: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    observaciones: Mapped[str | None] = mapped_column(String(4000))
+    tir_anual_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4))
+    cae_anual_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4))
+    metadata_tributaria: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'::jsonb"))
 
     concesionario: Mapped[str | None] = mapped_column(String(255))
     ejecutivo: Mapped[str | None] = mapped_column(String(255))

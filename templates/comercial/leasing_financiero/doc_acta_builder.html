@@ -1,0 +1,22 @@
+{% extends "layout/base.html" %}
+{% block title %}Acta entrega — Cotización {{ cotizacion.id }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/css/leasing_financiero.css">{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=cotizacion.id) }}" class="small text-decoration-none">← Volver al detalle</a>
+  <h1 class="h5 lf-title mt-2 mb-3">Acta de recepción — Cotización #{{ cotizacion.id }}</h1>
+  <div class="card lf-card shadow-sm border-0">
+    <div class="card-body">
+      <form method="post" action="{{ request.url_for('lf_doc_acta_save', cotizacion_id=cotizacion.id) }}" class="row g-3">
+        <div class="col-md-4"><label class="form-label">N° acta</label><input name="numero_documento" class="form-control" value="{{ doc.get('numero_documento', '') }}" required></div>
+        <div class="col-md-4"><label class="form-label">Fecha entrega</label><input type="date" name="fecha_documento" class="form-control" value="{{ doc.get('fecha_documento', '') }}" required></div>
+        <div class="col-md-4"><label class="form-label">Lugar entrega</label><input name="lugar_entrega" class="form-control" value="{{ doc.get('lugar_entrega', '') }}"></div>
+        <div class="col-md-6"><label class="form-label">Bien entregado</label><input name="bien_descripcion" class="form-control" value="{{ doc.get('bien_descripcion', cotizacion.bien_descripcion or '') }}"></div>
+        <div class="col-md-6"><label class="form-label">Serie / patente / VIN</label><input name="identificador_bien" class="form-control" value="{{ doc.get('identificador_bien', '') }}"></div>
+        <div class="col-12"><label class="form-label">Observaciones recepción</label><textarea name="observacion" class="form-control" rows="2">{{ doc.get('observacion', '') }}</textarea></div>
+        <div class="col-12"><button class="btn btn-lf-primary" type="submit">Guardar acta de recepción</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

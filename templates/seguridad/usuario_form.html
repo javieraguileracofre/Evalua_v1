@@ -108,6 +108,9 @@
             <label class="form-check-label w-100" for="mod_{{ mod.key }}">
               <span class="fw-bold">{{ mod.key }}</span>
               <span class="d-block text-soft small">{{ mod.label }}</span>
+              {% if mod.grupo is defined and mod.grupo %}
+              <span class="d-block text-muted" style="font-size:0.72rem;">{{ mod.grupo }}</span>
+              {% endif %}
             </label>
           </div>
         </div>

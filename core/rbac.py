@@ -222,3 +222,58 @@ def guard_operacion_mutacion(
     )
     q = urlencode({"msg": msg, "sev": "danger"})
     return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def usuario_puede_aprobar_leasing_financiero(auth: dict[str, Any] | None) -> bool:
+    """Activación contable, aprobación formal y anulación de operaciones LF."""
+    return usuario_es_admin(auth) or usuario_tiene_rol(auth, "FINANZAS")
+
+
+def _usuario_puede_acceder_leasing_fin(auth: dict[str, Any] | None) -> bool:
+    from core.nav_visibility import usuario_puede_ver_submodulo_nav
+
+    if usuario_es_admin(auth):
+        return True
+    return usuario_puede_ver_submodulo_nav(auth, "LEASING_FINANCIERO")
+
+
+def guard_leasing_fin_consulta(
+    request: Request,
+    *,
+    mensaje: str | None = None,
+) -> RedirectResponse | None:
+    auth = getattr(request.state, "auth_user", None)
+    if not _usuario_puede_acceder_leasing_fin(auth):
+        msg = mensaje or "No tiene permiso para acceder al módulo Leasing financiero."
+        q = urlencode({"msg": msg, "sev": "danger"})
+        return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)
+    return guard_operacion_consulta(request, mensaje=mensaje)
+
+
+def guard_leasing_fin_mutacion(
+    request: Request,
+    *,
+    mensaje: str | None = None,
+) -> RedirectResponse | None:
+    auth = getattr(request.state, "auth_user", None)
+    if not _usuario_puede_acceder_leasing_fin(auth):
+        msg = mensaje or "No tiene permiso para modificar Leasing financiero."
+        q = urlencode({"msg": msg, "sev": "danger"})
+        return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)
+    return guard_operacion_mutacion(request, mensaje=mensaje)
+
+
+def guard_leasing_fin_aprobar(
+    request: Request,
+    *,
+    mensaje: str | None = None,
+) -> RedirectResponse | None:
+    auth = getattr(request.state, "auth_user", None)
+    if usuario_puede_aprobar_leasing_financiero(auth):
+        return None
+    msg = mensaje or (
+        "No tiene permiso para aprobar o activar operaciones de leasing "
+        "(se requiere rol Finanzas o Administrador)."
+    )
+    q = urlencode({"msg": msg, "sev": "danger"})
+    return RedirectResponse(url=f"/?{q}", status_code=status.HTTP_303_SEE_OTHER)
