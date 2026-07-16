@@ -49,7 +49,7 @@ from .comercial.credito_riesgo import (
     CreditoPolitica,
     CreditoSolicitud,
 )
-from .comercial.leasing_financiero_credito import LeasingFinancieroAnalisisCredito
+from .comercial.leasing_financiero_credito import LeasingFinancieroAnalisisCredito, LeasingFinancieroCreditoDocumento
 from .comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion, LeasingFinancieroProyeccionLinea
 from .comercial.leasing_financiero_operacion import (
     LeasingFinancieroActivo,
@@ -171,6 +171,7 @@ __all__ = [
     "NotaVenta",
     "NotaVentaDetalle",
     "LeasingFinancieroAnalisisCredito",
+    "LeasingFinancieroCreditoDocumento",
     "LeasingFinancieroCotizacion",
     "LeasingFinancieroProyeccionLinea",
     "LeasingFinancieroActivo",

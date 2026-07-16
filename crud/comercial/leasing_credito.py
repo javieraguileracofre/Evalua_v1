@@ -2,10 +2,17 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from models.comercial.leasing_financiero_credito import LeasingFinancieroAnalisisCredito
+from models.comercial.leasing_financiero_credito import (
+    LeasingFinancieroAnalisisCredito,
+    LeasingFinancieroCreditoDocumento,
+)
 from models.comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion, LeasingFinancieroHistorial
 from crud.comercial.leasing_fin_operacion import (
     inicializar_checklist,
@@ -26,6 +33,133 @@ def get_cotizacion(db: Session, cotizacion_id: int) -> LeasingFinancieroCotizaci
         .where(LeasingFinancieroCotizacion.id == cotizacion_id)
     )
     return db.scalars(stmt).first()
+
+
+def listar_documentos(db: Session, cotizacion_id: int) -> list[LeasingFinancieroCreditoDocumento]:
+    stmt = (
+        select(LeasingFinancieroCreditoDocumento)
+        .where(LeasingFinancieroCreditoDocumento.cotizacion_id == cotizacion_id)
+        .where(LeasingFinancieroCreditoDocumento.estado != "OBSOLETO")
+        .order_by(LeasingFinancieroCreditoDocumento.creado_en.desc())
+    )
+    return list(db.scalars(stmt))
+
+
+def crear_documento(
+    db: Session,
+    *,
+    cotizacion: LeasingFinancieroCotizacion,
+    tipo_documento: str,
+    nombre_archivo: str,
+    mime_type: str,
+    storage_path: str,
+    hash_sha256: str | None,
+    tamano_bytes: int,
+    datos_extraidos: dict[str, Any] | None = None,
+    periodo_desde: date | None = None,
+    periodo_hasta: date | None = None,
+    observaciones: str = "",
+    cargado_por: str = "sistema",
+) -> LeasingFinancieroCreditoDocumento:
+    # Marcar versiones previas del mismo tipo como obsoletas
+    prevs = db.scalars(
+        select(LeasingFinancieroCreditoDocumento).where(
+            LeasingFinancieroCreditoDocumento.cotizacion_id == int(cotizacion.id),
+            LeasingFinancieroCreditoDocumento.tipo_documento == tipo_documento,
+            LeasingFinancieroCreditoDocumento.estado != "OBSOLETO",
+        )
+    ).all()
+    for prev in prevs:
+        prev.estado = "OBSOLETO"
+        db.add(prev)
+
+    doc = LeasingFinancieroCreditoDocumento(
+        cotizacion_id=int(cotizacion.id),
+        cliente_id=int(cotizacion.cliente_id),
+        tipo_documento=tipo_documento,
+        nombre_archivo=nombre_archivo,
+        mime_type=mime_type or "application/octet-stream",
+        storage_path=storage_path,
+        hash_sha256=hash_sha256,
+        tamano_bytes=int(tamano_bytes or 0),
+        estado="RECIBIDO",
+        periodo_desde=periodo_desde,
+        periodo_hasta=periodo_hasta,
+        datos_extraidos=datos_extraidos or {},
+        observaciones=observaciones or "",
+        cargado_por=cargado_por,
+    )
+    db.add(doc)
+    db.add(
+        LeasingFinancieroHistorial(
+            cotizacion_id=int(cotizacion.id),
+            tipo_evento="DOCUMENTO_CREDITO",
+            estado_desde=str(cotizacion.estado or "").upper(),
+            estado_hasta=str(cotizacion.estado or "").upper(),
+            comentario=f"Documento crédito cargado: {tipo_documento} · {nombre_archivo}",
+            usuario=cargado_por,
+            metadata_json={"tipo_documento": tipo_documento, "nombre_archivo": nombre_archivo},
+        )
+    )
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+
+def aplicar_datos_extraidos_a_analisis(
+    db: Session,
+    *,
+    cotizacion: LeasingFinancieroCotizacion,
+    campos: dict[str, Decimal],
+    analista: str = "sistema",
+) -> LeasingFinancieroAnalisisCredito:
+    """Persiste campos financieros extraídos sin recalcular scoring todavía."""
+    analisis = get_analisis_por_cotizacion(db, int(cotizacion.id))
+    if not analisis:
+        analisis = LeasingFinancieroAnalisisCredito(
+            cotizacion_id=int(cotizacion.id),
+            cliente_id=int(cotizacion.cliente_id),
+            tipo_persona="JURIDICA",
+            analista=analista,
+        )
+        db.add(analisis)
+
+    allowed = {
+        "ventas_anuales",
+        "ebitda_anual",
+        "deuda_financiera_total",
+        "patrimonio",
+        "activo_corriente",
+        "pasivo_corriente",
+        "activo_total",
+        "pasivo_total",
+        "utilidad_neta_anual",
+        "gastos_financieros_anual",
+        "ventas_12m_iva",
+        "iva_debito_12m",
+        "iva_credito_12m",
+    }
+    for key, val in campos.items():
+        if key in allowed:
+            setattr(analisis, key, val)
+
+    docs = listar_documentos(db, int(cotizacion.id))
+    resumen = {
+        d.tipo_documento: {
+            "id": int(d.id),
+            "nombre_archivo": d.nombre_archivo,
+            "estado": d.estado,
+            "creado_en": d.creado_en.isoformat() if d.creado_en else None,
+        }
+        for d in docs
+        if d.estado != "OBSOLETO"
+    }
+    analisis.documentos_resumen_json = resumen
+    analisis.analista = analista
+    db.add(analisis)
+    db.commit()
+    db.refresh(analisis)
+    return analisis
 
 
 def listar_cotizaciones_para_credito(
@@ -76,6 +210,17 @@ def upsert_analisis(
         payload_result["leverage_ratio"] = payload_result.pop("leverage_calculado")
     payload_result.pop("dscr_calculado", None)
     payload_result.pop("leverage_calculado", None)
+
+    docs = listar_documentos(db, int(cotizacion.id))
+    payload_result["documentos_resumen_json"] = {
+        d.tipo_documento: {
+            "id": int(d.id),
+            "nombre_archivo": d.nombre_archivo,
+            "estado": d.estado,
+        }
+        for d in docs
+        if d.estado != "OBSOLETO"
+    }
 
     estado_origen = str(cotizacion.estado or "").upper()
     if analisis:

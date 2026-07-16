@@ -33,3 +33,6 @@ Desktop.ini
 # Respaldo al aplanar repo (no versionar)
 requirements_root_backup.txt
 static_root_backup/
+
+# Uploads crédito leasing
+storage/leasing_credito/

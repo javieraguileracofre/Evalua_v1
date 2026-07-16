@@ -10,13 +10,14 @@ from .credito_riesgo import (
     CreditoSolicitud,
 )
 from .nota_venta import NotaVenta, NotaVentaDetalle
-from .leasing_financiero_credito import LeasingFinancieroAnalisisCredito
+from .leasing_financiero_credito import LeasingFinancieroAnalisisCredito, LeasingFinancieroCreditoDocumento
 from .leasing_financiero_cotizacion import LeasingFinancieroCotizacion, LeasingFinancieroProyeccionLinea
 
 __all__ = [
     "NotaVenta",
     "NotaVentaDetalle",
     "LeasingFinancieroAnalisisCredito",
+    "LeasingFinancieroCreditoDocumento",
     "LeasingFinancieroCotizacion",
     "LeasingFinancieroProyeccionLinea",
     "CreditoPolitica",

@@ -18,6 +18,97 @@
     </div>
   </div>
 
+  {% if msg == 'documento_cargado' or msg == 'documento_cargado_con_datos' %}
+  <div class="alert alert-success py-2 small">Documento cargado{% if msg == 'documento_cargado_con_datos' %} y datos financieros aplicados al formulario{% endif %}.</div>
+  {% elif msg == 'datos_aplicados' %}
+  <div class="alert alert-success py-2 small">Datos extraídos de documentos aplicados al formulario.</div>
+  {% elif msg == 'scoring_ok' %}
+  <div class="alert alert-success py-2 small">Evaluación crediticia actualizada.</div>
+  {% endif %}
+  {% if err %}
+  <div class="alert alert-warning py-2 small">{{ err }}</div>
+  {% endif %}
+
+  <div class="row g-3 mb-3">
+    <div class="col-12">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+            <div>
+              <h2 class="h6 mb-1">Documentos del cliente</h2>
+              <p class="small text-muted mb-0">Carpeta tributaria 12 meses, certificado de IVAs y último balance general. Excel/CSV se parsean; PDF queda en expediente para revisión del analista.</p>
+            </div>
+            {% if documentos %}
+            <form method="post" action="{{ request.url_for('lf_credito_aplicar_documentos', cotizacion_id=cotizacion.id) }}">
+              <button class="btn btn-outline-primary btn-sm" type="submit">Reaplicar datos extraídos</button>
+            </form>
+            {% endif %}
+          </div>
+
+          <form class="row g-2 align-items-end" method="post" enctype="multipart/form-data"
+                action="{{ request.url_for('lf_credito_documento_upload', cotizacion_id=cotizacion.id) }}">
+            <div class="col-md-3">
+              <label class="form-label">Tipo documento</label>
+              <select class="form-select" name="tipo_documento" required>
+                {% for t in ['CARPETA_TRIBUTARIA','CERTIFICADO_IVA','BALANCE_GENERAL','OTRO'] %}
+                <option value="{{ t }}">{{ etiquetas_documento.get(t, t) }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Archivo</label>
+              <input class="form-control" type="file" name="archivo" accept=".pdf,.xlsx,.xls,.csv,.txt,.png,.jpg,.jpeg,.webp" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Observación</label>
+              <input class="form-control" name="observaciones" placeholder="Ej. período ene-dic 2025">
+            </div>
+            <div class="col-md-2">
+              <input type="hidden" name="aplicar_extraccion" value="1">
+              <button class="btn btn-dark btn-sm w-100" type="submit">Cargar</button>
+            </div>
+          </form>
+
+          {% if documentos %}
+          <div class="table-responsive mt-3">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Archivo</th>
+                  <th>Estado</th>
+                  <th>Datos extraídos</th>
+                  <th>Fecha</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for d in documentos %}
+                <tr>
+                  <td>{{ etiquetas_documento.get(d.tipo_documento, d.tipo_documento) }}</td>
+                  <td class="small">{{ d.nombre_archivo }}</td>
+                  <td><span class="badge text-bg-secondary">{{ d.estado }}</span></td>
+                  <td class="small text-muted">
+                    {% set campos = (d.datos_extraidos or {}).get('campos') or {} %}
+                    {% if campos %}
+                      {{ campos.keys()|list|join(', ') }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td class="small">{{ d.creado_en }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="small text-muted mt-3 mb-0">Aún no hay documentos cargados.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="row g-3">
     <div class="col-lg-8">
       <form class="card border-0 shadow-sm" method="post" action="{{ request.url_for('lf_credito_calcular', cotizacion_id=cotizacion.id) }}">
@@ -28,7 +119,7 @@
               <label class="form-label">Tipo persona</label>
               <select class="form-select" id="tipo_persona" name="tipo_persona">
                 <option value="NATURAL" {% if analisis and analisis.tipo_persona=='NATURAL' %}selected{% endif %}>Natural</option>
-                <option value="JURIDICA" {% if analisis and analisis.tipo_persona=='JURIDICA' %}selected{% endif %}>Jurídica</option>
+                <option value="JURIDICA" {% if not analisis or analisis.tipo_persona=='JURIDICA' %}selected{% endif %}>Jurídica</option>
               </select>
             </div>
             <div class="col-md-4">
@@ -61,13 +152,48 @@
               <input class="form-control" type="number" min="0" name="antiguedad_laboral_meses" value="{{ analisis.antiguedad_laboral_meses if analisis else 0 }}">
             </div>
 
+            <div class="col-12 js-juridica"><hr class="my-1"><p class="small text-muted mb-0">Desde carpeta tributaria / IVA</p></div>
             <div class="col-md-4 js-juridica">
               <label class="form-label">Ventas anuales</label>
               <input class="form-control" name="ventas_anuales" value="{{ analisis.ventas_anuales if analisis else '' }}">
             </div>
             <div class="col-md-4 js-juridica">
+              <label class="form-label">Ventas 12m (IVA)</label>
+              <input class="form-control" name="ventas_12m_iva" value="{{ analisis.ventas_12m_iva if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">IVA débito 12m</label>
+              <input class="form-control" name="iva_debito_12m" value="{{ analisis.iva_debito_12m if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">IVA crédito 12m</label>
+              <input class="form-control" name="iva_credito_12m" value="{{ analisis.iva_credito_12m if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
               <label class="form-label">EBITDA anual</label>
               <input class="form-control" name="ebitda_anual" value="{{ analisis.ebitda_anual if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">Utilidad neta anual</label>
+              <input class="form-control" name="utilidad_neta_anual" value="{{ analisis.utilidad_neta_anual if analisis else '' }}">
+            </div>
+
+            <div class="col-12 js-juridica"><hr class="my-1"><p class="small text-muted mb-0">Desde balance general</p></div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">Activo corriente</label>
+              <input class="form-control" name="activo_corriente" value="{{ analisis.activo_corriente if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">Pasivo corriente</label>
+              <input class="form-control" name="pasivo_corriente" value="{{ analisis.pasivo_corriente if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">Activo total</label>
+              <input class="form-control" name="activo_total" value="{{ analisis.activo_total if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">Pasivo total</label>
+              <input class="form-control" name="pasivo_total" value="{{ analisis.pasivo_total if analisis else '' }}">
             </div>
             <div class="col-md-4 js-juridica">
               <label class="form-label">Deuda financiera total</label>
@@ -76,6 +202,10 @@
             <div class="col-md-4 js-juridica">
               <label class="form-label">Patrimonio</label>
               <input class="form-control" name="patrimonio" value="{{ analisis.patrimonio if analisis else '' }}">
+            </div>
+            <div class="col-md-4 js-juridica">
+              <label class="form-label">Gastos financieros anuales</label>
+              <input class="form-control" name="gastos_financieros_anual" value="{{ analisis.gastos_financieros_anual if analisis else '' }}">
             </div>
             <div class="col-md-4 js-juridica">
               <label class="form-label">Años de operación</label>
@@ -104,21 +234,38 @@
     <div class="col-lg-4">
       <div class="card border-0 shadow-sm h-100">
         <div class="card-body">
-          <h2 class="h6">Resultado</h2>
-          {% if analisis %}
+          <h2 class="h6">Resultado evaluación</h2>
+          {% if analisis and analisis.motivo_resumen %}
             <div class="mb-2"><strong>Score:</strong> {{ analisis.score_total }}</div>
             <div class="mb-2"><strong>Rating:</strong> {{ analisis.rating }}</div>
             <div class="mb-2"><strong>Riesgo:</strong> {{ analisis.nivel_riesgo }}</div>
             <div class="mb-2"><strong>Recomendación:</strong> {{ analisis.recomendacion }}</div>
             <div class="small text-muted">{{ analisis.motivo_resumen }}</div>
             <hr>
+            <h3 class="h6">Ratios financieros</h3>
             <div class="small">
               <div><strong>DSCR:</strong> {{ analisis.dscr or '-' }}</div>
               <div><strong>Leverage:</strong> {{ analisis.leverage_ratio or '-' }}</div>
-              <div><strong>Actualizado:</strong> {{ analisis.actualizado_en }}</div>
+              <div><strong>Margen EBITDA %:</strong> {{ analisis.margen_ebitda_pct or '-' }}</div>
+              <div><strong>Liquidez corriente:</strong> {{ analisis.liquidez_corriente or '-' }}</div>
+              <div><strong>Endeudamiento %:</strong> {{ analisis.endeudamiento_pct or '-' }}</div>
+              <div><strong>Capital de trabajo:</strong> {{ analisis.capital_trabajo or '-' }}</div>
+              <div><strong>Cobertura gf:</strong> {{ analisis.cobertura_gastos_fin or '-' }}</div>
+              <div><strong>Rentabilidad neta %:</strong> {{ analisis.rentabilidad_neta_pct or '-' }}</div>
+              <div class="mt-2 text-muted"><strong>Actualizado:</strong> {{ analisis.actualizado_en }}</div>
             </div>
+            {% set alertas = (analisis.ratios_json or {}).get('alertas') or [] %}
+            {% if alertas %}
+            <hr>
+            <h3 class="h6">Alertas</h3>
+            <ul class="small mb-0 ps-3">
+              {% for a in alertas %}
+              <li>{{ a }}</li>
+              {% endfor %}
+            </ul>
+            {% endif %}
           {% else %}
-            <p class="text-muted small mb-0">Sin cálculo aún.</p>
+            <p class="text-muted small mb-0">Sin cálculo aún. Cargue documentos, complete los montos y calcule el scoring.</p>
           {% endif %}
         </div>
       </div>

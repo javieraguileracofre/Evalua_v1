@@ -54,6 +54,7 @@ _PATCH_125 = _ROOT / "db" / "psql" / "125_credito_riesgo_empresarial.sql"
 _PATCH_126 = _ROOT / "db" / "psql" / "126_auth_usuario_modulos_visibles.sql"
 _PATCH_127 = _ROOT / "db" / "psql" / "127_leasing_financiero_operacion_premium.sql"
 _PATCH_129 = _ROOT / "db" / "psql" / "129_leasing_financiero_operacion_completa.sql"
+_PATCH_130 = _ROOT / "db" / "psql" / "130_leasing_financiero_credito_documentos.sql"
 _PATCH_128 = _ROOT / "db" / "psql" / "128_auth_submodulos_nav.sql"
 
 
@@ -683,6 +684,15 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
         except Exception as exc:
             logger.warning(
                 "No se pudo aplicar 129_leasing_financiero_operacion_completa.sql. Detalle: %s",
+                exc,
+            )
+    if _PATCH_130.is_file() and _has_table(engine, schema="public", table="comercial_lf_analisis_credito"):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_130)
+            logger.info("Parche aplicado: documentos y ratios crédito leasing (130).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 130_leasing_financiero_credito_documentos.sql. Detalle: %s",
                 exc,
             )
 
