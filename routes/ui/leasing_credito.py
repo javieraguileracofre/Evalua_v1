@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
+from core.rbac import guard_leasing_fin_consulta, guard_leasing_fin_mutacion
 from core.paths import TEMPLATES_DIR
 from crud.comercial import leasing_credito as crud_credito
 from db.session import get_db
@@ -41,7 +41,7 @@ def _parse_int(raw: str | None, default: int = 0) -> int:
 
 @router.get("/", response_class=HTMLResponse, name="lf_credito_home")
 def lf_credito_home(request: Request, db: Session = Depends(get_db)):
-    if (redir := guard_operacion_consulta(request)) is not None:
+    if (redir := guard_leasing_fin_consulta(request)) is not None:
         return redir
     estado = (request.query_params.get("estado") or "EN_ANALISIS_CREDITO").strip().upper()
     recomendacion = (request.query_params.get("recomendacion") or "").strip().upper() or None
@@ -68,7 +68,7 @@ def lf_credito_form(
     cotizacion_id: int,
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_operacion_consulta(request)) is not None:
+    if (redir := guard_leasing_fin_consulta(request)) is not None:
         return redir
     cotizacion = crud_credito.get_cotizacion(db, cotizacion_id)
     if not cotizacion:
@@ -104,7 +104,7 @@ def lf_credito_calcular(
     supuestos: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_operacion_mutacion(request)) is not None:
+    if (redir := guard_leasing_fin_mutacion(request)) is not None:
         return redir
     cotizacion = crud_credito.get_cotizacion(db, cotizacion_id)
     if not cotizacion:

@@ -7,6 +7,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from models.comercial.leasing_financiero_credito import LeasingFinancieroAnalisisCredito
 from models.comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion, LeasingFinancieroHistorial
+from crud.comercial.leasing_fin_operacion import (
+    inicializar_checklist,
+    persistir_amortizacion_oficial,
+    sincronizar_checklist_automatico,
+)
+from models.maestros.cliente import Cliente
 from schemas.comercial.leasing_credito import LeasingCreditoInput, LeasingCreditoResultado
 
 
@@ -107,6 +113,22 @@ def upsert_analisis(
             metadata_json={"recomendacion": rec, "score_total": payload_result.get("score_total")},
         )
     )
+
+    cliente = db.get(Cliente, int(cotizacion.cliente_id))
+    if cliente and payload.get("tipo_persona"):
+        cliente.tipo_persona = str(payload["tipo_persona"]).upper()
+
+    if not getattr(cotizacion, "checklist_items", None):
+        inicializar_checklist(db, cotizacion)
+    if rec in {"APROBADO", "APROBADA_CONDICIONES"}:
+        persistir_amortizacion_oficial(db, cotizacion, usuario=analista, congelar=True)
+        workflow = cotizacion.workflow_json if isinstance(cotizacion.workflow_json, dict) else {}
+        hitos = workflow.get("hitos") or {}
+        hitos["analisis_credito"] = True
+        workflow["hitos"] = hitos
+        workflow["etapa_actual"] = "ORDEN_COMPRA"
+        cotizacion.workflow_json = workflow
+    sincronizar_checklist_automatico(db, cotizacion, usuario=analista)
 
     db.commit()
     db.refresh(analisis)

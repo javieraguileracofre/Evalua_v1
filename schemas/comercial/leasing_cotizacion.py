@@ -62,6 +62,15 @@ class LeasingCotizacionBase(BaseModel):
 
     concesionario: Optional[str] = None
     ejecutivo: Optional[str] = None
+    proveedor_id: Optional[int] = None
+    tasa_fondeo: Optional[Decimal] = None
+    spread_margen: Optional[Decimal] = None
+    activo_marca: Optional[str] = Field(default=None, max_length=120)
+    activo_modelo: Optional[str] = Field(default=None, max_length=120)
+    activo_serie: Optional[str] = Field(default=None, max_length=80)
+    activo_chasis: Optional[str] = Field(default=None, max_length=80)
+    condiciones_congeladas: bool = False
+    escenario_oficial_version: Optional[int] = None
     fecha_cotizacion: Optional[date] = None
     uf_valor: Optional[Decimal] = None
     monto_financiado: Optional[Decimal] = None
@@ -114,6 +123,15 @@ class LeasingCotizacionUpdate(BaseModel):
     observaciones: Optional[str] = None
     concesionario: Optional[str] = None
     ejecutivo: Optional[str] = None
+    proveedor_id: Optional[int] = None
+    tasa_fondeo: Optional[Decimal] = None
+    spread_margen: Optional[Decimal] = None
+    activo_marca: Optional[str] = None
+    activo_modelo: Optional[str] = None
+    activo_serie: Optional[str] = None
+    activo_chasis: Optional[str] = None
+    condiciones_congeladas: Optional[bool] = None
+    escenario_oficial_version: Optional[int] = None
     fecha_cotizacion: Optional[date] = None
     uf_valor: Optional[Decimal] = None
     monto_financiado: Optional[Decimal] = None
@@ -170,6 +188,8 @@ class LeasingSimulacionInput(BaseModel):
     uf_valor: Optional[Decimal] = None
     monto_financiado: Optional[Decimal] = None
     dolar_valor: Optional[Decimal] = None
+    tasa_fondeo: Optional[Decimal] = None
+    spread_margen: Optional[Decimal] = None
 
     model_config = ConfigDict(extra="forbid")
 

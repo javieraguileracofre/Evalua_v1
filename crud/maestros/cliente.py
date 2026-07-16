@@ -22,6 +22,7 @@ else:
 
 from core.validators import normalizar_texto, rut_para_busqueda
 from models.maestros.cliente import Cliente
+from models.maestros.cliente_extendido import ClienteAuditoria, ClienteDireccion
 from schemas.maestros.cliente import ClienteCreate, ClienteUpdate
 
 
@@ -89,7 +90,55 @@ def listar_clientes(
     return rows[:lim], hay_mas
 
 
-def crear_cliente(db: Session, data: "SchemaClienteCreate") -> "ModelCliente":
+def _registrar_auditoria(
+    db: Session,
+    *,
+    cliente_id: int,
+    campo: str,
+    valor_anterior: object,
+    valor_nuevo: object,
+    usuario: str = "sistema",
+) -> None:
+    ant = "" if valor_anterior is None else str(valor_anterior)
+    nue = "" if valor_nuevo is None else str(valor_nuevo)
+    if ant == nue:
+        return
+    db.add(
+        ClienteAuditoria(
+            cliente_id=cliente_id,
+            campo=campo,
+            valor_anterior=ant or None,
+            valor_nuevo=nue or None,
+            usuario=usuario,
+        )
+    )
+
+
+def _sync_direccion_principal(db: Session, cliente: Cliente) -> None:
+    if not cliente.direccion:
+        return
+    principal = next((d for d in cliente.direcciones if d.es_principal and d.activo), None)
+    if principal:
+        principal.direccion = cliente.direccion
+        principal.comuna = cliente.comuna
+        principal.ciudad = cliente.ciudad
+        principal.region = cliente.region
+        return
+    db.add(
+        ClienteDireccion(
+            cliente_id=int(cliente.id),
+            tipo="COMERCIAL",
+            direccion=cliente.direccion,
+            comuna=cliente.comuna,
+            ciudad=cliente.ciudad,
+            region=cliente.region,
+            es_principal=True,
+            activo=True,
+        )
+    )
+
+
+def crear_cliente(db: Session, data: "SchemaClienteCreate", *, usuario: str = "sistema") -> "ModelCliente":
     payload = data.model_dump()
     payload["rut"] = rut_para_busqueda(payload["rut"])
 
@@ -101,6 +150,16 @@ def crear_cliente(db: Session, data: "SchemaClienteCreate") -> "ModelCliente":
     db.add(db_cliente)
 
     try:
+        db.flush()
+        _sync_direccion_principal(db, db_cliente)
+        _registrar_auditoria(
+            db,
+            cliente_id=int(db_cliente.id),
+            campo="CREACION",
+            valor_anterior=None,
+            valor_nuevo=db_cliente.razon_social,
+            usuario=usuario,
+        )
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -114,20 +173,60 @@ def actualizar_cliente(
     db: Session,
     cliente: "ModelCliente",
     data: "SchemaClienteUpdate",
+    *,
+    usuario: str = "sistema",
 ) -> "ModelCliente":
     cambios = data.model_dump(exclude_unset=True)
+    audit_fields = {
+        "tipo_persona",
+        "razon_social",
+        "nombres",
+        "apellido_paterno",
+        "apellido_materno",
+        "nombre_fantasia",
+        "giro",
+        "direccion",
+        "comuna",
+        "ciudad",
+        "region",
+        "representante_legal_nombre",
+        "representante_legal_rut",
+        "telefono",
+        "email",
+        "activo",
+    }
 
     for field, value in cambios.items():
-        if field in {
-            "razon_social",
-            "nombre_fantasia",
-            "giro",
-            "direccion",
-            "comuna",
-            "ciudad",
-            "telefono",
-        }:
-            setattr(cliente, field, _norm_str(value) or None)
+        if field in audit_fields:
+            prev = getattr(cliente, field, None)
+            if field in {
+                "razon_social",
+                "nombres",
+                "apellido_paterno",
+                "apellido_materno",
+                "nombre_fantasia",
+                "giro",
+                "direccion",
+                "comuna",
+                "ciudad",
+                "region",
+                "representante_legal_nombre",
+                "telefono",
+            }:
+                new_val = _norm_str(value) or None
+            elif field == "email":
+                new_val = _norm_str(value) or None
+            else:
+                new_val = value
+            _registrar_auditoria(
+                db,
+                cliente_id=int(cliente.id),
+                campo=field,
+                valor_anterior=prev,
+                valor_nuevo=new_val,
+                usuario=usuario,
+            )
+            setattr(cliente, field, new_val)
         elif field == "email":
             setattr(cliente, field, _norm_str(value) or None)
         else:
@@ -135,6 +234,8 @@ def actualizar_cliente(
 
     if not normalizar_texto(cliente.razon_social):
         raise ValueError("La razón social es obligatoria.")
+
+    _sync_direccion_principal(db, cliente)
 
     try:
         db.commit()

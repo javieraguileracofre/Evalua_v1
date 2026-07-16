@@ -16,11 +16,28 @@ from models.comercial.leasing_financiero_cotizacion import (
     LeasingFinancieroHistorial,
 )
 from schemas.comercial.leasing_cotizacion import ESTADOS_LF, LeasingCotizacionCreate, LeasingCotizacionUpdate, LeasingSimulacionInput
+from services.leasing_financiero import aplicar_parametros_financieros, normalizar_periodicidad, simular_cotizacion
 from services.leasing_financiero_contabilidad import (
     activar_contabilidad_leasing_financiero,
     regenerar_proyeccion_contable,
 )
-from services.leasing_financiero import aplicar_parametros_financieros, normalizar_periodicidad, simular_cotizacion
+from crud.comercial.leasing_fin_operacion import (
+    get_cotizacion_completa,
+    inicializar_checklist,
+    persistir_amortizacion_oficial,
+    registrar_factura_compra,
+    registrar_orden_compra,
+    sincronizar_checklist_automatico,
+    solicitar_pago_proveedor,
+    upsert_activo,
+)
+from services.leasing_financiero_workflow import (
+    checklist_bloqueantes_pendientes,
+    merge_workflow,
+    puede_transicionar,
+    siguiente_etapa as _siguiente_etapa_svc,
+    workflow_por_defecto,
+)
 
 _WORKFLOW_ETAPAS = [
     "ANALISIS_CREDITO",
@@ -90,6 +107,8 @@ def cambiar_estado_cotizacion(
     estado_actual = str(cotizacion.estado or "").upper()
     if estado_actual in {"ACTIVADA", "VIGENTE"} and estado_nuevo not in {"ANULADA", "VIGENTE", "ACTIVADA"}:
         raise ValueError("No se puede cambiar el estado de una operación activada excepto a ANULADA.")
+    if not puede_transicionar(estado_actual, estado_nuevo):
+        raise ValueError(f"Transición de estado no permitida: {estado_actual} → {estado_nuevo}.")
     if estado_nuevo == estado_actual:
         return cotizacion
     cotizacion.estado = estado_nuevo
@@ -109,16 +128,7 @@ def cambiar_estado_cotizacion(
 
 
 def get_cotizacion(db: Session, cotizacion_id: int) -> Optional[LeasingFinancieroCotizacion]:
-    stmt = (
-        select(LeasingFinancieroCotizacion)
-        .options(
-            selectinload(LeasingFinancieroCotizacion.cliente),
-            selectinload(LeasingFinancieroCotizacion.proyeccion_lineas),
-            selectinload(LeasingFinancieroCotizacion.analisis_credito),
-        )
-        .where(LeasingFinancieroCotizacion.id == cotizacion_id)
-    )
-    return db.scalars(stmt).first()
+    return get_cotizacion_completa(db, cotizacion_id)
 
 
 def get_cotizaciones(
@@ -168,8 +178,22 @@ def listar_cotizaciones_por_cliente(db: Session, cliente_id: int) -> List[Leasin
     return get_cotizaciones(db, cliente_id=cliente_id)
 
 
+_ACTIVO_CAMPOS = frozenset({"activo_marca", "activo_modelo", "activo_serie", "activo_chasis"})
+
+
+def _activo_payload_from_data(data: dict) -> dict[str, Any]:
+    return {
+        "marca": data.pop("activo_marca", None),
+        "modelo": data.pop("activo_modelo", None),
+        "numero_serie": data.pop("activo_serie", None),
+        "numero_chasis": data.pop("activo_chasis", None),
+    }
+
+
 def _dump_cotizacion(obj_in: LeasingCotizacionCreate | LeasingCotizacionUpdate, *, creating: bool) -> dict:
     data = obj_in.model_dump(exclude_unset=not creating)
+    for k in _ACTIVO_CAMPOS:
+        data.pop(k, None)
     if "moneda" in data and data["moneda"] is not None:
         data["moneda"] = str(data["moneda"]).strip().upper()
     if "estado" in data and data["estado"] is not None:
@@ -235,6 +259,8 @@ def _validar_parametros_cotizacion(data: dict, *, estricto: bool = False) -> Non
 
 
 def crear_cotizacion(db: Session, *, obj_in: LeasingCotizacionCreate) -> LeasingFinancieroCotizacion:
+    raw = obj_in.model_dump()
+    activo_extra = _activo_payload_from_data(raw)
     data = _dump_cotizacion(obj_in, creating=True)
     if data.get("fecha_cotizacion") is None:
         data["fecha_cotizacion"] = date.today()
@@ -264,6 +290,20 @@ def crear_cotizacion(db: Session, *, obj_in: LeasingCotizacionCreate) -> Leasing
 
         _aplicar_metricas_persistidas(cot)
         regenerar_proyeccion_contable(db, cot)
+        inicializar_checklist(db, cot)
+        upsert_activo(
+            db,
+            cot,
+            data={
+                "descripcion": data.get("bien_descripcion"),
+                "categoria": data.get("bien_tipo"),
+                "proveedor_id": data.get("proveedor_id"),
+                "valor_neto": data.get("valor_neto"),
+                **activo_extra,
+            },
+        )
+        persistir_amortizacion_oficial(db, cot)
+        sincronizar_checklist_automatico(db, cot)
 
         db.commit()
         db.refresh(cot)
@@ -281,8 +321,11 @@ def actualizar_cotizacion(
 ) -> LeasingFinancieroCotizacion:
     if str(cotizacion.estado or "").upper() not in _ESTADOS_EDITABLES:
         raise ValueError("No se puede editar una operación activada o vigente.")
+    if bool(getattr(cotizacion, "condiciones_congeladas", False)):
+        raise ValueError("Las condiciones financieras están congeladas. Cree una nueva versión de escenario.")
     estado_original = str(cotizacion.estado or "").upper()
     update_data = obj_in.model_dump(exclude_unset=True)
+    activo_extra = _activo_payload_from_data(update_data)
     moneda_objetivo = str(update_data.get("moneda") or cotizacion.moneda or "CLP").strip().upper()
     uf_objetivo = update_data.get("uf_valor", cotizacion.uf_valor)
     dolar_objetivo = update_data.get("dolar_valor", cotizacion.dolar_valor)
@@ -346,6 +389,19 @@ def actualizar_cotizacion(
     db.add(cotizacion)
     db.flush()
     _aplicar_metricas_persistidas(cotizacion)
+    upsert_activo(
+        db,
+        cotizacion,
+        data={
+            "descripcion": update_data.get("bien_descripcion", cotizacion.bien_descripcion),
+            "categoria": update_data.get("bien_tipo", cotizacion.bien_tipo),
+            "proveedor_id": update_data.get("proveedor_id", cotizacion.proveedor_id),
+            "valor_neto": update_data.get("valor_neto", cotizacion.valor_neto),
+            **activo_extra,
+        },
+    )
+    persistir_amortizacion_oficial(db, cotizacion)
+    sincronizar_checklist_automatico(db, cotizacion)
     db.commit()
     db.refresh(cotizacion)
 
@@ -357,46 +413,16 @@ def actualizar_cotizacion(
 
 
 def _workflow_por_defecto() -> dict[str, Any]:
-    return {
-        "etapa_actual": "ANALISIS_CREDITO",
-        "hitos": {
-            "analisis_credito": False,
-            "orden_compra": False,
-            "contrato_firmado": False,
-            "acta_recepcion": False,
-            "activacion_contable": False,
-        },
-    }
+    return workflow_por_defecto()
 
 
 def obtener_workflow(cotizacion: LeasingFinancieroCotizacion) -> dict[str, Any]:
     raw = cotizacion.workflow_json if isinstance(cotizacion.workflow_json, dict) else {}
-    workflow = _workflow_por_defecto()
-    workflow.update(raw or {})
-    hitos = workflow.get("hitos")
-    if not isinstance(hitos, dict):
-        hitos = {}
-    base_hitos = _workflow_por_defecto()["hitos"]
-    base_hitos.update(hitos)
-    workflow["hitos"] = base_hitos
-    if str(workflow.get("etapa_actual") or "").strip().upper() not in _WORKFLOW_ETAPAS:
-        workflow["etapa_actual"] = "ANALISIS_CREDITO"
-    return workflow
+    return merge_workflow(raw)
 
 
 def _siguiente_etapa(workflow: dict[str, Any]) -> str:
-    hitos = workflow.get("hitos") or {}
-    if not hitos.get("analisis_credito"):
-        return "ANALISIS_CREDITO"
-    if not hitos.get("orden_compra"):
-        return "ORDEN_COMPRA"
-    if not hitos.get("contrato_firmado"):
-        return "CONTRATO_FIRMADO"
-    if not hitos.get("acta_recepcion"):
-        return "ACTA_RECEPCION"
-    if not hitos.get("activacion_contable"):
-        return "ACTIVACION_CONTABLE"
-    return "ACTIVACION_CONTABLE"
+    return _siguiente_etapa_svc(workflow)
 
 
 def _asegurar_analisis_aprobado(cotizacion: LeasingFinancieroCotizacion) -> None:
@@ -454,18 +480,46 @@ def guardar_documento_proceso(
     db.add(doc)
 
     workflow = obtener_workflow(cotizacion)
+    if not cotizacion.checklist_items:
+        inicializar_checklist(db, cotizacion)
     if modulo_norm == "orden_compra":
         workflow["hitos"]["orden_compra"] = True
+        workflow["checklist_documental"]["orden_compra_generada"] = True
+        registrar_orden_compra(db, cotizacion, data=payload or {}, usuario=usuario)
     elif modulo_norm == "contrato":
         workflow["hitos"]["contrato_firmado"] = True
+        workflow["checklist_documental"]["contrato_generado"] = True
+        workflow["checklist_documental"]["contrato_aprobado"] = True
+        from services.leasing_financiero_workflow import marcar_checklist_item
+
+        marcar_checklist_item(cotizacion.checklist_items, "contrato_generado", responsable=usuario)
+        marcar_checklist_item(
+            cotizacion.checklist_items,
+            "contrato_aprobado",
+            estado="APROBADO",
+            aprobado_por=usuario,
+            responsable=usuario,
+        )
+        if payload.get("numero_contrato"):
+            cotizacion.numero_contrato = str(payload.get("numero_contrato"))
     elif modulo_norm == "acta_recepcion":
         workflow["hitos"]["acta_recepcion"] = True
+    elif modulo_norm == "factura_proveedor":
+        workflow["hitos"]["factura_compra"] = True
+        workflow["checklist_documental"]["factura_registrada"] = True
+        registrar_factura_compra(db, cotizacion, data=payload or {}, usuario=usuario)
     workflow["etapa_actual"] = _siguiente_etapa(workflow)
     cotizacion.workflow_json = workflow
+    sincronizar_checklist_automatico(db, cotizacion, usuario=usuario)
     estado_origen = str(cotizacion.estado or "").upper()
     if str(cotizacion.estado or "").upper() in {"COTIZADA", "EN_ANALISIS_CREDITO", "APROBADA", "APROBADA_CONDICIONES"}:
         cotizacion.estado = "EN_FORMALIZACION"
-        if workflow["hitos"]["orden_compra"] and workflow["hitos"]["contrato_firmado"] and workflow["hitos"]["acta_recepcion"]:
+        if (
+            workflow["hitos"].get("orden_compra")
+            and workflow["hitos"].get("contrato_firmado")
+            and workflow["hitos"].get("acta_recepcion")
+            and workflow["hitos"].get("factura_compra")
+        ):
             cotizacion.estado = "DOCUMENTACION_COMPLETA"
             if cotizacion.fecha_formalizacion is None:
                 cotizacion.fecha_formalizacion = date.today()
@@ -499,6 +553,8 @@ def sincronizar_hito_credito(db: Session, *, cotizacion: LeasingFinancieroCotiza
     else:
         cotizacion.estado = "APROBADA_CONDICIONES"
     cotizacion.fecha_aprobacion = date.today()
+    persistir_amortizacion_oficial(db, cotizacion, usuario="sistema", congelar=True)
+    sincronizar_checklist_automatico(db, cotizacion)
     _registrar_historial(
         db,
         cotizacion=cotizacion,
@@ -528,6 +584,18 @@ def activar_flujo_contable(
         raise ValueError("Debe registrar contrato firmado antes de activar.")
     if not workflow["hitos"].get("acta_recepcion"):
         raise ValueError("Debe registrar acta de recepción antes de activar.")
+    if not workflow["hitos"].get("factura_compra") and not getattr(cotizacion, "facturas_compra", None):
+        raise ValueError("Debe registrar factura de compra antes de activar.")
+    if not getattr(cotizacion, "checklist_items", None):
+        inicializar_checklist(db, cotizacion)
+    sincronizar_checklist_automatico(db, cotizacion, usuario=usuario)
+    items = getattr(cotizacion, "checklist_items", None) or []
+    if items:
+        pendientes = checklist_bloqueantes_pendientes(items)
+        criticos = [p for p in pendientes if getattr(p, "codigo", "") not in {"solicitud_pago"}]
+        if criticos:
+            titulos = ", ".join(getattr(p, "titulo", getattr(p, "codigo", "")) for p in criticos[:5])
+            raise ValueError(f"Checklist incompleto. Pendientes bloqueantes: {titulos}")
 
     if not cotizacion.monto_financiado or cotizacion.monto_financiado <= 0:
         raise ValueError("Debe informar monto financiado válido antes de activar.")
@@ -570,8 +638,42 @@ def activar_flujo_contable(
         metadata_json={"asiento_id": asiento_id},
     )
     db.add(cotizacion)
+    sincronizar_checklist_automatico(db, cotizacion, usuario=usuario)
     db.commit()
     return asiento_id
+
+
+def solicitar_pago(
+    db: Session,
+    *,
+    cotizacion: LeasingFinancieroCotizacion,
+    factura_id: int | None = None,
+    usuario: str = "sistema",
+    aprobado_por: str | None = None,
+):
+    if not cotizacion.checklist_items:
+        inicializar_checklist(db, cotizacion)
+    sol = solicitar_pago_proveedor(
+        db,
+        cotizacion,
+        factura_id=factura_id,
+        usuario=usuario,
+        aprobado_por=aprobado_por,
+    )
+    _registrar_historial(
+        db,
+        cotizacion=cotizacion,
+        tipo_evento="SOLICITUD_PAGO",
+        estado_desde=str(cotizacion.estado or "").upper(),
+        estado_hasta=str(cotizacion.estado or "").upper(),
+        comentario=f"Solicitud de pago #{sol.id} por {sol.monto}",
+        usuario=usuario,
+        metadata_json={"solicitud_pago_id": int(sol.id), "factura_id": int(sol.factura_compra_id)},
+    )
+    db.add(cotizacion)
+    db.commit()
+    db.refresh(sol)
+    return sol
 
 
 def get_hub_resumen(db: Session) -> dict[str, Any]:

@@ -1,0 +1,53 @@
+{% extends "layout/base.html" %}
+{% block title %}Factura compra LF{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=cotizacion.id) }}" class="small text-decoration-none">← Volver a operación</a>
+  <h1 class="h5 mt-2 mb-3">Factura de compra — Cotización #{{ cotizacion.id }}</h1>
+  <div class="card border-0 shadow-sm">
+    <div class="card-body">
+      <form method="post" action="{{ request.url_for('lf_doc_factura_save', cotizacion_id=cotizacion.id) }}" class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Proveedor ID</label>
+          <input name="proveedor_id" class="form-control" value="{{ doc.get('proveedor_id', cotizacion.proveedor_id or '') }}" />
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Proveedor nombre (fallback)</label>
+          <input name="proveedor_nombre" class="form-control" value="{{ doc.get('proveedor_nombre', cotizacion.concesionario or '') }}" />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">N° factura</label>
+          <input name="nro_factura" class="form-control" value="{{ doc.get('nro_factura', '') }}" required />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Fecha factura</label>
+          <input type="date" name="fecha_factura" class="form-control" value="{{ doc.get('fecha_factura', '') }}" required />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Neto</label>
+          <input name="neto" class="form-control" value="{{ doc.get('neto', cotizacion.valor_neto or '') }}" required />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">IVA</label>
+          <input name="iva" class="form-control" value="{{ doc.get('iva', '') }}" required />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Total</label>
+          <input name="total" class="form-control" value="{{ doc.get('total', '') }}" required />
+        </div>
+        <div class="col-12">
+          <div class="alert alert-light border small mb-0">
+            Al guardar se registra en CxP (<code>fin.ap_documento</code>) y actualiza el checklist operativo.
+            {% if doc.get('ap_documento_id') %}
+            <br />Documento AP: <strong>#{{ doc.get('ap_documento_id') }}</strong>
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-12 d-grid">
+          <button class="btn btn-primary" type="submit">Registrar factura y contabilizar CxP</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

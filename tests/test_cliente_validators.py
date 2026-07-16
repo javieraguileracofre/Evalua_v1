@@ -56,6 +56,9 @@ def test_cliente_create_valido() -> None:
     c = ClienteCreate(
         rut="11.111.111-1",
         razon_social="Empresa Demo SpA",
+        giro="Servicios informáticos",
+        direccion="Av. Principal 100",
+        comuna="Santiago",
         telefono="912345678",
         email="contacto@empresa.cl",
     )

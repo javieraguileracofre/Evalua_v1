@@ -175,9 +175,34 @@
                      {% if not has_clientes %}disabled{% endif %}>
             </div>
             <div class="col-md-6">
-              <label class="form-label small">Concesionario / proveedor</label>
+              <label class="form-label small">Proveedor (maestro)</label>
+              <select name="proveedor_id" class="form-select" {% if not has_clientes %}disabled{% endif %}>
+                <option value="">— Seleccione —</option>
+                {% for p in proveedores if proveedores is defined %}
+                <option value="{{ p.id }}" {% if c and c.proveedor_id == p.id %}selected{% endif %}>{{ p.razon_social }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Concesionario (texto libre)</label>
               <input type="text" name="concesionario" class="form-control" value="{{ c.concesionario or '' if c else '' }}"
                      {% if not has_clientes %}disabled{% endif %}>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">Marca activo</label>
+              <input type="text" name="activo_marca" class="form-control" value="{{ c.activo.marca if c and c.activo else '' }}" {% if not has_clientes %}disabled{% endif %}>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">Modelo</label>
+              <input type="text" name="activo_modelo" class="form-control" value="{{ c.activo.modelo if c and c.activo else '' }}" {% if not has_clientes %}disabled{% endif %}>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">N° serie</label>
+              <input type="text" name="activo_serie" class="form-control" value="{{ c.activo.numero_serie if c and c.activo else '' }}" {% if not has_clientes %}disabled{% endif %}>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">N° chasis</label>
+              <input type="text" name="activo_chasis" class="form-control" value="{{ c.activo.numero_chasis if c and c.activo else '' }}" {% if not has_clientes %}disabled{% endif %}>
             </div>
             <div class="col-md-6">
               <label class="form-label small">Moneda operación</label>
@@ -239,6 +264,17 @@
                      value="{{ c.tasa or '' if c else '' }}"
                      {% if not has_clientes %}disabled{% endif %}>
               <div class="hint">Acepta decimal (0,12) o porcentaje (12 = 12% anual).</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Costo de fondo (anual)</label>
+              <input type="text" name="tasa_fondeo" class="form-control js-rate js-sim"
+                     value="{{ c.tasa_fondeo or '' if c else '' }}" {% if not has_clientes %}disabled{% endif %}>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Spread / margen</label>
+              <input type="text" name="spread_margen" class="form-control js-rate js-sim"
+                     value="{{ c.spread_margen or '' if c else '' }}" {% if not has_clientes %}disabled{% endif %}>
+              <div class="hint">Tasa cliente = fondo + spread si no indica tasa directa.</div>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Periodos de gracia</label>

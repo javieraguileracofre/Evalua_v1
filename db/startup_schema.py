@@ -53,6 +53,7 @@ _PATCH_124 = _ROOT / "db" / "psql" / "124_lf_cotizaciones_cleanup_borrador_prueb
 _PATCH_125 = _ROOT / "db" / "psql" / "125_credito_riesgo_empresarial.sql"
 _PATCH_126 = _ROOT / "db" / "psql" / "126_auth_usuario_modulos_visibles.sql"
 _PATCH_127 = _ROOT / "db" / "psql" / "127_leasing_financiero_operacion_premium.sql"
+_PATCH_129 = _ROOT / "db" / "psql" / "129_leasing_financiero_operacion_completa.sql"
 _PATCH_128 = _ROOT / "db" / "psql" / "128_auth_submodulos_nav.sql"
 
 
@@ -673,6 +674,15 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
         except Exception as exc:
             logger.warning(
                 "No se pudo aplicar 127_leasing_financiero_operacion_premium.sql. Detalle: %s",
+                exc,
+            )
+    if _PATCH_129.is_file() and _has_table(engine, schema="public", table="comercial_lf_cotizaciones"):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_129)
+            logger.info("Parche aplicado: leasing financiero operación completa (129).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 129_leasing_financiero_operacion_completa.sql. Detalle: %s",
                 exc,
             )
 

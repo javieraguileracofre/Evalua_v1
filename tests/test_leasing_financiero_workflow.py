@@ -68,11 +68,18 @@ class _FakeSession:
         for obj in self._added:
             if isinstance(obj, LeasingFinancieroCotizacion) and getattr(obj, "id", None) is None:
                 setattr(obj, "id", 123)
+                if not hasattr(obj, "amortizacion_lineas"):
+                    obj.amortizacion_lineas = []
+                if not hasattr(obj, "checklist_items"):
+                    obj.checklist_items = []
 
     def commit(self) -> None:
         self.committed = True
 
     def refresh(self, _obj: object) -> None:
+        return
+
+    def delete(self, _obj: object) -> None:
         return
 
     def rollback(self) -> None:
@@ -144,6 +151,13 @@ _LF_FORM_DEFAULTS = {
     "iva_tasa": "",
     "iva_recuperable": True,
     "observaciones": "",
+    "proveedor_id": "",
+    "tasa_fondeo": "",
+    "spread_margen": "",
+    "activo_marca": "",
+    "activo_modelo": "",
+    "activo_serie": "",
+    "activo_chasis": "",
 }
 
 
@@ -290,6 +304,7 @@ def test_activar_flujo_permte_tasa_cero_bloquea_menos_099():
                 "orden_compra": True,
                 "contrato_firmado": True,
                 "acta_recepcion": True,
+                "factura_compra": True,
                 "activacion_contable": False,
             },
             "etapa_actual": "ACTA_RECEPCION",
@@ -304,6 +319,8 @@ def test_activar_flujo_permte_tasa_cero_bloquea_menos_099():
         fecha_activacion=None,
         fecha_vigencia_desde=None,
         numero_operacion=None,
+        facturas_compra=[],
+        checklist_items=[],
     )
 
     with pytest.raises(ValueError):

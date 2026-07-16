@@ -25,8 +25,17 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.base_class import Base
 
 if TYPE_CHECKING:
-    from models.maestros.cliente import Cliente
     from models.comercial.leasing_financiero_credito import LeasingFinancieroAnalisisCredito
+    from models.comercial.leasing_financiero_operacion import (
+        LeasingFinancieroActivo,
+        LeasingFinancieroAmortizacionLinea,
+        LeasingFinancieroChecklistItem,
+        LeasingFinancieroFacturaCompra,
+        LeasingFinancieroOrdenCompra,
+        LeasingFinancieroSolicitudPago,
+    )
+    from models.maestros.cliente import Cliente
+    from models.maestros.proveedor import Proveedor
 
 
 class LeasingFinancieroCotizacion(Base):
@@ -91,8 +100,20 @@ class LeasingFinancieroCotizacion(Base):
     cae_anual_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4))
     metadata_tributaria: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'::jsonb"))
 
+    proveedor_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("proveedor.id", ondelete="SET NULL"), index=True
+    )
+    tasa_fondeo: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    spread_margen: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    condiciones_congeladas: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    escenario_oficial_version: Mapped[int | None] = mapped_column(Integer)
+
     concesionario: Mapped[str | None] = mapped_column(String(255))
     ejecutivo: Mapped[str | None] = mapped_column(String(255))
+
+    proveedor: Mapped["Proveedor | None"] = relationship("Proveedor", lazy="selectin")
 
     fecha_cotizacion: Mapped[date] = mapped_column(
         Date,
@@ -139,6 +160,45 @@ class LeasingFinancieroCotizacion(Base):
         "LeasingFinancieroHistorial",
         cascade="all, delete-orphan",
         order_by="LeasingFinancieroHistorial.created_at",
+        lazy="selectin",
+    )
+    activo: Mapped["LeasingFinancieroActivo | None"] = relationship(
+        "LeasingFinancieroActivo",
+        back_populates="cotizacion",
+        uselist=False,
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    amortizacion_lineas: Mapped[list["LeasingFinancieroAmortizacionLinea"]] = relationship(
+        "LeasingFinancieroAmortizacionLinea",
+        back_populates="cotizacion",
+        cascade="all, delete-orphan",
+        order_by="LeasingFinancieroAmortizacionLinea.numero_cuota",
+        lazy="selectin",
+    )
+    ordenes_compra: Mapped[list["LeasingFinancieroOrdenCompra"]] = relationship(
+        "LeasingFinancieroOrdenCompra",
+        back_populates="cotizacion",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    facturas_compra: Mapped[list["LeasingFinancieroFacturaCompra"]] = relationship(
+        "LeasingFinancieroFacturaCompra",
+        back_populates="cotizacion",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    solicitudes_pago: Mapped[list["LeasingFinancieroSolicitudPago"]] = relationship(
+        "LeasingFinancieroSolicitudPago",
+        back_populates="cotizacion",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    checklist_items: Mapped[list["LeasingFinancieroChecklistItem"]] = relationship(
+        "LeasingFinancieroChecklistItem",
+        back_populates="cotizacion",
+        cascade="all, delete-orphan",
+        order_by="LeasingFinancieroChecklistItem.orden",
         lazy="selectin",
     )
 

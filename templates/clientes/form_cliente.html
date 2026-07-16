@@ -140,6 +140,28 @@
           {% endif %}
         </div>
 
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Tipo persona <span class="text-danger">*</span></label>
+          <select name="tipo_persona" class="form-select" required>
+            {% set tp = (cliente.tipo_persona if cliente else 'JURIDICA')|upper %}
+            <option value="NATURAL" {% if tp == 'NATURAL' %}selected{% endif %}>Persona natural</option>
+            <option value="JURIDICA" {% if tp == 'JURIDICA' %}selected{% endif %}>Persona jurídica</option>
+          </select>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Nombres (PN)</label>
+          <input type="text" name="nombres" class="form-control" value="{{ cliente.nombres if cliente else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Apellido paterno (PN)</label>
+          <input type="text" name="apellido_paterno" class="form-control" value="{{ cliente.apellido_paterno if cliente else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Apellido materno (PN)</label>
+          <input type="text" name="apellido_materno" class="form-control" value="{{ cliente.apellido_materno if cliente else '' }}">
+        </div>
+
         <div class="col-md-8">
           <label class="form-label small fw-semibold">Razón social <span class="text-danger">*</span></label>
           <input
@@ -220,7 +242,20 @@
         </div>
 
         <div class="col-md-3">
-          <label class="form-label small fw-semibold">Teléfono</label>
+          <label class="form-label small fw-semibold">Región</label>
+          <input type="text" name="region" class="form-control" value="{{ cliente.region if cliente else '' }}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Representante legal (PJ)</label>
+          <input type="text" name="representante_legal_nombre" class="form-control" value="{{ cliente.representante_legal_nombre if cliente else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">RUT representante</label>
+          <input type="text" name="representante_legal_rut" class="form-control" value="{{ cliente.representante_legal_rut if cliente else '' }}">
+        </div>
+
+        <div class="col-md-3">
           <input
             type="tel"
             name="telefono"

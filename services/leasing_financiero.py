@@ -472,6 +472,13 @@ def simular_cotizacion(data: LeasingSimulacionInput) -> LeasingSimulacionResumen
 
 def aplicar_parametros_financieros(data: dict) -> dict:
     """Normaliza tasa y deriva monto financiado antes de persistir."""
+    if "tasa_fondeo" in data and data["tasa_fondeo"] is not None:
+        data["tasa_fondeo"] = normalizar_tasa_anual(data["tasa_fondeo"])
+    if "spread_margen" in data and data["spread_margen"] is not None:
+        data["spread_margen"] = normalizar_tasa_anual(data["spread_margen"])
+    if data.get("tasa_fondeo") is not None and data.get("spread_margen") is not None:
+        if data.get("tasa") is None:
+            data["tasa"] = _q4(Decimal(str(data["tasa_fondeo"])) + Decimal(str(data["spread_margen"])))
     if "tasa" in data and data["tasa"] is not None:
         data["tasa"] = normalizar_tasa_anual(data["tasa"])
     moneda = str(data.get("moneda") or "CLP").strip().upper()

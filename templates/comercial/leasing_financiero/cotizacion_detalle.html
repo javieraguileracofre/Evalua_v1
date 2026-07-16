@@ -306,7 +306,30 @@
             <a href="{{ request.url_for('lf_doc_oc', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Orden de compra</a>
             <a href="{{ request.url_for('lf_doc_contrato', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Contrato firmado</a>
             <a href="{{ request.url_for('lf_doc_acta', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Acta de recepción</a>
+            <a href="{{ request.url_for('lf_doc_factura', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Factura de compra</a>
           </div>
+        </div>
+      </div>
+
+      <div class="card eva-card shadow-sm border-0 mb-3">
+        <div class="card-body">
+          <h2 class="h6 fw-semibold mb-2">Checklist operacional</h2>
+          <ul class="list-group list-group-flush small">
+            {% for item in checklist %}
+            <li class="list-group-item d-flex justify-content-between align-items-start px-0">
+              <div>
+                <strong>{{ item.titulo }}</strong>
+                <div class="text-muted">{{ item.responsable or '—' }}</div>
+              </div>
+              <span class="eva-badge {% if item.estado in ['COMPLETADO','APROBADO'] %}eva-badge--ok{% else %}eva-badge--warn{% endif %}">{{ item.estado }}</span>
+            </li>
+            {% else %}
+            <li class="list-group-item px-0 text-muted">Sin checklist.</li>
+            {% endfor %}
+          </ul>
+          <form method="post" action="{{ request.url_for('lf_cotizacion_solicitar_pago', cotizacion_id=cotizacion.id) }}" class="mt-2">
+            <button class="btn btn-sm btn-outline-success w-100" type="submit">Solicitar pago proveedor</button>
+          </form>
         </div>
       </div>
 

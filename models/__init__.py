@@ -14,6 +14,7 @@ from .auth.modulo_visible import UsuarioModuloVisible
 # ============================================================
 
 from .maestros.cliente import Cliente
+from .maestros.cliente_extendido import ClienteAuditoria, ClienteDireccion
 from .maestros.proveedor import (
     Proveedor,
     ProveedorBanco,
@@ -50,6 +51,14 @@ from .comercial.credito_riesgo import (
 )
 from .comercial.leasing_financiero_credito import LeasingFinancieroAnalisisCredito
 from .comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion, LeasingFinancieroProyeccionLinea
+from .comercial.leasing_financiero_operacion import (
+    LeasingFinancieroActivo,
+    LeasingFinancieroAmortizacionLinea,
+    LeasingFinancieroChecklistItem,
+    LeasingFinancieroFacturaCompra,
+    LeasingFinancieroOrdenCompra,
+    LeasingFinancieroSolicitudPago,
+)
 from .comercial.nota_venta import NotaVenta, NotaVentaDetalle
 from .comercial.orden_servicio import OrdenServicio
 from .comercial.orden_servicio_linea import OrdenServicioCotizacionLinea
@@ -153,6 +162,8 @@ __all__ = [
     "Usuario",
     "UsuarioModuloVisible",
     "Cliente",
+    "ClienteAuditoria",
+    "ClienteDireccion",
     "Proveedor",
     "ProveedorBanco",
     "ProveedorContacto",
@@ -162,6 +173,12 @@ __all__ = [
     "LeasingFinancieroAnalisisCredito",
     "LeasingFinancieroCotizacion",
     "LeasingFinancieroProyeccionLinea",
+    "LeasingFinancieroActivo",
+    "LeasingFinancieroAmortizacionLinea",
+    "LeasingFinancieroChecklistItem",
+    "LeasingFinancieroFacturaCompra",
+    "LeasingFinancieroOrdenCompra",
+    "LeasingFinancieroSolicitudPago",
     "CreditoPolitica",
     "CreditoSolicitud",
     "CreditoEvaluacion",
