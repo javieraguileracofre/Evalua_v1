@@ -484,7 +484,7 @@ def aplicar_parametros_financieros(data: dict) -> dict:
     moneda = str(data.get("moneda") or "CLP").strip().upper()
     monto_fin = data.get("monto_financiado")
     valor_neto = data.get("valor_neto")
-    if (monto_fin is None or monto_fin <= 0) and valor_neto and valor_neto > 0:
+    if valor_neto and valor_neto > 0:
         monto_calc, _, _, _ = calcular_monto_financiado(
             moneda=moneda,
             valor_neto=valor_neto,
@@ -500,7 +500,16 @@ def aplicar_parametros_financieros(data: dict) -> dict:
             financia_comision=bool(data.get("financia_comision")),
             gastos_operacionales=data.get("gastos_operacionales"),
         )
-        data["monto_financiado"] = monto_calc
+        # Recalcular si no hay monto, es <= 0, o es inconsistente vs neto
+        # (p.ej. parseo JS Number("250.000")==250 con neto 25.000.000).
+        inconsistente = (
+            monto_fin is not None
+            and monto_fin > 0
+            and monto_calc > 0
+            and Decimal(str(monto_fin)) < (Decimal(str(valor_neto)) * Decimal("0.001"))
+        )
+        if monto_fin is None or monto_fin <= 0 or inconsistente:
+            data["monto_financiado"] = monto_calc
     if data.get("monto") is None and data.get("monto_financiado"):
         data["monto"] = data["monto_financiado"]
     return data

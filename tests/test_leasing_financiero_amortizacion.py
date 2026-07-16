@@ -114,6 +114,23 @@ def test_calcular_monto_financiado_con_pie_y_seguro():
     assert monto == Decimal("9540000.00")
 
 
+def test_calcular_monto_financiado_neto_25m_pie_15pct():
+    """Caso UI: neto 25.000.000 + pie 15% → financiado 21.250.000."""
+    monto, pie, _, _ = calcular_monto_financiado(
+        moneda="CLP",
+        valor_neto=Decimal("25000000"),
+        pago_inicial_tipo="PORCENTAJE",
+        pago_inicial_valor=Decimal("15"),
+        financia_seguro=False,
+        seguro_monto_uf=None,
+        otros_montos_pesos=None,
+        uf_valor=None,
+        dolar_valor=None,
+    )
+    assert pie == Decimal("3750000.00")
+    assert monto == Decimal("21250000.00")
+
+
 def test_simular_cotizacion_renta_positiva():
     res = simular_cotizacion(
         LeasingSimulacionInput(

@@ -242,11 +242,30 @@ def test_parse_decimal_money_thousands_dot():
     assert lf_routes._parse_decimal("228.500", money=True) == Decimal("228500")
     assert lf_routes._parse_decimal("1.234.567,89", money=True) == Decimal("1234567.89")
     assert lf_routes._parse_decimal("1,234,567.89", money=True) == Decimal("1234567.89")
+    assert lf_routes._parse_decimal("25.000.000", money=True) == Decimal("25000000")
 
 
 def test_parse_decimal_rate_keeps_decimal():
     assert lf_routes._parse_decimal("0,1200", money=False) == Decimal("0.1200")
     assert lf_routes._parse_decimal("228.500", money=False) == Decimal("228.500")
+
+
+def test_aplicar_parametros_corrige_monto_inconsistente():
+    """Regresión: Number('250.000')===250 dejaba monto_financiado=250 con neto 25M."""
+    from services.leasing_financiero import aplicar_parametros_financieros
+
+    data = aplicar_parametros_financieros(
+        {
+            "moneda": "CLP",
+            "valor_neto": Decimal("25000000"),
+            "pago_inicial_tipo": "PORCENTAJE",
+            "pago_inicial_valor": Decimal("15"),
+            "monto_financiado": Decimal("250"),
+            "financia_seguro": False,
+        }
+    )
+    assert data["monto_financiado"] == Decimal("21250000.00")
+    assert data["monto"] == Decimal("21250000.00")
 
 
 def test_hub_resumen_pipeline_y_funnel():

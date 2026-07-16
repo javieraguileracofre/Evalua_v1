@@ -9,11 +9,17 @@
     let s = (v || "").toString().trim();
     if (!s) return "";
     s = s.replace(/\s+/g, "");
+    // es-CL con decimales: 1.234.567,89
     if (s.includes(",") && s.includes(".")) {
       if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
       else s = s.replace(/,/g, "");
     } else if (s.includes(",")) {
+      // 1234,56 o 1.234,56 (si quedara algún punto)
       s = s.replace(/\./g, "").replace(",", ".");
+    } else if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+      // Miles chilenos sin decimales: 25.000.000 → 25000000
+      // Evita Number("250.000") === 250 (bug clásico JS)
+      s = s.replace(/\./g, "");
     }
     return s.replace(/[^\d.-]/g, "");
   }
@@ -111,6 +117,7 @@
 
     function onFocusUnformat(e) {
       const raw = normalizeNumericString(e.target.value);
+      // Edición en es-CL: decimal con coma (25000000 o 25000000,50)
       e.target.value = raw ? raw.replace(".", ",") : "";
     }
 
@@ -350,9 +357,8 @@
       });
     }
 
-    if (isEdit && montoFinInput && parseNum(montoFinInput.value)) {
-      montoFinManual = true;
-    }
+    // No marcar monto como manual solo por editar: permite recálculo al cambiar neto/pie.
+    // El flag se activa únicamente si el usuario escribe en #monto_financiado.
 
     if (monedaSelect && monedaDefault) monedaSelect.value = monedaDefault;
     setFxUx();
