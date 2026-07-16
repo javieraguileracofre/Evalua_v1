@@ -268,6 +268,40 @@ def test_aplicar_parametros_corrige_monto_inconsistente():
     assert data["monto"] == Decimal("21250000.00")
 
 
+def test_metadata_tributaria_es_json_serializable():
+    """Regresión: Decimal en metadata_tributaria rompía el flush (JSON encoder)."""
+    import json
+
+    cot = LeasingFinancieroCotizacion(
+        cliente_id=1,
+        moneda="CLP",
+        valor_neto=Decimal("25000000"),
+        monto_financiado=Decimal("21250000"),
+        tasa=Decimal("0.18"),
+        plazo=36,
+        periodos_gracia=2,
+        periodicidad="MENSUAL",
+        iva_aplica=True,
+        iva_tasa=Decimal("0.19"),
+        opcion_compra=Decimal("150000"),
+        estado="BORRADOR",
+    )
+    crud_lf._aplicar_metricas_persistidas(cot)
+    assert cot.metadata_tributaria
+    json.dumps(cot.metadata_tributaria)  # no debe lanzar TypeError
+
+
+def test_json_safe_convierte_decimal_y_fechas():
+    import json
+
+    out = crud_lf._json_safe(
+        {"monto": Decimal("100.50"), "fecha": date(2026, 7, 16), "items": [Decimal("1")], "ok": True}
+    )
+    json.dumps(out)
+    assert out["monto"] == "100.50"
+    assert out["fecha"] == "2026-07-16"
+
+
 def test_hub_resumen_pipeline_y_funnel():
     c1 = SimpleNamespace(
         estado="EN_ANALISIS_CREDITO",

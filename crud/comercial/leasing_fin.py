@@ -52,6 +52,19 @@ _ESTADOS_APROBACION_CREDITO = {"APROBADO", "APROBADA_CONDICIONES"}
 _CUENTAS_CONTABLES_REQUERIDAS = ("113701", "210701", "210702", "410701", "110201")
 
 
+def _json_safe(value: Any) -> Any:
+    """Convierte Decimal/fechas a tipos serializables para columnas JSON."""
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def _aplicar_metricas_persistidas(cotizacion: LeasingFinancieroCotizacion) -> None:
     """Calcula TIR/CAE y desglose tributario para persistir en la cotización."""
     try:
@@ -90,7 +103,7 @@ def _aplicar_metricas_persistidas(cotizacion: LeasingFinancieroCotizacion) -> No
     if resumen.cae_anual_pct is not None:
         cotizacion.cae_anual_pct = resumen.cae_anual_pct
     if resumen.desglose_tributario:
-        cotizacion.metadata_tributaria = resumen.desglose_tributario
+        cotizacion.metadata_tributaria = _json_safe(resumen.desglose_tributario)
 
 
 def cambiar_estado_cotizacion(
@@ -224,7 +237,7 @@ def _registrar_historial(
             estado_hasta=estado_hasta,
             comentario=comentario,
             usuario=(usuario or "sistema").strip() or "sistema",
-            metadata_json=metadata_json or {},
+            metadata_json=_json_safe(metadata_json or {}),
         )
     )
 
@@ -474,7 +487,7 @@ def guardar_documento_proceso(
         modulo=modulo_norm,
         version_n=version_n,
         estado=str((payload or {}).get("estado") or "RECIBIDO").upper(),
-        payload_json=payload or {},
+        payload_json=_json_safe(payload or {}),
         usuario=(usuario or "sistema").strip() or "sistema",
     )
     db.add(doc)
