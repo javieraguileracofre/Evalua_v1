@@ -11,11 +11,14 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from crud.comercial import leasing_fin as crud_lf
 from crud.comercial.leasing_fin import _asegurar_analisis_aprobado, _siguiente_etapa
+from crud.comercial.leasing_fin_operacion import inicializar_checklist
 from models.comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion, LeasingFinancieroHistorial
+from models.comercial.leasing_financiero_operacion import LeasingFinancieroChecklistItem
 from routes.ui import leasing_financiero as lf_routes
 from schemas.comercial.leasing_credito import LeasingCreditoInput
 from schemas.comercial.leasing_cotizacion import LeasingCotizacionCreate
 from services.leasing_credito_scoring import evaluar_credito
+from services.leasing_financiero_workflow import CHECKLIST_DEFINICION
 
 
 def test_scoring_aprobado_condiciones_bucket():
@@ -84,6 +87,19 @@ class _FakeSession:
 
     def rollback(self) -> None:
         self.rolled_back = True
+
+
+def test_inicializar_checklist_es_idempotente_en_misma_sesion():
+    db = _FakeSession()
+    cot = SimpleNamespace(id=38, checklist_items=[])
+
+    inicializar_checklist(db, cot)  # type: ignore[arg-type]
+    inicializar_checklist(db, cot)  # type: ignore[arg-type]
+
+    creados = [x for x in db._added if isinstance(x, LeasingFinancieroChecklistItem)]
+    assert len(creados) == len(CHECKLIST_DEFINICION)
+    assert len({x.codigo for x in creados}) == len(CHECKLIST_DEFINICION)
+    assert cot.checklist_items == creados
 
 
 def test_crear_cotizacion_flush_before_historial(monkeypatch: pytest.MonkeyPatch):

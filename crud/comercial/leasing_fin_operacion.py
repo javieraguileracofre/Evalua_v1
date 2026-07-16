@@ -33,22 +33,45 @@ from services.leasing_financiero_workflow import (
 
 
 def inicializar_checklist(db: Session, cotizacion: LeasingFinancieroCotizacion) -> None:
-    if getattr(cotizacion, "checklist_items", None):
-        return
+    items = getattr(cotizacion, "checklist_items", None)
     if not hasattr(db, "add"):
         return
-    for d in CHECKLIST_DEFINICION:
-        db.add(
-            LeasingFinancieroChecklistItem(
-                cotizacion_id=int(cotizacion.id),
-                codigo=d["codigo"],
-                titulo=d["titulo"],
-                es_automatico=bool(d.get("automatico", False)),
-                es_bloqueante=bool(d.get("bloqueante", True)),
-                orden=int(d.get("orden", 0)),
-                estado="PENDIENTE",
+    existentes = {str(item.codigo) for item in (items or [])}
+    # Defensa para objetos desacoplados o relaciones desactualizadas: consultar
+    # los códigos persistidos antes de insertar. También permite agregar nuevos
+    # ítems de definición a operaciones antiguas sin duplicar los existentes.
+    if hasattr(db, "scalars") and getattr(cotizacion, "id", None) is not None:
+        persistidos = list(
+            db.scalars(
+                select(LeasingFinancieroChecklistItem).where(
+                    LeasingFinancieroChecklistItem.cotizacion_id == int(cotizacion.id)
+                )
             )
         )
+        for item in persistidos:
+            if str(item.codigo) not in existentes:
+                existentes.add(str(item.codigo))
+                if items is not None:
+                    items.append(item)
+    for d in CHECKLIST_DEFINICION:
+        if d["codigo"] in existentes:
+            continue
+        item = LeasingFinancieroChecklistItem(
+            cotizacion_id=int(cotizacion.id),
+            codigo=d["codigo"],
+            titulo=d["titulo"],
+            es_automatico=bool(d.get("automatico", False)),
+            es_bloqueante=bool(d.get("bloqueante", True)),
+            orden=int(d.get("orden", 0)),
+            estado="PENDIENTE",
+        )
+        # Mantener sincronizada la colección ORM. Si solo se usa db.add(),
+        # una relación ya cargada como [] sigue vacía después del flush y
+        # sincronizar_checklist_automatico intenta insertar todo por segunda vez.
+        if items is not None:
+            items.append(item)
+        db.add(item)
+        existentes.add(str(d["codigo"]))
     db.flush()
 
 
