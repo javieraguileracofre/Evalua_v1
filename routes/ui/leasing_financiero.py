@@ -6,11 +6,13 @@ import logging
 import re
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
+from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -20,10 +22,11 @@ from core.rbac import (
     guard_leasing_fin_consulta,
     guard_leasing_fin_mutacion,
 )
-from core.paths import TEMPLATES_DIR
+from core.paths import PROJECT_ROOT, TEMPLATES_DIR
 from crud.comercial import leasing_fin as crud_lf
 from crud.maestros import cliente as crud_cliente
 from models.maestros.proveedor import Proveedor
+from schemas.maestros.cliente import ClienteCreate
 from sqlalchemy import select
 from db.session import get_db
 from schemas.comercial.leasing_amortizacion import AmortizacionCuota
@@ -38,6 +41,10 @@ from schemas.comercial.leasing_cotizacion import (
 from services import leasing_financiero
 from services.indicadores_mercado import obtener_uf_dolar_hoy
 from services.leasing_financiero_export import build_amortizacion_excel, build_amortizacion_pdf
+from services.leasing_financiero_cotizacion_pdf import build_cotizador_pdf
+from services.comunicaciones.email_service import email_service
+from services.leasing_financiero import calcular_tabla_amortizacion
+from services.leasing_financiero_workflow import merge_workflow, puede_transicionar
 
 router = APIRouter(prefix="/comercial/leasing/cotizaciones", tags=["Comercial · Leasing financiero"])
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -162,6 +169,10 @@ def _cotizacion_a_simulacion(cotizacion) -> LeasingSimulacionInput:
         comision_apertura_tipo=getattr(cotizacion, "comision_apertura_tipo", None),
         financia_comision=bool(getattr(cotizacion, "financia_comision", False)),
         gastos_operacionales=getattr(cotizacion, "gastos_operacionales", None),
+        gps_monto=getattr(cotizacion, "gps_monto", None),
+        financia_gps=bool(getattr(cotizacion, "financia_gps", False)),
+        gastos_administrativos=getattr(cotizacion, "gastos_administrativos", None),
+        financia_gastos_admin=bool(getattr(cotizacion, "financia_gastos_admin", False)),
         iva_aplica=bool(getattr(cotizacion, "iva_aplica", False)),
         iva_tasa=getattr(cotizacion, "iva_tasa", None),
         iva_recuperable=bool(getattr(cotizacion, "iva_recuperable", True)),
@@ -437,6 +448,10 @@ def lf_cotizacion_nueva_post(
     comision_apertura_tipo: str = Form(""),
     financia_comision: object = Form(False),
     gastos_operacionales: str = Form(""),
+    gps_monto: str = Form(""),
+    financia_gps: object = Form(False),
+    gastos_administrativos: str = Form(""),
+    financia_gastos_admin: object = Form(False),
     iva_aplica: object = Form(False),
     iva_tasa: str = Form(""),
     iva_recuperable: object = Form(True),
@@ -483,6 +498,10 @@ def lf_cotizacion_nueva_post(
         comision_apertura_tipo=(comision_apertura_tipo or None),
         financia_comision=_parse_bool(financia_comision),
         gastos_operacionales=_parse_decimal(gastos_operacionales, money=True),
+        gps_monto=_parse_decimal(gps_monto, money=True),
+        financia_gps=_parse_bool(financia_gps),
+        gastos_administrativos=_parse_decimal(gastos_administrativos, money=True),
+        financia_gastos_admin=_parse_bool(financia_gastos_admin),
         iva_aplica=_parse_bool(iva_aplica),
         iva_tasa=_parse_decimal(iva_tasa),
         iva_recuperable=_parse_bool(iva_recuperable),
@@ -577,6 +596,10 @@ def lf_cotizacion_nueva_post_cliente(
     comision_apertura_tipo: str = Form(""),
     financia_comision: object = Form(False),
     gastos_operacionales: str = Form(""),
+    gps_monto: str = Form(""),
+    financia_gps: object = Form(False),
+    gastos_administrativos: str = Form(""),
+    financia_gastos_admin: object = Form(False),
     iva_aplica: object = Form(False),
     iva_tasa: str = Form(""),
     iva_recuperable: object = Form(True),
@@ -622,6 +645,10 @@ def lf_cotizacion_nueva_post_cliente(
         comision_apertura_tipo=comision_apertura_tipo,
         financia_comision=financia_comision,
         gastos_operacionales=gastos_operacionales,
+        gps_monto=gps_monto,
+        financia_gps=financia_gps,
+        gastos_administrativos=gastos_administrativos,
+        financia_gastos_admin=financia_gastos_admin,
         iva_aplica=iva_aplica,
         iva_tasa=iva_tasa,
         iva_recuperable=iva_recuperable,
@@ -1040,6 +1067,240 @@ def lf_cotizacion_detalle(
     )
 
 
+@router.post("/{cotizacion_id}/enviar-credito", name="lf_cotizacion_enviar_credito")
+def lf_cotizacion_enviar_credito(
+    request: Request,
+    cotizacion_id: int,
+    comentario: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_leasing_fin_mutacion(request)) is not None:
+        return redir
+    cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
+    if not cotizacion:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    try:
+        crud_lf.enviar_a_analisis_credito(
+            db,
+            cotizacion=cotizacion,
+            usuario=_usuario_ui(request),
+            comentario=(comentario or "").strip() or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(
+        url=str(request.url_for("lf_credito_form", cotizacion_id=cotizacion_id)) + "?msg=enviada_credito",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.get("/{cotizacion_id}/pdf", name="lf_cotizacion_pdf")
+def lf_cotizacion_pdf(
+    request: Request,
+    cotizacion_id: int,
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_leasing_fin_consulta(request)) is not None:
+        return redir
+    cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
+    if not cotizacion:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    try:
+        resumen = leasing_financiero.simular_cotizacion(_cotizacion_a_simulacion(cotizacion))
+        tabla = leasing_financiero.calcular_tabla_amortizacion(cotizacion)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    pdf = build_cotizador_pdf(
+        cotizacion=cotizacion,
+        resumen=resumen,
+        tabla=tabla,
+        condiciones=getattr(cotizacion, "condiciones_aceptadas", None) or None,
+    )
+    return StreamingResponse(
+        BytesIO(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="cotizacion_lf_{cotizacion_id}.pdf"'},
+    )
+
+
+@router.post("/{cotizacion_id}/aceptar-cliente", name="lf_cotizacion_aceptar_cliente")
+def lf_cotizacion_aceptar_cliente(
+    request: Request,
+    cotizacion_id: int,
+    condiciones_aceptadas: str = Form(""),
+    email_destino: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_leasing_fin_mutacion(request)) is not None:
+        return redir
+    cotizacion = crud_lf.get_cotizacion(db, cotizacion_id)
+    if not cotizacion:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+
+    email_to = (email_destino or "").strip()
+    if not email_to:
+        cli = cotizacion.cliente
+        email_to = str(getattr(cli, "email", None) or "").strip()
+    if not email_to:
+        raise HTTPException(
+            status_code=400,
+            detail="Email del cliente obligatorio para aceptar. Indique un destinatario o complete el email en la ficha del cliente.",
+        )
+
+    try:
+        resumen = leasing_financiero.simular_cotizacion(_cotizacion_a_simulacion(cotizacion))
+        tabla = leasing_financiero.calcular_tabla_amortizacion(cotizacion)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    analisis = cotizacion.analisis_credito
+    snapshot = {
+        "cotizacion_id": int(cotizacion.id),
+        "estado_antes": str(cotizacion.estado or ""),
+        "monto_financiado": float(resumen.monto_financiado or 0),
+        "renta_mensual": float(resumen.renta_mensual or 0) if resumen.renta_mensual is not None else None,
+        "plazo": cotizacion.plazo,
+        "tasa": float(cotizacion.tasa) if cotizacion.tasa is not None else None,
+        "pago_inicial": float(resumen.pago_inicial or 0),
+        "gps_financiado": float(getattr(resumen, "gps_financiado", 0) or 0),
+        "gastos_admin_financiados": float(getattr(resumen, "gastos_admin_financiados", 0) or 0),
+        "recomendacion_credito": getattr(analisis, "recomendacion", None) if analisis else None,
+        "score_total": float(analisis.score_total) if analisis and analisis.score_total is not None else None,
+        "rating": getattr(analisis, "rating", None) if analisis else None,
+    }
+    pdf = build_cotizador_pdf(
+        cotizacion=cotizacion,
+        resumen=resumen,
+        tabla=tabla,
+        condiciones=condiciones_aceptadas,
+    )
+
+    storage_dir = PROJECT_ROOT / "storage" / "leasing_credito" / str(int(cotizacion.id))
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    pdf_name = f"aceptacion_cotizacion_{cotizacion.id}.pdf"
+    pdf_abs = storage_dir / pdf_name
+    pdf_abs.write_bytes(pdf)
+    pdf_rel = str(pdf_abs.relative_to(PROJECT_ROOT)).replace("\\", "/")
+
+    usuario = _usuario_ui(request)
+    cli = cotizacion.cliente
+    html_body = f"""
+    <p>Estimado(a) cliente,</p>
+    <p>Se confirma la <strong>aceptación de las condiciones de crédito</strong>
+    de la cotización de leasing financiero <strong>#{cotizacion.id}</strong>.</p>
+    <ul>
+      <li>Cliente: {getattr(cli, 'razon_social', '') or '—'}</li>
+      <li>Monto financiado: {float(resumen.monto_financiado or 0):,.0f}</li>
+      <li>Cuota estimada: {float(resumen.renta_mensual or 0):,.0f}</li>
+      <li>Plazo: {cotizacion.plazo or '—'} meses</li>
+    </ul>
+    <p><strong>Condiciones aceptadas:</strong></p>
+    <pre style="white-space:pre-wrap;font-family:inherit;">{condiciones_aceptadas}</pre>
+    <p>Adjuntamos el PDF con el resumen de la operación y la tabla de amortización.</p>
+    <p>EvaluaERP · Leasing Financiero</p>
+    """.replace(",", ".")
+
+    try:
+        email_service.send_and_log(
+            db=db,
+            modulo="LEASING_FINANCIERO",
+            evento="ACEPTACION_CLIENTE",
+            to=email_to,
+            subject=f"Aceptación condiciones crédito · Cotización LF #{cotizacion.id}",
+            html_body=html_body,
+            cliente_id=int(cotizacion.cliente_id),
+            meta={"cotizacion_id": int(cotizacion.id), "pdf": pdf_rel},
+            attachments=[(pdf_name, pdf, "application/pdf")],
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"No se pudo enviar el email obligatorio de aceptación: {exc}. Corrija SMTP o el destinatario e intente de nuevo.",
+        ) from exc
+
+    try:
+        cotizacion = crud_lf.aceptar_condiciones_cliente(
+            db,
+            cotizacion=cotizacion,
+            condiciones=condiciones_aceptadas,
+            usuario=usuario,
+            email_destino=email_to,
+            pdf_bytes=pdf,
+            snapshot=snapshot,
+            pdf_rel_path=pdf_rel,
+        )
+        crud_lf.marcar_email_aceptacion_enviado(db, cotizacion=cotizacion, destino=email_to)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return RedirectResponse(
+        url=str(request.url_for("lf_cotizacion_detalle", cotizacion_id=cotizacion_id)) + "?msg=aceptacion_ok",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.get("/api/cliente-por-rut", name="lf_api_cliente_por_rut")
+def lf_api_cliente_por_rut(request: Request, rut: str = "", db: Session = Depends(get_db)):
+    if (redir := guard_leasing_fin_consulta(request)) is not None:
+        return redir
+    if not str(rut or "").strip():
+        raise HTTPException(status_code=400, detail="RUT requerido")
+    try:
+        cli = crud_cliente.get_cliente_por_rut(db, rut)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not cli:
+        return JSONResponse({"exists": False, "rut": rut})
+    return JSONResponse(
+        {
+            "exists": True,
+            "id": int(cli.id),
+            "rut": cli.rut,
+            "razon_social": cli.razon_social,
+            "email": cli.email,
+            "tipo_persona": getattr(cli, "tipo_persona", None),
+            "activo": bool(cli.activo),
+        }
+    )
+
+
+@router.post("/api/cliente-rapido", name="lf_api_cliente_rapido")
+def lf_api_cliente_rapido(
+    request: Request,
+    rut: str = Form(...),
+    razon_social: str = Form(...),
+    tipo_persona: str = Form("JURIDICA"),
+    email: str = Form(""),
+    telefono: str = Form(""),
+    direccion: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    if (redir := guard_leasing_fin_mutacion(request)) is not None:
+        return redir
+    try:
+        payload = ClienteCreate(
+            rut=rut,
+            razon_social=razon_social,
+            tipo_persona=(tipo_persona or "JURIDICA").strip().upper(),
+            email=(email or None) or None,
+            telefono=(telefono or None) or None,
+            direccion=(direccion or None) or None,
+            activo=True,
+        )
+        cli = crud_cliente.crear_cliente(db, payload, usuario=_usuario_ui(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(
+        {
+            "ok": True,
+            "id": int(cli.id),
+            "rut": cli.rut,
+            "razon_social": cli.razon_social,
+            "email": cli.email,
+        }
+    )
+
+
 @router.post("/{cotizacion_id}/workflow/sync-credito", name="lf_cotizacion_workflow_sync_credito")
 def lf_cotizacion_workflow_sync_credito(
     request: Request,
@@ -1233,6 +1494,10 @@ def lf_cotizacion_editar_post(
     comision_apertura_tipo: str = Form(""),
     financia_comision: object = Form(False),
     gastos_operacionales: str = Form(""),
+    gps_monto: str = Form(""),
+    financia_gps: object = Form(False),
+    gastos_administrativos: str = Form(""),
+    financia_gastos_admin: object = Form(False),
     iva_aplica: object = Form(False),
     iva_tasa: str = Form(""),
     iva_recuperable: object = Form(True),
@@ -1280,6 +1545,10 @@ def lf_cotizacion_editar_post(
         comision_apertura_tipo=(comision_apertura_tipo or None),
         financia_comision=_parse_bool(financia_comision),
         gastos_operacionales=_parse_decimal(gastos_operacionales, money=True),
+        gps_monto=_parse_decimal(gps_monto, money=True),
+        financia_gps=_parse_bool(financia_gps),
+        gastos_administrativos=_parse_decimal(gastos_administrativos, money=True),
+        financia_gastos_admin=_parse_bool(financia_gastos_admin),
         iva_aplica=_parse_bool(iva_aplica),
         iva_tasa=_parse_decimal(iva_tasa),
         iva_recuperable=_parse_bool(iva_recuperable),

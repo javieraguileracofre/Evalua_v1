@@ -72,12 +72,10 @@
   {% if not has_clientes %}
     <div class="alert alert-eva mb-3">
       <div class="d-flex align-items-start gap-2 p-2">
-        <i class="bi bi-exclamation-triangle mt-1"></i>
+        <i class="bi bi-info-circle mt-1"></i>
         <div>
-          <div class="fw-semibold">No hay clientes registrados</div>
-          <div class="small">
-            Cree al menos un cliente en <a href="{{ request.url_for('clientes_list') }}">Clientes</a>.
-          </div>
+          <div class="fw-semibold">Puede crear el cliente aquí</div>
+          <div class="small">Busque por RUT; si no existe, use “Crear cliente rápido” sin salir de la cotización.</div>
         </div>
       </div>
     </div>
@@ -99,10 +97,60 @@
           <div class="row g-3 mb-3">
             <div class="col-12">
               <label class="form-label small">Cliente *</label>
+              {% if not is_edit %}
+              <div class="row g-2 mb-2">
+                <div class="col-md-5">
+                  <input id="cliente_rut_lookup" class="form-control" placeholder="RUT (ej. 12.345.678-9)" autocomplete="off">
+                </div>
+                <div class="col-md-3">
+                  <button type="button" class="btn eva-btn-outline w-100" id="btn_buscar_rut">Buscar RUT</button>
+                </div>
+                <div class="col-md-4">
+                  <button type="button" class="btn btn-outline-primary w-100" id="btn_crear_cliente" data-bs-toggle="collapse" data-bs-target="#box_cliente_rapido">Crear cliente rápido</button>
+                </div>
+              </div>
+              <div id="cliente_rut_msg" class="hint mb-2"></div>
+              <div class="collapse mb-3" id="box_cliente_rapido">
+                <div class="border rounded p-3 bg-light">
+                  <div class="row g-2">
+                    <div class="col-md-4">
+                      <label class="form-label small">RUT *</label>
+                      <input id="rapido_rut" class="form-control" placeholder="RUT">
+                    </div>
+                    <div class="col-md-5">
+                      <label class="form-label small">Razón social / Nombre *</label>
+                      <input id="rapido_razon" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label small">Tipo</label>
+                      <select id="rapido_tipo" class="form-select">
+                        <option value="JURIDICA">Jurídica</option>
+                        <option value="NATURAL">Natural</option>
+                      </select>
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label small">Email</label>
+                      <input id="rapido_email" type="email" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label small">Teléfono</label>
+                      <input id="rapido_tel" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label small">Dirección</label>
+                      <input id="rapido_dir" class="form-control">
+                    </div>
+                    <div class="col-12 text-end">
+                      <button type="button" class="btn eva-btn-primary btn-sm" id="btn_guardar_cliente_rapido">Guardar y seleccionar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {% endif %}
               <input id="cliente_search" class="form-control mb-2" list="clientes_datalist"
                      placeholder="Escribe para buscar por razón social..."
-                     {% if not has_clientes %}disabled{% endif %} autocomplete="off">
-              <select id="cliente_select" class="form-select" {% if not has_clientes %}disabled{% endif %} {% if is_edit %}disabled{% endif %}>
+                     autocomplete="off" {% if is_edit %}disabled{% endif %}>
+              <select id="cliente_select" class="form-select" {% if is_edit %}disabled{% endif %}>
                 <option value="" {% if not is_edit %}selected disabled{% endif %}>— Selecciona un cliente —</option>
                 {% if has_clientes %}
                   {% for cl in clientes %}
@@ -115,7 +163,7 @@
               </select>
               <input type="hidden" id="cliente_id" name="cliente_id"
                      value="{% if c %}{{ c.cliente_id }}{% endif %}"
-                     {% if not has_clientes %}disabled{% endif %} {% if not is_edit %}required{% endif %}>
+                     {% if not is_edit %}required{% endif %}>
               <datalist id="clientes_datalist">
                 {% if has_clientes %}
                   {% for cl in clientes %}
@@ -130,24 +178,24 @@
               <label class="form-label small">Fecha cotización</label>
               <input type="date" name="fecha_cotizacion" class="form-control js-sim"
                      value="{% if c and c.fecha_cotizacion %}{{ c.fecha_cotizacion.isoformat() }}{% else %}{{ fecha_hoy }}{% endif %}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Fecha inicio contrato *</label>
               <input type="date" name="fecha_inicio" class="form-control js-sim"
                      value="{% if c and c.fecha_inicio %}{{ c.fecha_inicio.isoformat() }}{% else %}{{ fecha_hoy }}{% endif %}"
-                     {% if not has_clientes %}disabled{% endif %} required>
+ required>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Fecha primera cuota</label>
               <input type="date" name="fecha_primera_cuota" class="form-control js-sim"
                      value="{% if c and c.fecha_primera_cuota %}{{ c.fecha_primera_cuota.isoformat() }}{% endif %}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
               <div class="hint">Opcional; si no se indica se calcula desde inicio.</div>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Periodicidad cuotas</label>
-              <select name="periodicidad" class="form-select js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <select name="periodicidad" class="form-select js-sim">
                 <option value="MENSUAL" {% if per_sel == 'MENSUAL' %}selected{% endif %}>Mensual</option>
                 <option value="TRIMESTRAL" {% if per_sel == 'TRIMESTRAL' %}selected{% endif %}>Trimestral</option>
                 <option value="SEMESTRAL" {% if per_sel == 'SEMESTRAL' %}selected{% endif %}>Semestral</option>
@@ -158,11 +206,11 @@
               <label class="form-label small">Bien financiado</label>
               <input type="text" name="bien_descripcion" class="form-control" maxlength="500" placeholder="Ej: Camión Volvo FH 2026"
                      value="{{ c.bien_descripcion or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
             </div>
             <div class="col-md-6">
               <label class="form-label small">Tipo de activo</label>
-              <select name="bien_tipo" class="form-select" {% if not has_clientes %}disabled{% endif %}>
+              <select name="bien_tipo" class="form-select">
                 <option value="">— Seleccionar —</option>
                 {% for bt, lbl in [('VEHICULO','Vehículo'),('MAQUINARIA','Maquinaria'),('EQUIPAMIENTO','Equipamiento'),('INMOBILIARIO','Inmobiliario'),('OTRO','Otro')] %}
                 <option value="{{ bt }}" {% if c and (c.bien_tipo or '')|upper == bt %}selected{% endif %}>{{ lbl }}</option>
@@ -172,11 +220,11 @@
             <div class="col-md-4">
               <label class="form-label small">Ejecutivo comercial</label>
               <input type="text" name="ejecutivo" class="form-control" value="{{ c.ejecutivo or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
             </div>
             <div class="col-md-6">
               <label class="form-label small">Proveedor (maestro)</label>
-              <select name="proveedor_id" class="form-select" {% if not has_clientes %}disabled{% endif %}>
+              <select name="proveedor_id" class="form-select">
                 <option value="">— Seleccione —</option>
                 {% for p in proveedores if proveedores is defined %}
                 <option value="{{ p.id }}" {% if c and c.proveedor_id == p.id %}selected{% endif %}>{{ p.razon_social }}</option>
@@ -186,27 +234,27 @@
             <div class="col-md-6">
               <label class="form-label small">Concesionario (texto libre)</label>
               <input type="text" name="concesionario" class="form-control" value="{{ c.concesionario or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
             </div>
             <div class="col-md-3">
               <label class="form-label small">Marca activo</label>
-              <input type="text" name="activo_marca" class="form-control" value="{{ c.activo.marca if c and c.activo else '' }}" {% if not has_clientes %}disabled{% endif %}>
+              <input type="text" name="activo_marca" class="form-control" value="{{ c.activo.marca if c and c.activo else '' }}">
             </div>
             <div class="col-md-3">
               <label class="form-label small">Modelo</label>
-              <input type="text" name="activo_modelo" class="form-control" value="{{ c.activo.modelo if c and c.activo else '' }}" {% if not has_clientes %}disabled{% endif %}>
+              <input type="text" name="activo_modelo" class="form-control" value="{{ c.activo.modelo if c and c.activo else '' }}">
             </div>
             <div class="col-md-3">
               <label class="form-label small">N° serie</label>
-              <input type="text" name="activo_serie" class="form-control" value="{{ c.activo.numero_serie if c and c.activo else '' }}" {% if not has_clientes %}disabled{% endif %}>
+              <input type="text" name="activo_serie" class="form-control" value="{{ c.activo.numero_serie if c and c.activo else '' }}">
             </div>
             <div class="col-md-3">
               <label class="form-label small">N° chasis</label>
-              <input type="text" name="activo_chasis" class="form-control" value="{{ c.activo.numero_chasis if c and c.activo else '' }}" {% if not has_clientes %}disabled{% endif %}>
+              <input type="text" name="activo_chasis" class="form-control" value="{{ c.activo.numero_chasis if c and c.activo else '' }}">
             </div>
             <div class="col-md-6">
               <label class="form-label small">Moneda operación</label>
-              <select id="moneda_select" name="moneda" class="form-select js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <select id="moneda_select" name="moneda" class="form-select js-sim">
                 <option value="CLP" {% if mon_sel == 'CLP' %}selected{% endif %}>CLP — Pesos chilenos</option>
                 <option value="UF" {% if mon_sel == 'UF' %}selected{% endif %}>UF — Unidad de fomento</option>
                 <option value="USD" {% if mon_sel == 'USD' %}selected{% endif %}>USD — Dólares</option>
@@ -221,12 +269,12 @@
               <label class="form-label small">Valor neto operación *</label>
               <input type="text" id="valor_neto" name="valor_neto" class="form-control js-money js-sim"
                      value="{{ c.valor_neto or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
               <div class="hint">Precio neto del activo (sin IVA recuperable).</div>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Tipo pago inicial</label>
-              <select id="pago_inicial_tipo" name="pago_inicial_tipo" class="form-select js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <select id="pago_inicial_tipo" name="pago_inicial_tipo" class="form-select js-sim">
                 <option value="" {% if not pie_tipo %}selected{% endif %}>Sin pago inicial</option>
                 <option value="PORCENTAJE" {% if pie_tipo == 'PORCENTAJE' %}selected{% endif %}>Porcentaje (%)</option>
                 <option value="MONTO" {% if pie_tipo == 'MONTO' %}selected{% endif %}>Monto fijo</option>
@@ -236,58 +284,58 @@
               <label class="form-label small">Valor pago inicial</label>
               <input type="text" id="pago_inicial_valor" name="pago_inicial_valor" class="form-control js-money js-sim"
                      value="{{ c.pago_inicial_valor or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
               <div class="hint">Ej. 20 para 20% o monto según tipo.</div>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Monto financiado</label>
               <input type="text" id="monto_financiado" name="monto_financiado" class="form-control js-money js-sim field-calc"
                      value="{{ c.monto_financiado or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
               <div id="monto_fin_help" class="hint">Se calcula automáticamente; puede ajustarlo manualmente.</div>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Monto total referencia</label>
               <input type="text" name="monto" id="monto" class="form-control js-money" readonly tabindex="-1"
                      value="{{ c.monto or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Plazo (meses) *</label>
               <input type="number" min="1" step="1" name="plazo" id="plazo" class="form-control js-sim"
                      value="{{ c.plazo if c and c.plazo is not none else 36 }}"
-                     {% if not has_clientes %}disabled{% endif %} required>
+ required>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Tasa nominal anual</label>
               <input type="text" name="tasa" id="tasa" class="form-control js-rate js-sim" placeholder="Ej: 12 o 0,12"
                      value="{{ c.tasa or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
               <div class="hint">Acepta decimal (0,12) o porcentaje (12 = 12% anual).</div>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Costo de fondo (anual)</label>
               <input type="text" name="tasa_fondeo" class="form-control js-rate js-sim"
-                     value="{{ c.tasa_fondeo or '' if c else '' }}" {% if not has_clientes %}disabled{% endif %}>
+                     value="{{ c.tasa_fondeo or '' if c else '' }}">
             </div>
             <div class="col-md-4">
               <label class="form-label small">Spread / margen</label>
               <input type="text" name="spread_margen" class="form-control js-rate js-sim"
-                     value="{{ c.spread_margen or '' if c else '' }}" {% if not has_clientes %}disabled{% endif %}>
+                     value="{{ c.spread_margen or '' if c else '' }}">
               <div class="hint">Tasa cliente = fondo + spread si no indica tasa directa.</div>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Periodos de gracia</label>
               <input type="number" min="0" step="1" name="periodos_gracia" id="periodos_gracia" class="form-control js-sim"
                      value="{{ c.periodos_gracia if c and c.periodos_gracia is not none else 0 }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
               <div class="hint">Meses solo interés, sin amortización de capital.</div>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Opción de compra (residual)</label>
               <input type="text" name="opcion_compra" id="opcion_compra" class="form-control js-money js-sim"
                      value="{{ c.opcion_compra or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
             </div>
           </div>
 
@@ -295,7 +343,7 @@
           <div class="row g-3 mb-2">
             <div class="col-md-4">
               <label class="form-label small">¿Financia seguro?</label>
-              <select id="financia_seguro" name="financia_seguro" class="form-select js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <select id="financia_seguro" name="financia_seguro" class="form-select js-sim">
                 <option value="false" {% if not c or not c.financia_seguro %}selected{% endif %}>No</option>
                 <option value="true" {% if c and c.financia_seguro %}selected{% endif %}>Sí — capitalizar en monto financiado</option>
               </select>
@@ -304,24 +352,24 @@
               <label class="form-label small">Prima seguro (UF)</label>
               <input type="text" name="seguro_monto_uf" id="seguro_monto_uf" class="form-control js-rate js-sim"
                      value="{{ c.seguro_monto_uf or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Otros montos (CLP)</label>
               <input type="text" name="otros_montos_pesos" id="otros_montos_pesos" class="form-control js-money js-sim"
                      value="{{ c.otros_montos_pesos or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
               <div class="hint">Gastos notariales, inscripción u otros financiables.</div>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Gastos operacionales (CLP)</label>
               <input type="text" name="gastos_operacionales" class="form-control js-money js-sim"
                      value="{{ c.gastos_operacionales or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Comisión apertura — tipo</label>
-              <select name="comision_apertura_tipo" class="form-select js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <select name="comision_apertura_tipo" class="form-select js-sim">
                 <option value="" {% if not com_tipo %}selected{% endif %}>Sin comisión</option>
                 <option value="PORCENTAJE" {% if com_tipo == 'PORCENTAJE' %}selected{% endif %}>Porcentaje</option>
                 <option value="MONTO" {% if com_tipo == 'MONTO' %}selected{% endif %}>Monto fijo</option>
@@ -331,13 +379,41 @@
               <label class="form-label small">Comisión apertura — valor</label>
               <input type="text" name="comision_apertura" class="form-control js-money js-sim"
                      value="{{ c.comision_apertura or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
             </div>
             <div class="col-md-4">
               <label class="form-label small">¿Financia comisión?</label>
-              <select name="financia_comision" class="form-select js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <select name="financia_comision" class="form-select js-sim">
                 <option value="false" {% if not c or not c.financia_comision %}selected{% endif %}>No — pago al contado</option>
                 <option value="true" {% if c and c.financia_comision %}selected{% endif %}>Sí — incluir en monto financiado</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="eva-section mb-2 mt-3">GPS y gastos administrativos</div>
+          <div class="row g-3 mb-2">
+            <div class="col-md-3">
+              <label class="form-label small">GPS (CLP)</label>
+              <input type="text" name="gps_monto" id="gps_monto" class="form-control js-money js-sim"
+                     value="{{ c.gps_monto or '' if c else '' }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">¿Financia GPS?</label>
+              <select name="financia_gps" id="financia_gps" class="form-select js-sim">
+                <option value="false" {% if not c or not c.financia_gps %}selected{% endif %}>No — pago al contado</option>
+                <option value="true" {% if c and c.financia_gps %}selected{% endif %}>Sí — en financiamiento</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">Gastos admin. (CLP)</label>
+              <input type="text" name="gastos_administrativos" id="gastos_administrativos" class="form-control js-money js-sim"
+                     value="{{ c.gastos_administrativos or '' if c else '' }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">¿Financia gastos admin.?</label>
+              <select name="financia_gastos_admin" id="financia_gastos_admin" class="form-select js-sim">
+                <option value="false" {% if not c or not c.financia_gastos_admin %}selected{% endif %}>No — pago al contado</option>
+                <option value="true" {% if c and c.financia_gastos_admin %}selected{% endif %}>Sí — en financiamiento</option>
               </select>
             </div>
           </div>
@@ -346,7 +422,7 @@
           <div class="row g-3 mb-2">
             <div class="col-md-3">
               <label class="form-label small">¿IVA sobre bien?</label>
-              <select name="iva_aplica" class="form-select js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <select name="iva_aplica" class="form-select js-sim">
                 <option value="false" {% if not c or not c.iva_aplica %}selected{% endif %}>No</option>
                 <option value="true" {% if c and c.iva_aplica %}selected{% endif %}>Sí — afecto IVA</option>
               </select>
@@ -355,18 +431,18 @@
               <label class="form-label small">Tasa IVA (%)</label>
               <input type="text" name="iva_tasa" class="form-control js-rate js-sim" placeholder="19"
                      value="{{ c.iva_tasa if c and c.iva_tasa is not none else '19' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
             </div>
             <div class="col-md-3">
               <label class="form-label small">IVA recuperable</label>
-              <select name="iva_recuperable" class="form-select js-sim" {% if not has_clientes %}disabled{% endif %}>
+              <select name="iva_recuperable" class="form-select js-sim">
                 <option value="true" {% if not c or c.iva_recuperable %}selected{% endif %}>Sí</option>
                 <option value="false" {% if c and not c.iva_recuperable %}selected{% endif %}>No</option>
               </select>
             </div>
             <div class="col-md-12">
               <label class="form-label small">Observaciones comerciales</label>
-              <textarea name="observaciones" class="form-control" rows="2" maxlength="4000" {% if not has_clientes %}disabled{% endif %}>{{ c.observaciones or '' if c else '' }}</textarea>
+              <textarea name="observaciones" class="form-control" rows="2" maxlength="4000">{{ c.observaciones or '' if c else '' }}</textarea>
             </div>
           </div>
 
@@ -390,18 +466,18 @@
               <label class="form-label small">Valor UF (CLP)</label>
               <input type="text" id="uf_valor" name="uf_valor" class="form-control js-rate js-sim"
                      value="{{ c.uf_valor or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
               <div id="uf_help" class="hint"></div>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Valor dólar (CLP)</label>
               <input type="text" id="dolar_valor" name="dolar_valor" class="form-control js-rate js-sim"
                      value="{{ c.dolar_valor or '' if c else '' }}"
-                     {% if not has_clientes %}disabled{% endif %}>
+>
               <div id="usd_help" class="hint"></div>
             </div>
             <div class="col-md-4 d-flex flex-column justify-content-end">
-              <button type="button" id="btn_rates" class="btn btn-outline-secondary btn-sm w-100 mb-1" {% if not has_clientes %}disabled{% endif %}>
+              <button type="button" id="btn_rates" class="btn btn-outline-secondary btn-sm w-100 mb-1">
                 Cargar UF/USD del día
               </button>
               <div id="rates_info" class="hint">Indicadores sin cargar.</div>
@@ -415,7 +491,7 @@
             {% if is_edit %}
             <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('lf_cotizacion_amortizacion', cotizacion_id=cotizacion.id) }}">Ver amortización</a>
             {% endif %}
-            <button id="btnSubmit" type="submit" class="btn eva-btn-primary btn-sm" {% if not has_clientes %}disabled{% endif %}>
+            <button id="btnSubmit" type="submit" class="btn eva-btn-primary btn-sm">
               {% if is_edit %}Guardar cambios{% else %}Crear cotización{% endif %}
             </button>
           </div>
@@ -491,10 +567,85 @@ document.addEventListener("DOMContentLoaded", function () {
     simUrl: {{ lf_api_sim | tojson }},
     ratesUrl: {{ lf_api_rates | tojson }},
     monedaDefault: {{ mon_sel | tojson }},
-    hasClientes: {{ 'true' if has_clientes else 'false' }},
+    hasClientes: true,
     isEdit: {{ 'true' if is_edit else 'false' }},
     cliente: {% if cliente is defined and cliente %}{ "id": {{ cliente.id }}, "razon": {{ cliente.razon_social | tojson }}, "rut": {{ (cliente.rut or '') | tojson }} }{% elif c and c.cliente %}{ "id": {{ c.cliente.id }}, "razon": {{ c.cliente.razon_social | tojson }}, "rut": {{ (c.cliente.rut or '') | tojson }} }{% else %}null{% endif %}
   });
+
+  const sel = document.getElementById("cliente_select");
+  const hid = document.getElementById("cliente_id");
+  const msg = document.getElementById("cliente_rut_msg");
+  const lookupUrl = {{ request.url_for('lf_api_cliente_por_rut') | string | tojson }};
+  const createUrl = {{ request.url_for('lf_api_cliente_rapido') | string | tojson }};
+
+  function selectCliente(id, razon, rut) {
+    if (!sel || !hid) return;
+    let opt = Array.from(sel.options).find((o) => String(o.value) === String(id));
+    if (!opt) {
+      opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = razon + (rut ? " (" + rut + ")" : "");
+      opt.dataset.razon = razon || "";
+      opt.dataset.rut = rut || "";
+      sel.appendChild(opt);
+    }
+    sel.value = String(id);
+    hid.value = String(id);
+    hid.disabled = false;
+    const search = document.getElementById("cliente_search");
+    if (search) search.value = razon || "";
+  }
+
+  const btnBuscar = document.getElementById("btn_buscar_rut");
+  if (btnBuscar) {
+    btnBuscar.addEventListener("click", async function () {
+      const rut = (document.getElementById("cliente_rut_lookup") || {}).value || "";
+      if (!rut.trim()) { if (msg) msg.textContent = "Ingrese un RUT."; return; }
+      if (msg) msg.textContent = "Buscando…";
+      try {
+        const res = await fetch(lookupUrl + "?rut=" + encodeURIComponent(rut.trim()));
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Error de búsqueda");
+        if (data.exists) {
+          selectCliente(data.id, data.razon_social, data.rut);
+          if (msg) msg.textContent = "Cliente encontrado y seleccionado.";
+          const box = document.getElementById("rapido_rut");
+          if (box) box.value = data.rut || rut;
+        } else {
+          if (msg) msg.textContent = "No existe. Complete el formulario rápido para crearlo.";
+          const box = document.getElementById("rapido_rut");
+          if (box) box.value = rut;
+          const collapse = document.getElementById("box_cliente_rapido");
+          if (collapse && window.bootstrap) new bootstrap.Collapse(collapse, { show: true });
+          else if (collapse) collapse.classList.add("show");
+        }
+      } catch (e) {
+        if (msg) msg.textContent = e.message || "No se pudo buscar el RUT.";
+      }
+    });
+  }
+
+  const btnSave = document.getElementById("btn_guardar_cliente_rapido");
+  if (btnSave) {
+    btnSave.addEventListener("click", async function () {
+      const fd = new FormData();
+      fd.append("rut", (document.getElementById("rapido_rut") || {}).value || "");
+      fd.append("razon_social", (document.getElementById("rapido_razon") || {}).value || "");
+      fd.append("tipo_persona", (document.getElementById("rapido_tipo") || {}).value || "JURIDICA");
+      fd.append("email", (document.getElementById("rapido_email") || {}).value || "");
+      fd.append("telefono", (document.getElementById("rapido_tel") || {}).value || "");
+      fd.append("direccion", (document.getElementById("rapido_dir") || {}).value || "");
+      try {
+        const res = await fetch(createUrl, { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "No se pudo crear el cliente");
+        selectCliente(data.id, data.razon_social, data.rut);
+        if (msg) msg.textContent = "Cliente creado y seleccionado.";
+      } catch (e) {
+        if (msg) msg.textContent = e.message || "Error al crear cliente.";
+      }
+    });
+  }
 });
 </script>
 {% endblock %}

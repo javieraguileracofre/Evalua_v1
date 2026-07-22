@@ -54,6 +54,10 @@ class LeasingCotizacionBase(BaseModel):
     comision_apertura_tipo: Optional[str] = None
     financia_comision: bool = False
     gastos_operacionales: Optional[Decimal] = None
+    gps_monto: Optional[Decimal] = None
+    financia_gps: bool = False
+    gastos_administrativos: Optional[Decimal] = None
+    financia_gastos_admin: bool = False
 
     iva_aplica: bool = False
     iva_tasa: Optional[Decimal] = None
@@ -89,6 +93,13 @@ class LeasingCotizacionBase(BaseModel):
     tir_anual_pct: Optional[Decimal] = None
     cae_anual_pct: Optional[Decimal] = None
     metadata_tributaria: Optional[dict[str, Any]] = None
+    aceptada_en: Optional[datetime] = None
+    aceptada_por: Optional[str] = None
+    condiciones_aceptadas: str = ""
+    snapshot_aceptacion_json: Optional[dict[str, Any]] = None
+    pdf_aceptacion_path: Optional[str] = None
+    email_aceptacion_enviado_en: Optional[datetime] = None
+    email_aceptacion_destino: Optional[str] = None
 
 
 class LeasingCotizacionCreate(LeasingCotizacionBase):
@@ -117,6 +128,10 @@ class LeasingCotizacionUpdate(BaseModel):
     comision_apertura_tipo: Optional[str] = None
     financia_comision: Optional[bool] = None
     gastos_operacionales: Optional[Decimal] = None
+    gps_monto: Optional[Decimal] = None
+    financia_gps: Optional[bool] = None
+    gastos_administrativos: Optional[Decimal] = None
+    financia_gastos_admin: Optional[bool] = None
     iva_aplica: Optional[bool] = None
     iva_tasa: Optional[Decimal] = None
     iva_recuperable: Optional[bool] = None
@@ -182,6 +197,10 @@ class LeasingSimulacionInput(BaseModel):
     comision_apertura_tipo: Optional[str] = None
     financia_comision: bool = False
     gastos_operacionales: Optional[Decimal] = None
+    gps_monto: Optional[Decimal] = None
+    financia_gps: bool = False
+    gastos_administrativos: Optional[Decimal] = None
+    financia_gastos_admin: bool = False
     iva_aplica: bool = False
     iva_tasa: Optional[Decimal] = None
     iva_recuperable: bool = True
@@ -200,6 +219,8 @@ class LeasingSimulacionResumen(BaseModel):
     pago_inicial: Decimal = Decimal("0")
     seguro_financiado: Decimal = Decimal("0")
     otros_montos: Decimal = Decimal("0")
+    gps_financiado: Decimal = Decimal("0")
+    gastos_admin_financiados: Decimal = Decimal("0")
     monto_financiado: Decimal
     renta_mensual: Optional[Decimal] = None
     total_intereses: Decimal = Decimal("0")

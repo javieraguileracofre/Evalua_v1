@@ -228,10 +228,14 @@ def calcular_monto_financiado(
     comision_apertura: Decimal | None = None,
     financia_comision: bool = False,
     gastos_operacionales: Decimal | None = None,
-) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    gps_monto: Decimal | None = None,
+    financia_gps: bool = False,
+    gastos_administrativos: Decimal | None = None,
+    financia_gastos_admin: bool = False,
+) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal, Decimal]:
     """
-    Deriva monto financiado desde valor neto, pie, seguro y otros cargos.
-    Retorna (monto_financiado, pago_inicial, seguro_financiado, otros_montos).
+    Deriva monto financiado desde valor neto, pie, seguro, GPS, gastos admin y otros.
+    Retorna (monto_financiado, pago_inicial, seguro_financiado, otros_montos, gps_financiado, gastos_admin_financiados).
     """
     pago_inicial = calcular_pago_inicial(valor_neto, pago_inicial_tipo, pago_inicial_valor)
     base = _q((valor_neto or Decimal("0")) - pago_inicial)
@@ -258,10 +262,34 @@ def calcular_monto_financiado(
         uf_valor=uf_valor,
         dolar_valor=dolar_valor,
     )
+    gps = Decimal("0.00")
+    if financia_gps:
+        gps = _convertir_clp_a_moneda(
+            moneda,
+            gps_monto,
+            uf_valor=uf_valor,
+            dolar_valor=dolar_valor,
+        )
+    gastos_admin = Decimal("0.00")
+    if financia_gastos_admin:
+        gastos_admin = _convertir_clp_a_moneda(
+            moneda,
+            gastos_administrativos,
+            uf_valor=uf_valor,
+            dolar_valor=dolar_valor,
+        )
     comision = Decimal("0.00")
     if financia_comision:
         comision = calcular_comision_apertura(valor_neto, comision_apertura_tipo, comision_apertura)
-    return _q(base + seguro + otros + gastos + comision), pago_inicial, seguro, _q(otros + gastos + comision)
+    otros_total = _q(otros + gastos + comision)
+    return (
+        _q(base + seguro + otros_total + gps + gastos_admin),
+        pago_inicial,
+        seguro,
+        otros_total,
+        gps,
+        gastos_admin,
+    )
 
 
 def _cotizacion_desde_simulacion(data: LeasingSimulacionInput) -> "LeasingFinancieroCotizacion":
@@ -271,7 +299,7 @@ def _cotizacion_desde_simulacion(data: LeasingSimulacionInput) -> "LeasingFinanc
     monto_fin = data.monto_financiado
     calculado = False
     if monto_fin is None or monto_fin <= 0:
-        monto_fin, _, _, _ = calcular_monto_financiado(
+        monto_fin, _, _, _, _, _ = calcular_monto_financiado(
             moneda=data.moneda,
             valor_neto=data.valor_neto,
             pago_inicial_tipo=data.pago_inicial_tipo,
@@ -285,6 +313,10 @@ def _cotizacion_desde_simulacion(data: LeasingSimulacionInput) -> "LeasingFinanc
             comision_apertura=getattr(data, "comision_apertura", None),
             financia_comision=getattr(data, "financia_comision", False),
             gastos_operacionales=getattr(data, "gastos_operacionales", None),
+            gps_monto=getattr(data, "gps_monto", None),
+            financia_gps=bool(getattr(data, "financia_gps", False)),
+            gastos_administrativos=getattr(data, "gastos_administrativos", None),
+            financia_gastos_admin=bool(getattr(data, "financia_gastos_admin", False)),
         )
         calculado = True
     return SimpleNamespace(
@@ -324,12 +356,14 @@ def simular_cotizacion(data: LeasingSimulacionInput) -> LeasingSimulacionResumen
     pago_inicial = Decimal("0.00")
     seguro = Decimal("0.00")
     otros = Decimal("0.00")
+    gps_fin = Decimal("0.00")
+    gastos_admin_fin = Decimal("0.00")
     monto_fin = data.monto_financiado
     calculado = False
 
     try:
         if monto_fin is None or monto_fin <= 0:
-            monto_fin, pago_inicial, seguro, otros = calcular_monto_financiado(
+            monto_fin, pago_inicial, seguro, otros, gps_fin, gastos_admin_fin = calcular_monto_financiado(
                 moneda=moneda,
                 valor_neto=data.valor_neto,
                 pago_inicial_tipo=data.pago_inicial_tipo,
@@ -343,6 +377,10 @@ def simular_cotizacion(data: LeasingSimulacionInput) -> LeasingSimulacionResumen
                 comision_apertura=getattr(data, "comision_apertura", None),
                 financia_comision=getattr(data, "financia_comision", False),
                 gastos_operacionales=getattr(data, "gastos_operacionales", None),
+                gps_monto=getattr(data, "gps_monto", None),
+                financia_gps=bool(getattr(data, "financia_gps", False)),
+                gastos_administrativos=getattr(data, "gastos_administrativos", None),
+                financia_gastos_admin=bool(getattr(data, "financia_gastos_admin", False)),
             )
             calculado = True
         elif data.valor_neto and data.valor_neto > 0:
@@ -364,6 +402,20 @@ def simular_cotizacion(data: LeasingSimulacionInput) -> LeasingSimulacionResumen
                 uf_valor=data.uf_valor,
                 dolar_valor=data.dolar_valor,
             )
+            if getattr(data, "financia_gps", False):
+                gps_fin = _convertir_clp_a_moneda(
+                    moneda,
+                    getattr(data, "gps_monto", None),
+                    uf_valor=data.uf_valor,
+                    dolar_valor=data.dolar_valor,
+                )
+            if getattr(data, "financia_gastos_admin", False):
+                gastos_admin_fin = _convertir_clp_a_moneda(
+                    moneda,
+                    getattr(data, "gastos_administrativos", None),
+                    uf_valor=data.uf_valor,
+                    dolar_valor=data.dolar_valor,
+                )
     except ValueError as exc:
         advertencias.append(str(exc))
         return LeasingSimulacionResumen(
@@ -451,6 +503,8 @@ def simular_cotizacion(data: LeasingSimulacionInput) -> LeasingSimulacionResumen
         pago_inicial=pago_inicial,
         seguro_financiado=seguro,
         otros_montos=otros,
+        gps_financiado=gps_fin,
+        gastos_admin_financiados=gastos_admin_fin,
         monto_financiado=monto_fin,
         renta_mensual=renta_mensual,
         total_intereses=_q(total_interes),
@@ -485,7 +539,7 @@ def aplicar_parametros_financieros(data: dict) -> dict:
     monto_fin = data.get("monto_financiado")
     valor_neto = data.get("valor_neto")
     if valor_neto and valor_neto > 0:
-        monto_calc, _, _, _ = calcular_monto_financiado(
+        monto_calc, _, _, _, _, _ = calcular_monto_financiado(
             moneda=moneda,
             valor_neto=valor_neto,
             pago_inicial_tipo=data.get("pago_inicial_tipo"),
@@ -499,6 +553,10 @@ def aplicar_parametros_financieros(data: dict) -> dict:
             comision_apertura=data.get("comision_apertura"),
             financia_comision=bool(data.get("financia_comision")),
             gastos_operacionales=data.get("gastos_operacionales"),
+            gps_monto=data.get("gps_monto"),
+            financia_gps=bool(data.get("financia_gps")),
+            gastos_administrativos=data.get("gastos_administrativos"),
+            financia_gastos_admin=bool(data.get("financia_gastos_admin")),
         )
         # Recalcular si no hay monto, es <= 0, o es inconsistente vs neto
         # (p.ej. parseo JS Number("250.000")==250 con neto 25.000.000).

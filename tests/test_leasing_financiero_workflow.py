@@ -36,8 +36,22 @@ def test_scoring_aprobado_condiciones_bucket():
 
 
 def test_siguiente_etapa_workflow():
-    wf = {"hitos": {"analisis_credito": True, "orden_compra": True, "contrato_firmado": False, "acta_recepcion": False, "activacion_contable": False}}
+    wf = {
+        "hitos": {
+            "analisis_credito": True,
+            "aceptacion_cliente": True,
+            "orden_compra": True,
+            "contrato_firmado": False,
+            "acta_recepcion": False,
+            "activacion_contable": False,
+        }
+    }
     assert _siguiente_etapa(wf) == "CONTRATO_FIRMADO"
+
+
+def test_siguiente_etapa_espera_aceptacion_cliente():
+    wf = {"hitos": {"analisis_credito": True, "aceptacion_cliente": False}}
+    assert _siguiente_etapa(wf) == "ACEPTACION_CLIENTE"
 
 
 def test_gate_credito_aprobado_permite_avanzar():

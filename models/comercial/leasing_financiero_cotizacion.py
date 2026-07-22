@@ -91,6 +91,10 @@ class LeasingFinancieroCotizacion(Base):
     comision_apertura_tipo: Mapped[str | None] = mapped_column(String(20))
     financia_comision: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     gastos_operacionales: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    gps_monto: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    financia_gps: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    gastos_administrativos: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    financia_gastos_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
     iva_aplica: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     iva_tasa: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
@@ -132,6 +136,14 @@ class LeasingFinancieroCotizacion(Base):
     fecha_activacion: Mapped[date | None] = mapped_column(Date)
     fecha_vigencia_desde: Mapped[date | None] = mapped_column(Date)
     fecha_vigencia_hasta: Mapped[date | None] = mapped_column(Date)
+
+    aceptada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    aceptada_por: Mapped[str | None] = mapped_column(String(200))
+    condiciones_aceptadas: Mapped[str] = mapped_column(String(4000), default="", server_default=text("''"))
+    snapshot_aceptacion_json: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'::jsonb"))
+    pdf_aceptacion_path: Mapped[str | None] = mapped_column(String(500))
+    email_aceptacion_enviado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    email_aceptacion_destino: Mapped[str | None] = mapped_column(String(255))
 
     estado: Mapped[str] = mapped_column(
         String(40),

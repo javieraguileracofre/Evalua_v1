@@ -55,6 +55,7 @@ _PATCH_126 = _ROOT / "db" / "psql" / "126_auth_usuario_modulos_visibles.sql"
 _PATCH_127 = _ROOT / "db" / "psql" / "127_leasing_financiero_operacion_premium.sql"
 _PATCH_129 = _ROOT / "db" / "psql" / "129_leasing_financiero_operacion_completa.sql"
 _PATCH_130 = _ROOT / "db" / "psql" / "130_leasing_financiero_credito_documentos.sql"
+_PATCH_131 = _ROOT / "db" / "psql" / "131_leasing_financiero_aceptacion_cliente.sql"
 _PATCH_128 = _ROOT / "db" / "psql" / "128_auth_submodulos_nav.sql"
 
 
@@ -693,6 +694,15 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
         except Exception as exc:
             logger.warning(
                 "No se pudo aplicar 130_leasing_financiero_credito_documentos.sql. Detalle: %s",
+                exc,
+            )
+    if _PATCH_131.is_file() and _has_table(engine, schema="public", table="comercial_lf_cotizaciones"):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_131)
+            logger.info("Parche aplicado: aceptación cliente y GPS/gastos LF (131).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 131_leasing_financiero_aceptacion_cliente.sql. Detalle: %s",
                 exc,
             )
 

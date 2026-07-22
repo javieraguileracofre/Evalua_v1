@@ -43,6 +43,7 @@ def workflow_por_defecto() -> dict[str, Any]:
         "etapa_actual": "ANALISIS_CREDITO",
         "hitos": {
             "analisis_credito": False,
+            "aceptacion_cliente": False,
             "orden_compra": False,
             "contrato_firmado": False,
             "acta_recepcion": False,
@@ -114,6 +115,8 @@ def siguiente_etapa(workflow: dict[str, Any]) -> str:
     hitos = workflow.get("hitos") or {}
     if not hitos.get("analisis_credito"):
         return "ANALISIS_CREDITO"
+    if not hitos.get("aceptacion_cliente"):
+        return "ACEPTACION_CLIENTE"
     if not hitos.get("orden_compra"):
         return "ORDEN_COMPRA"
     if not hitos.get("contrato_firmado"):

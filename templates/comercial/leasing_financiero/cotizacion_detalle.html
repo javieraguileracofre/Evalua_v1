@@ -44,10 +44,11 @@
         <a href="{{ request.url_for('lf_cotizacion_nueva_form') }}?cliente_id={{ cli.id }}" class="btn btn-sm btn-eva-primary">+ Nueva cotización</a>
       {% endif %}
       <a href="{{ request.url_for('lf_cotizacion_amortizacion', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-eva-primary">Ver amortización</a>
+      <a href="{{ request.url_for('lf_cotizacion_pdf', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-danger">PDF cotizador</a>
       <a href="{{ request.url_for('lf_cotizacion_editar_form', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-warning">Editar</a>
       <a href="{{ request.url_for('lf_credito_form', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Scoring crédito</a>
       <a href="{{ request.url_for('lf_cotizacion_amortizacion_excel', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-success">Excel</a>
-      <a href="{{ request.url_for('lf_cotizacion_amortizacion_pdf', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-danger">PDF</a>
+      <a href="{{ request.url_for('lf_cotizacion_amortizacion_pdf', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-danger">PDF amortización</a>
     </div>
   </div>
 
@@ -269,11 +270,41 @@
           <div class="small text-muted mb-2">Etapa actual: <strong>{{ workflow.etapa_actual if workflow else 'ANALISIS_CREDITO' }}</strong></div>
           <ul class="list-group list-group-flush small mb-3">
             <li class="list-group-item d-flex justify-content-between"><span>Análisis de crédito aprobado</span><span>{% if h.get('analisis_credito') %}✅{% else %}⏳{% endif %}</span></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Aceptación del cliente</span><span>{% if h.get('aceptacion_cliente') or cotizacion.aceptada_en %}✅{% else %}⏳{% endif %}</span></li>
             <li class="list-group-item d-flex justify-content-between"><span>Orden de compra</span><span>{% if h.get('orden_compra') %}✅{% else %}⏳{% endif %}</span></li>
             <li class="list-group-item d-flex justify-content-between"><span>Contrato firmado</span><span>{% if h.get('contrato_firmado') %}✅{% else %}⏳{% endif %}</span></li>
             <li class="list-group-item d-flex justify-content-between"><span>Acta recepción</span><span>{% if h.get('acta_recepcion') %}✅{% else %}⏳{% endif %}</span></li>
             <li class="list-group-item d-flex justify-content-between"><span>Activación contable</span><span>{% if h.get('activacion_contable') %}✅{% else %}⏳{% endif %}</span></li>
           </ul>
+
+          {% set est = (cotizacion.estado or '')|upper %}
+          {% if est in ['BORRADOR','COTIZADA','EN_ANALISIS_COMERCIAL'] %}
+          <form method="post" action="{{ request.url_for('lf_cotizacion_enviar_credito', cotizacion_id=cotizacion.id) }}" class="mb-2">
+            <button class="btn btn-sm btn-eva-primary w-100" type="submit">Enviar a análisis de crédito</button>
+          </form>
+          {% endif %}
+
+          {% if est in ['APROBADA','APROBADA_CONDICIONES'] and not cotizacion.aceptada_en %}
+          <div class="border rounded p-2 mb-2 bg-light">
+            <div class="small fw-semibold mb-1">Aceptación del cliente</div>
+            <div class="small text-muted mb-2">Solo después de la aprobación del agente de crédito. El email es obligatorio.</div>
+            <form method="post" action="{{ request.url_for('lf_cotizacion_aceptar_cliente', cotizacion_id=cotizacion.id) }}">
+              <label class="form-label small">Email destinatario</label>
+              <input class="form-control form-control-sm mb-2" type="email" name="email_destino"
+                     value="{{ cotizacion.cliente.email if cotizacion.cliente and cotizacion.cliente.email else '' }}"
+                     placeholder="cliente@empresa.cl" required>
+              <label class="form-label small">Condiciones aceptadas</label>
+              <textarea class="form-control form-control-sm mb-2" name="condiciones_aceptadas" rows="3"
+                        placeholder="Condiciones de crédito aceptadas por el cliente…" required></textarea>
+              <button class="btn btn-sm btn-success w-100" type="submit">Aceptar condiciones y enviar email</button>
+            </form>
+          </div>
+          {% elif cotizacion.aceptada_en %}
+          <div class="alert alert-success py-2 small">
+            Aceptada el {{ cotizacion.aceptada_en }} por {{ cotizacion.aceptada_por or '—' }}.
+            {% if cotizacion.email_aceptacion_enviado_en %}Email enviado a {{ cotizacion.email_aceptacion_destino }}.{% endif %}
+          </div>
+          {% endif %}
 
           <form method="post" action="{{ request.url_for('lf_cotizacion_workflow_sync_credito', cotizacion_id=cotizacion.id) }}" class="mb-2">
             <button class="btn btn-sm btn-outline-primary w-100" type="submit">Sincronizar aprobación crédito</button>

@@ -148,6 +148,7 @@ class EmailService:
         cc: AddressLike | None = None,
         bcc: AddressLike | None = None,
         reply_to: str | None = None,
+        attachments: list[tuple[str, bytes, str]] | None = None,
     ) -> dict[str, Any]:
         to_list = _normalize_recipients(to)
         cc_list = _normalize_recipients(cc)
@@ -172,6 +173,17 @@ class EmailService:
         msg.set_content(text_body_final)
         msg.add_alternative(html_body, subtype="html")
 
+        for filename, content, mime in attachments or []:
+            maintype, _, subtype = (mime or "application/octet-stream").partition("/")
+            if not subtype:
+                maintype, subtype = "application", "octet-stream"
+            msg.add_attachment(
+                content,
+                maintype=maintype,
+                subtype=subtype,
+                filename=filename or "adjunto.bin",
+            )
+
         all_recipients = to_list + cc_list + bcc_list
 
         server: smtplib.SMTP_SSL | None = None
@@ -184,6 +196,7 @@ class EmailService:
                 "cc": cc_list,
                 "bcc_count": len(bcc_list),
                 "subject": subject,
+                "attachments": len(attachments or []),
             }
         finally:
             if server is not None:
@@ -210,6 +223,7 @@ class EmailService:
         caso_id: int | None = None,
         include_detalle: bool = True,
         meta: dict[str, Any] | None = None,
+        attachments: list[tuple[str, bytes, str]] | None = None,
     ) -> Any:
         to_list = _normalize_recipients(to)
         if not to_list:
@@ -240,6 +254,7 @@ class EmailService:
                 cc=cc,
                 bcc=bcc,
                 reply_to=reply_to,
+                attachments=attachments,
             )
             crud_email_log.marcar_enviado(db=db, email_log_id=log.id)
             return log

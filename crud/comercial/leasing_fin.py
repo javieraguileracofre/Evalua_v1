@@ -366,6 +366,22 @@ def actualizar_cotizacion(
         "financia_seguro": update_data.get("financia_seguro", cotizacion.financia_seguro),
         "seguro_monto_uf": update_data.get("seguro_monto_uf", cotizacion.seguro_monto_uf),
         "otros_montos_pesos": update_data.get("otros_montos_pesos", cotizacion.otros_montos_pesos),
+        "comision_apertura": update_data.get("comision_apertura", getattr(cotizacion, "comision_apertura", None)),
+        "comision_apertura_tipo": update_data.get(
+            "comision_apertura_tipo", getattr(cotizacion, "comision_apertura_tipo", None)
+        ),
+        "financia_comision": update_data.get("financia_comision", getattr(cotizacion, "financia_comision", False)),
+        "gastos_operacionales": update_data.get(
+            "gastos_operacionales", getattr(cotizacion, "gastos_operacionales", None)
+        ),
+        "gps_monto": update_data.get("gps_monto", getattr(cotizacion, "gps_monto", None)),
+        "financia_gps": update_data.get("financia_gps", getattr(cotizacion, "financia_gps", False)),
+        "gastos_administrativos": update_data.get(
+            "gastos_administrativos", getattr(cotizacion, "gastos_administrativos", None)
+        ),
+        "financia_gastos_admin": update_data.get(
+            "financia_gastos_admin", getattr(cotizacion, "financia_gastos_admin", False)
+        ),
         "monto_financiado": update_data.get("monto_financiado", cotizacion.monto_financiado),
         "tasa": update_data.get("tasa", cotizacion.tasa),
         "plazo": update_data.get("plazo", cotizacion.plazo),
@@ -892,3 +908,136 @@ def listar_historial(db: Session, cotizacion_id: int) -> list[LeasingFinancieroH
         .order_by(LeasingFinancieroHistorial.created_at.desc())
     )
     return list(db.scalars(stmt))
+
+
+def enviar_a_analisis_credito(
+    db: Session,
+    *,
+    cotizacion: LeasingFinancieroCotizacion,
+    usuario: str = "sistema",
+    comentario: str | None = None,
+) -> LeasingFinancieroCotizacion:
+    """Marca la cotización como lista y la envía a análisis de crédito."""
+    estado_actual = str(cotizacion.estado or "BORRADOR").upper()
+    if estado_actual in {"ANULADA", "ACTIVADA", "VIGENTE", "RECHAZADA"}:
+        raise ValueError(f"No se puede enviar a crédito desde estado {estado_actual}.")
+    if estado_actual == "EN_ANALISIS_CREDITO":
+        return cotizacion
+    if not cotizacion.cliente_id:
+        raise ValueError("La cotización requiere cliente antes de enviar a crédito.")
+    if not (cotizacion.monto_financiado or cotizacion.valor_neto):
+        raise ValueError("Complete valor neto / monto financiado antes de enviar a crédito.")
+    if not cotizacion.plazo or int(cotizacion.plazo) <= 0:
+        raise ValueError("Complete el plazo antes de enviar a crédito.")
+
+    destino = "EN_ANALISIS_CREDITO"
+    if estado_actual == "BORRADOR":
+        # BORRADOR solo permite COTIZADA; primero pasar a COTIZADA
+        cambiar_estado_cotizacion(
+            db,
+            cotizacion=cotizacion,
+            estado_nuevo="COTIZADA",
+            comentario="Cotización formal lista para análisis de crédito",
+            usuario=usuario,
+        )
+        cotizacion = get_cotizacion(db, int(cotizacion.id)) or cotizacion
+        estado_actual = str(cotizacion.estado or "").upper()
+
+    return cambiar_estado_cotizacion(
+        db,
+        cotizacion=cotizacion,
+        estado_nuevo=destino,
+        comentario=comentario or "Enviada a análisis de crédito",
+        usuario=usuario,
+    )
+
+
+def aceptar_condiciones_cliente(
+    db: Session,
+    *,
+    cotizacion: LeasingFinancieroCotizacion,
+    condiciones: str,
+    usuario: str = "sistema",
+    email_destino: str | None = None,
+    pdf_bytes: bytes | None = None,
+    snapshot: dict[str, Any] | None = None,
+    pdf_rel_path: str | None = None,
+) -> LeasingFinancieroCotizacion:
+    """
+    Aceptación del cliente de las condiciones del crédito (post-aprobación).
+    Requiere análisis APROBADO / APROBADA_CONDICIONES.
+    """
+    from datetime import datetime, timezone
+
+    estado = str(cotizacion.estado or "").upper()
+    if estado not in {"APROBADA", "APROBADA_CONDICIONES"}:
+        raise ValueError(
+            "La aceptación del cliente solo aplica cuando el crédito está APROBADO "
+            "o APROBADA_CONDICIONES."
+        )
+    if cotizacion.aceptada_en is not None:
+        raise ValueError("Esta cotización ya fue aceptada por el cliente.")
+
+    analisis = cotizacion.analisis_credito
+    rec = str(getattr(analisis, "recomendacion", "") or "").upper() if analisis else ""
+    if rec and rec not in {"APROBADO", "APROBADA_CONDICIONES"}:
+        raise ValueError("El scoring de crédito no está aprobado.")
+
+    texto = (condiciones or "").strip()
+    if len(texto) < 10:
+        raise ValueError("Indique las condiciones aceptadas (mínimo 10 caracteres).")
+
+    cotizacion.aceptada_en = datetime.now(timezone.utc)
+    cotizacion.aceptada_por = (usuario or "sistema").strip() or "sistema"
+    cotizacion.condiciones_aceptadas = texto
+    cotizacion.snapshot_aceptacion_json = _json_safe(snapshot or {})
+    if pdf_rel_path:
+        cotizacion.pdf_aceptacion_path = pdf_rel_path
+    if email_destino:
+        cotizacion.email_aceptacion_destino = email_destino.strip()
+
+    workflow = cotizacion.workflow_json if isinstance(cotizacion.workflow_json, dict) else {}
+    hitos = dict(workflow.get("hitos") or {})
+    hitos["aceptacion_cliente"] = True
+    workflow["hitos"] = hitos
+    workflow["etapa_actual"] = "ORDEN_COMPRA"
+    cotizacion.workflow_json = workflow
+
+    estado_desde = estado
+    cotizacion.estado = "EN_FORMALIZACION"
+    if cotizacion.fecha_formalizacion is None:
+        cotizacion.fecha_formalizacion = date.today()
+
+    _registrar_historial(
+        db,
+        cotizacion=cotizacion,
+        tipo_evento="ACEPTACION_CLIENTE",
+        estado_desde=estado_desde,
+        estado_hasta="EN_FORMALIZACION",
+        comentario=f"Cliente aceptó condiciones del crédito. Destino email: {email_destino or 'N/D'}",
+        usuario=usuario,
+        metadata_json={
+            "email_destino": email_destino,
+            "pdf_path": pdf_rel_path,
+            "condiciones_len": len(texto),
+            "pdf_bytes": len(pdf_bytes or b""),
+        },
+    )
+    db.add(cotizacion)
+    db.commit()
+    db.refresh(cotizacion)
+    return get_cotizacion(db, int(cotizacion.id)) or cotizacion
+
+
+def marcar_email_aceptacion_enviado(
+    db: Session,
+    *,
+    cotizacion: LeasingFinancieroCotizacion,
+    destino: str,
+) -> None:
+    from datetime import datetime, timezone
+
+    cotizacion.email_aceptacion_enviado_en = datetime.now(timezone.utc)
+    cotizacion.email_aceptacion_destino = (destino or "").strip() or cotizacion.email_aceptacion_destino
+    db.add(cotizacion)
+    db.commit()
