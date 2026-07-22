@@ -1,72 +1,270 @@
 {% extends "layout/base.html" %}
 {% block title %}Políticas de flujos de crédito{% endblock %}
 {% block content %}
-<div class="container py-4" style="max-width: 980px;">
+<div class="container py-4" style="max-width: 1100px;">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div>
       <a href="{{ request.url_for('credito_riesgo_dashboard') }}" class="small text-decoration-none">← Volver al dashboard</a>
-      <h1 class="h5 fw-semibold mt-2 mb-1">Políticas editables de flujos de crédito</h1>
-      <p class="small text-muted mb-0">Estos umbrales son usados por el motor en evaluaciones rápidas y profundas.</p>
+      <h1 class="h5 fw-semibold mt-2 mb-1">Políticas de flujos de crédito</h1>
+      <p class="small text-muted mb-0">
+        Define umbrales del motor y usa la guía de abajo para saber <strong>qué información pedir</strong>,
+        <strong>dónde obtenerla</strong> y <strong>en qué campo de la solicitud</strong> cargarla.
+      </p>
+    </div>
+    <a href="{{ request.url_for('credito_riesgo_solicitud_nueva_get') }}" class="btn btn-sm btn-outline-primary">Nueva solicitud</a>
+  </div>
+
+  {# --- Guía operativa del analista --- #}
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+      <h2 class="h6 fw-semibold mb-2">Cómo trabajar una evaluación (orden recomendado)</h2>
+      <ol class="small mb-3 ps-3">
+        <li class="mb-1"><strong>Armar el expediente</strong> con los documentos del checklist (SII, EEFF, deuda, garantías).</li>
+        <li class="mb-1"><strong>Cargar números en la solicitud</strong> — el motor no lee PDFs: solo usa los campos del formulario.</li>
+        <li class="mb-1"><strong>Correr RÁPIDO</strong> para filtrar casos claros (APROBAR / RECHAZAR).</li>
+        <li class="mb-0"><strong>Correr PROFUNDO</strong> cuando haya flujo de caja, DSCR y garantías confiables (puede salir CONDICIONES).</li>
+      </ol>
+
+      <div class="row g-3">
+        <div class="col-lg-6">
+          <div class="border rounded-3 p-3 h-100 bg-light bg-opacity-50">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h3 class="h6 text-primary mb-0">Flujo RÁPIDO — mínimo viable</h3>
+              <span class="badge text-bg-secondary">3 reglas</span>
+            </div>
+            <p class="small text-muted mb-2">Decide solo con historial de pago, carga financiera y antigüedad. Ideal para pre-filtro.</p>
+            <table class="table table-sm table-borderless mb-0 small align-middle">
+              <thead>
+                <tr class="text-secondary">
+                  <th>Qué medir</th>
+                  <th>Dónde obtenerlo</th>
+                  <th>Campo en solicitud</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Score comercial</strong><br><span class="text-muted">Historial + endeudamiento</span></td>
+                  <td>DICOM / buró, certificado de deuda, liquidaciones o cartola de cuotas</td>
+                  <td>Mora, protestos, castigos, reprogramaciones · Ingreso · Cuotas vigentes · Cuota propuesta</td>
+                </tr>
+                <tr>
+                  <td><strong>Endeudamiento %</strong><br><span class="text-muted">(cuotas + cuota prop.) / ingreso</span></td>
+                  <td>Liquidación de sueldo / ventas; tabla de amortización o simulador de cuota</td>
+                  <td><code>ingreso_mensual</code>, <code>deuda_cuotas_mensual</code>, <code>cuota_propuesta</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Antigüedad</strong></td>
+                  <td>Contrato laboral / cotizaciones (natural) · SII inicio de actividades / escritura (empresa)</td>
+                  <td><code>antiguedad_meses_natural</code> o <code>anios_operacion_empresa</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="border rounded-3 p-3 h-100 bg-light bg-opacity-50">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h3 class="h6 text-primary mb-0">Flujo PROFUNDO — expediente completo</h3>
+              <span class="badge text-bg-secondary">DSCR · garantía · concentración</span>
+            </div>
+            <p class="small text-muted mb-2">Usa capacidad de pago real y cobertura. No correrlo sin EEFF / flujo de caja / tasación.</p>
+            <table class="table table-sm table-borderless mb-0 small align-middle">
+              <thead>
+                <tr class="text-secondary">
+                  <th>Qué medir</th>
+                  <th>Dónde obtenerlo</th>
+                  <th>Campo en solicitud</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>DSCR</strong><br><span class="text-muted">flujo caja / cuota</span></td>
+                  <td>EEFF / estado de resultados + proyección de caja; cuota del producto</td>
+                  <td><code>flujo_caja_mensual</code>, <code>cuota_propuesta</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Cobertura garantía %</strong><br><span class="text-muted">liquidación / monto</span></td>
+                  <td>Tasación o valor de liquidación del bien / aval; monto de la operación</td>
+                  <td><code>garantia_valor_liquidacion</code>, <code>monto_solicitado</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Concentración ingresos</strong></td>
+                  <td>Listado de clientes / ventas por contraparte (top cliente vs total)</td>
+                  <td><code>concentracion_ingresos_pct</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Historial tributario</strong></td>
+                  <td>Carpeta tributaria SII, F29, F22</td>
+                  <td><code>historial_tributario</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white">
+      <h2 class="h6 fw-semibold mb-0">Mapa rápido: documento → dato → campo</h2>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 small">
+        <thead class="table-light">
+          <tr>
+            <th>Documento / fuente</th>
+            <th>Qué extraer</th>
+            <th>Campo ERP</th>
+            <th>Usado en</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Carpeta tributaria SII / F29 / F22</td>
+            <td>Cumplimiento tributario, ventas, antigüedad formal</td>
+            <td>historial_tributario, ventas_anual, años operación</td>
+            <td>PROFUNDO (+ segmento)</td>
+          </tr>
+          <tr>
+            <td>Balance / EEFF / flujo de caja</td>
+            <td>Ingresos, EBITDA, flujo de caja, patrimonio, deudas</td>
+            <td>ingreso_mensual, flujo_caja_mensual, ebitda_anual, deuda_*, patrimonio</td>
+            <td>RÁPIDO y PROFUNDO</td>
+          </tr>
+          <tr>
+            <td>Certificado deuda CMF / SBIF / cartolas</td>
+            <td>Cuotas mensuales vigentes, protestos, castigos</td>
+            <td>deuda_cuotas_mensual, protestos, castigos, mora_max_dias_12m</td>
+            <td>RÁPIDO (score + endeudamiento)</td>
+          </tr>
+          <tr>
+            <td>DICOM / informe comercial</td>
+            <td>Score buró y estado</td>
+            <td>score_buro, score_buro_estado</td>
+            <td>Complemento (no es umbral de esta pantalla)</td>
+          </tr>
+          <tr>
+            <td>Tasación / escritura de garantía</td>
+            <td>Valor comercial y de liquidación</td>
+            <td>garantia_tipo, garantia_valor_comercial, garantia_valor_liquidacion</td>
+            <td>PROFUNDO (cobertura)</td>
+          </tr>
+          <tr>
+            <td>Contrato / cotizaciones AFP-SII</td>
+            <td>Antigüedad laboral o de la empresa</td>
+            <td>antiguedad_meses_natural / anios_operacion_empresa</td>
+            <td>RÁPIDO</td>
+          </tr>
+          <tr>
+            <td>Libro de ventas / ranking clientes</td>
+            <td>% del cliente principal sobre ventas</td>
+            <td>concentracion_ingresos_pct</td>
+            <td>PROFUNDO (ajuste de score)</td>
+          </tr>
+          <tr>
+            <td>Simulador / tabla del producto</td>
+            <td>Cuota propuesta de la operación</td>
+            <td>cuota_propuesta, monto_solicitado, plazo</td>
+            <td>Ambos flujos</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer bg-white border-0 small text-muted">
+      Tip: en la ficha de la solicitud, use el checklist documental y luego complete los campos numéricos.
+      Si un campo clave queda en 0, el motor puede rechazar o sesgar la decisión sin que el analista lo note.
+    </div>
+  </div>
+
+  {# --- Editor de umbrales --- #}
   <form method="post" action="{{ request.url_for('credito_riesgo_politicas_flujos_guardar') }}" class="card border-0 shadow-sm">
+    <div class="card-header bg-white">
+      <h2 class="h6 fw-semibold mb-0">Umbrales editables del motor</h2>
+      <p class="small text-muted mb-0 mt-1">Al guardar se publican de inmediato para las próximas evaluaciones.</p>
+    </div>
     <div class="card-body row g-3">
-      <div class="col-12"><h2 class="h6 text-primary mb-0">Flujo rápido</h2></div>
+      <div class="col-12">
+        <h3 class="h6 text-primary mb-0">Flujo rápido</h3>
+        <p class="small text-muted mb-0">APROBAR solo si se cumplen las tres condiciones a la vez; si no, RECHAZAR.</p>
+      </div>
       <div class="col-md-4">
-        <label class="form-label">Score mínimo aprobación</label>
+        <label class="form-label">Score comercial mínimo</label>
         <input name="rapido_score_aprobacion" class="form-control" value="{{ reglas.rapido_score_aprobacion }}" />
+        <div class="form-text">Interno: historial de pago + endeudamiento × 1,3. Default 300.</div>
       </div>
       <div class="col-md-4">
         <label class="form-label">Endeudamiento máximo (%)</label>
         <input name="rapido_endeudamiento_max_pct" class="form-control" value="{{ reglas.rapido_endeudamiento_max_pct }}" />
+        <div class="form-text">=(cuotas vigentes + cuota propuesta) / ingreso mensual × 100.</div>
       </div>
       <div class="col-md-4">
         <label class="form-label">Antigüedad mínima (años)</label>
         <input name="rapido_antiguedad_min_anios" class="form-control" value="{{ reglas.rapido_antiguedad_min_anios }}" />
+        <div class="form-text">Natural: meses/12 · Empresa: años de operación.</div>
       </div>
 
-      <div class="col-12 mt-3"><h2 class="h6 text-primary mb-0">Flujo profundo</h2></div>
+      <div class="col-12 mt-3">
+        <h3 class="h6 text-primary mb-0">Flujo profundo — DSCR</h3>
+        <p class="small text-muted mb-0">DSCR = flujo de caja mensual ÷ cuota propuesta. Ordene: rechazo &lt; alerta ≤ aprobación ≤ fuerte.</p>
+      </div>
       <div class="col-md-3">
         <label class="form-label">DSCR mínimo aprobación</label>
         <input name="profundo_dscr_aprobacion_min" class="form-control" value="{{ reglas.profundo_dscr_aprobacion_min }}" />
+        <div class="form-text">Necesario (con garantía) para APROBAR.</div>
       </div>
       <div class="col-md-3">
         <label class="form-label">DSCR máximo rechazo</label>
         <input name="profundo_dscr_rechazo_max" class="form-control" value="{{ reglas.profundo_dscr_rechazo_max }}" />
+        <div class="form-text">Por debajo → RECHAZAR.</div>
       </div>
       <div class="col-md-3">
         <label class="form-label">DSCR umbral alerta</label>
         <input name="profundo_dscr_alerta_min" class="form-control" value="{{ reglas.profundo_dscr_alerta_min }}" />
+        <div class="form-text">Bajo este valor: penaliza score.</div>
       </div>
       <div class="col-md-3">
         <label class="form-label">DSCR umbral fuerte</label>
         <input name="profundo_dscr_fuerte_min" class="form-control" value="{{ reglas.profundo_dscr_fuerte_min }}" />
+        <div class="form-text">Sobre este valor: bonifica score.</div>
       </div>
 
+      <div class="col-12 mt-2">
+        <h3 class="h6 text-primary mb-0">Flujo profundo — garantía</h3>
+        <p class="small text-muted mb-0">Cobertura % = valor liquidación ÷ monto solicitado × 100. Use liquidación, no valor comercial.</p>
+      </div>
       <div class="col-md-4">
         <label class="form-label">Garantía mínima aprobación (%)</label>
         <input name="profundo_garantia_aprobacion_min_pct" class="form-control" value="{{ reglas.profundo_garantia_aprobacion_min_pct }}" />
+        <div class="form-text">Junto a DSCR y categoría A/B/C → APROBAR.</div>
       </div>
       <div class="col-md-4">
         <label class="form-label">Garantía máximo rechazo (%)</label>
         <input name="profundo_garantia_rechazo_max_pct" class="form-control" value="{{ reglas.profundo_garantia_rechazo_max_pct }}" />
+        <div class="form-text">Por debajo → RECHAZAR / penaliza.</div>
       </div>
       <div class="col-md-4">
         <label class="form-label">Garantía umbral fuerte (%)</label>
         <input name="profundo_garantia_fuerte_min_pct" class="form-control" value="{{ reglas.profundo_garantia_fuerte_min_pct }}" />
+        <div class="form-text">Sobre este valor: bonifica score.</div>
       </div>
 
-      <div class="col-md-6">
-        <label class="form-label">Concentración alta ingresos (%)</label>
-        <input name="profundo_concentracion_alta_pct" class="form-control" value="{{ reglas.profundo_concentracion_alta_pct }}" />
+      <div class="col-12 mt-2">
+        <h3 class="h6 text-primary mb-0">Flujo profundo — concentración de ingresos</h3>
+        <p class="small text-muted mb-0">% del cliente principal sobre ventas. Ajusta el score; no decide solo.</p>
       </div>
       <div class="col-md-6">
-        <label class="form-label">Concentración baja ingresos (%)</label>
+        <label class="form-label">Concentración alta (%)</label>
+        <input name="profundo_concentracion_alta_pct" class="form-control" value="{{ reglas.profundo_concentracion_alta_pct }}" />
+        <div class="form-text">Sobre este %: penaliza (dependencia de un cliente).</div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Concentración baja (%)</label>
         <input name="profundo_concentracion_baja_pct" class="form-control" value="{{ reglas.profundo_concentracion_baja_pct }}" />
+        <div class="form-text">En o bajo este %: bonifica (cartera diversificada).</div>
       </div>
     </div>
-    <div class="card-footer bg-white border-0 d-flex gap-2">
+    <div class="card-footer bg-white border-0 d-flex flex-wrap gap-2">
       <button type="submit" class="btn btn-primary">Guardar y publicar reglas</button>
       <a href="{{ request.url_for('credito_riesgo_dashboard') }}" class="btn btn-outline-secondary">Cancelar</a>
     </div>

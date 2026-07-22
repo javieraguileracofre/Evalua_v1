@@ -44,9 +44,20 @@
       </div>
 
       <div class="card border-0 shadow-sm mb-3">
-        <div class="card-header bg-white fw-semibold">Motor de scoring</div>
+        <div class="card-header bg-white fw-semibold d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <span>Motor de scoring</span>
+          <a class="small" href="{{ request.url_for('credito_riesgo_politicas_flujos') }}">Qué pedir y dónde obtenerlo →</a>
+        </div>
         <div class="card-body">
-          <p class="small text-muted">Ejecuta dos flujos: <strong>RÁPIDO</strong> (score comercial, endeudamiento y antigüedad) o <strong>PROFUNDO</strong> (flujo de caja, DSCR, concentración de ingresos, historial tributario y garantías). Ambos generan log de reglas y decisión clara.</p>
+          <p class="small text-muted mb-2">Ejecuta dos flujos: <strong>RÁPIDO</strong> (score comercial, endeudamiento y antigüedad) o <strong>PROFUNDO</strong> (flujo de caja, DSCR, concentración de ingresos, historial tributario y garantías). Ambos generan log de reglas y decisión clara.</p>
+          <details class="mb-3">
+            <summary class="small">Antes de evaluar: checklist de datos mínimos</summary>
+            <div class="small mt-2 border rounded-3 p-2 bg-light">
+              <p class="mb-1"><strong>RÁPIDO</strong> — complete: ingreso mensual, cuotas vigentes, cuota propuesta, mora/protestos, antigüedad (meses o años empresa).</p>
+              <p class="mb-1"><strong>PROFUNDO</strong> — además: flujo de caja mensual, valor liquidación de garantía, concentración de ingresos, historial tributario.</p>
+              <p class="mb-0 text-muted">Fuentes típicas: SII (carpeta/F29/F22), EEFF, certificado deuda, tasación, DICOM. El motor solo lee los campos de la solicitud, no los PDF.</p>
+            </div>
+          </details>
           <div class="d-flex flex-wrap gap-2">
             <form method="post" action="{{ request.url_for('credito_riesgo_evaluar_rapido', solicitud_id=sol.id) }}" class="d-inline">
               <button type="submit" class="btn btn-outline-primary">Evaluación rápida</button>
