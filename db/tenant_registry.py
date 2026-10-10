@@ -117,7 +117,11 @@ def build_database_url(record: TenantRecord) -> str:
 
 
 def _single_db_tenant_fallback_enabled() -> bool:
-    """Un solo Postgres (p. ej. Supabase): sin fila en public.tenants, usar DATABASE_URL."""
+    """Solo instalación legacy. En database_per_company no hay base de respaldo."""
+    from core.config import settings
+
+    if getattr(settings, "database_per_company", False):
+        return False
     return os.getenv("EVALUA_SINGLE_DB_TENANT", "").strip().lower() in (
         "1",
         "true",

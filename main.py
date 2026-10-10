@@ -19,40 +19,17 @@ from fastapi.exception_handlers import (
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
-from starlette.responses import HTMLResponse
+from starlette.responses import FileResponse, HTMLResponse
 
 from core.auth_middleware import AuthMiddleware
 from core.config import settings
 from core.csrf_middleware import CSRFMiddleware
 from core.logging import setup_logging
+from core.security_headers import SecurityHeadersMiddleware
 from core.tenant import TenantResolutionMiddleware
 from db.base_class import Base
 from db.session import get_engine
-from db.startup_schema import (
-    ensure_ap_documento_contabilidad_columns,
-    ensure_auth_roles_seed,
-    ensure_auth_usuario_modulos_visibles,
-    ensure_comercial_leasing_financiero_schema,
-    ensure_credito_riesgo_schema,
-    ensure_credito_riesgo_empresarial_schema,
-    ensure_leasing_operativo_schema,
-    ensure_fin_config_contable_seed,
-    ensure_fondos_rendir_asiento_columns,
-    ensure_postventa_crm_schema,
-    ensure_remuneraciones_seed,
-    ensure_empleados_bootstrap,
-    ensure_remuneraciones_bootstrap,
-    ensure_remuneraciones_horas_periodo_schema,
-    ensure_remuneraciones_auditoria_schema,
-    ensure_remuneraciones_asiento_provision_column,
-    ensure_empleados_transferencia_bancaria_columns,
-    ensure_remuneraciones_parametros_periodo_schema,
-    ensure_leasing_financiero_plan_cuentas_min,
-    ensure_lf_cotizaciones_cleanup_prueba,
-    ensure_transporte_fondos_control_schema,
-    ensure_taller_ordenes_cotizacion_columns,
-    ensure_vehiculo_transporte_consumo_column,
-)
+from db.startup_schema import apply_startup_schema
 from core.evalua_session_middleware import EvaluaSessionMiddleware
 
 import models  # noqa: F401
@@ -65,6 +42,18 @@ import routes.ui as ui_routes_pkg
 
 setup_logging()
 logger = logging.getLogger("evalua.main")
+
+
+def health_payload() -> dict[str, str]:
+    """Producción: solo status. Desarrollo: metadatos de diagnóstico."""
+    if settings.is_dev:
+        return {
+            "status": "ok",
+            "app": settings.app_name,
+            "env": settings.app_env,
+            "tenancy_mode": getattr(settings, "tenancy_mode", "legacy"),
+        }
+    return {"status": "ok"}
 
 
 # ============================================================
@@ -90,6 +79,7 @@ ROUTER_ORDER = [
     "leasing_financiero",
     "leasing_credito",
     "credito_riesgo",
+    "credito_cobranzas",
     "leasing_operativo",
     "inventario",
     "ventas_pos",
@@ -103,6 +93,12 @@ ROUTER_ORDER = [
     "fin_periodos",
     "contabilidad",
     "admin_seguridad",
+    "admin_correo",
+    "admin_auditoria",
+    "admin_backups",
+    "admin_system_status",
+    "admin_empresas",
+    "empresa_contexto",
 ]
 
 
@@ -169,6 +165,28 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if docs_on else None,
     )
 
+    from core.platform_messages import MSG_DB_DOWN, MSG_NO_ACCESS, MSG_NO_COMPANY, MSG_SCHEMA_OLD
+    from db.company_engine import CompanyAccessDenied, CompanyDatabaseUnavailable
+
+    _safe_denial = {MSG_DB_DOWN, MSG_NO_ACCESS, MSG_NO_COMPANY, MSG_SCHEMA_OLD}
+
+    @app.exception_handler(CompanyDatabaseUnavailable)
+    async def company_database_unavailable(request: Request, exc: CompanyDatabaseUnavailable) -> HTMLResponse:
+        del request, exc
+        return HTMLResponse(
+            f"<!DOCTYPE html><html lang=\"es\"><body><p>{html.escape(MSG_DB_DOWN)}</p></body></html>",
+            status_code=503,
+        )
+
+    @app.exception_handler(CompanyAccessDenied)
+    async def company_access_denied(request: Request, exc: CompanyAccessDenied) -> HTMLResponse:
+        del request
+        text = str(exc) if str(exc) in _safe_denial else MSG_NO_ACCESS
+        return HTMLResponse(
+            f"<!DOCTYPE html><html lang=\"es\"><body><p>{html.escape(text)}</p></body></html>",
+            status_code=403,
+        )
+
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
 
@@ -227,7 +245,7 @@ def create_app() -> FastAPI:
 
     # Orden: insert(0) en cada add → el último add queda en índice 0 del stack interno.
     # Flujo real (tras ServerError): Session → CSRF → Tenant → Auth → rutas.
-    # CSRF es ASGI puro (no BaseHTTPMiddleware) para no vaciar el cuerpo POST hacia FastAPI.
+    # TrustedHost y cabeceras de seguridad quedan más afuera.
     app.add_middleware(AuthMiddleware)
     app.add_middleware(TenantResolutionMiddleware)
     app.add_middleware(CSRFMiddleware)
@@ -239,9 +257,14 @@ def create_app() -> FastAPI:
         same_site="lax",
         https_only=settings.auth_cookie_secure,
     )
+    app.add_middleware(SecurityHeadersMiddleware)
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
     logger.info(
-        "Middleware de sesión y autenticación activos (cookie_secure=%s).",
+        "Middleware de sesión y autenticación activos (cookie_secure=%s, hosts=%s).",
         settings.auth_cookie_secure,
+        ",".join(settings.allowed_hosts),
     )
 
     if STATIC_DIR.exists():
@@ -250,71 +273,59 @@ def create_app() -> FastAPI:
     else:
         logger.warning("No se encontró carpeta static: %s", STATIC_DIR)
 
-    engine = get_engine(settings.default_tenant_code)
-    if settings.auto_migrate_on_startup:
+    if getattr(settings, "database_per_company", False):
         try:
-            Base.metadata.create_all(bind=engine)
-            logger.info("Metadata sincronizada para tenant '%s'", settings.default_tenant_code)
-            ensure_ap_documento_contabilidad_columns(engine)
-            ensure_taller_ordenes_cotizacion_columns(engine)
-            ensure_fondos_rendir_asiento_columns(engine)
-            ensure_vehiculo_transporte_consumo_column(engine)
-            ensure_transporte_fondos_control_schema(engine)
-            ensure_empleados_bootstrap(engine)
-            ensure_remuneraciones_bootstrap(engine)
-            ensure_remuneraciones_parametros_periodo_schema(engine)
-            ensure_remuneraciones_horas_periodo_schema(engine)
-            ensure_remuneraciones_auditoria_schema(engine)
-            ensure_remuneraciones_asiento_provision_column(engine)
-            ensure_empleados_transferencia_bancaria_columns(engine)
-            ensure_auth_roles_seed(engine)
-            ensure_auth_usuario_modulos_visibles(engine)
-            ensure_remuneraciones_seed(engine)
-            ensure_fin_config_contable_seed(engine)
-            ensure_comercial_leasing_financiero_schema(engine)
-            ensure_credito_riesgo_schema(engine)
-            ensure_leasing_operativo_schema(engine)
-            ensure_postventa_crm_schema(engine)
+            from db.identity_session import init_identity_schema
+
+            init_identity_schema()
+            logger.info("Esquema de identidad listo.")
+        except Exception as exc:
+            logger.critical("No se pudo preparar erp_identity: %s", type(exc).__name__)
+            if not settings.is_dev:
+                raise RuntimeError("No se pudo preparar la base de identidad.") from exc
+        engine = None
+    else:
+        engine = get_engine(getattr(settings, "default_tenant_code", None) or None)
+    if engine is not None:
+        try:
+            apply_startup_schema(
+                engine,
+                allow_ddl=bool(settings.auto_migrate_on_startup),
+                create_all=Base.metadata.create_all if settings.auto_migrate_on_startup else None,
+            )
+            if settings.auto_migrate_on_startup:
+                logger.info("Metadata/DDL sincronizados para tenant '%s'", settings.default_tenant_code)
         except Exception as e:
             logger.critical("Error crítico ejecutando DDL/migraciones al iniciar: %s", e, exc_info=True)
             if not settings.is_dev:
                 raise RuntimeError("Fallo de migración automática en arranque.") from e
-    else:
-        logger.info("AUTO_MIGRATE_ON_STARTUP=false: se omiten create_all y ensure_* en arranque.")
-
-    # Remuneraciones: 117 es idempotente; con AUTO_MIGRATE_OFF las tablas no existirían sin esto.
-    try:
-        ensure_empleados_bootstrap(engine)
-        ensure_remuneraciones_bootstrap(engine)
-        ensure_remuneraciones_parametros_periodo_schema(engine)
-        ensure_remuneraciones_horas_periodo_schema(engine)
-        ensure_remuneraciones_auditoria_schema(engine)
-        ensure_remuneraciones_asiento_provision_column(engine)
-        ensure_empleados_transferencia_bancaria_columns(engine)
-        ensure_auth_roles_seed(engine)
-        ensure_auth_usuario_modulos_visibles(engine)
-        ensure_remuneraciones_seed(engine)
-        ensure_leasing_financiero_plan_cuentas_min(engine)
-        ensure_lf_cotizaciones_cleanup_prueba(engine)
-        ensure_credito_riesgo_empresarial_schema(engine)
-    except Exception as exc:
-        logger.warning("Bootstrap remuneraciones / seed roles tras arranque: %s", exc, exc_info=True)
 
     include_ui_routers(app)
 
     from routes.api.lop import router as lop_api_router
 
     app.include_router(lop_api_router, prefix="/api/comercial/leasing-operativo")
-    logger.info("Router API LOP v2 cargado en /api/comercial/leasing-operativo")
+    # Alias profesional pedido por motor residual (mismos handlers)
+    app.include_router(lop_api_router, prefix="/api/leasing", include_in_schema=False)
+    logger.info("Router API LOP v2 cargado en /api/comercial/leasing-operativo (+ alias /api/leasing)")
+
+    try:
+        from modules.bootstrap import register_domain_handlers
+
+        register_domain_handlers()
+    except Exception as exc:
+        logger.warning("No se pudieron registrar handlers de dominio: %s", type(exc).__name__)
 
     @app.get("/health", tags=["Health"])
     def healthcheck() -> dict[str, str]:
-        return {
-            "status": "ok",
-            "app": settings.app_name,
-            "env": settings.app_env,
-            "default_tenant": settings.default_tenant_code,
-        }
+        return health_payload()
+
+    favicon_path = STATIC_DIR / "favicon.ico"
+    if favicon_path.is_file():
+
+        @app.get("/favicon.ico", include_in_schema=False)
+        def favicon():
+            return FileResponse(favicon_path, media_type="image/x-icon")
 
     logger.info("Aplicación iniciada correctamente")
     return app
@@ -333,6 +344,12 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+
+    if settings.is_dev and settings.uvicorn_host in {"0.0.0.0", "::"} and not settings.secret_key_is_strong:
+        raise SystemExit(
+            "Arranque bloqueado: UVICORN_HOST=0.0.0.0 en desarrollo requiere SECRET_KEY "
+            "de al menos 32 caracteres aleatorios. Use UVICORN_HOST=127.0.0.1 o rote SECRET_KEY."
+        )
 
     if settings.uvicorn_host in {"0.0.0.0", "::"}:
         logger.info(

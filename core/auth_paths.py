@@ -15,6 +15,12 @@ def is_public_path(path: str, settings: Settings) -> bool:
         return True
     if path == "/login" or path.startswith("/login/"):
         return True
+    if path in (
+        "/auth/forgot-password",
+        "/auth/verify-reset-code",
+        "/auth/reset-password",
+    ):
+        return True
     if settings.is_dev:
         if path in ("/docs", "/redoc", "/openapi.json"):
             return True

@@ -4,11 +4,9 @@
 # También puedes crear solo "Web Service" desde el mismo repo (Runtime: Docker);
 # entonces este archivo sirve de referencia; variables sensibles en el panel.
 #
-# Postgres: crea "PostgreSQL" en Render, copia Internal Database URL en DATABASE_URL
-# al desplegar (una sola variable basta: PLATFORM_DATABASE_URL se deduce si falta).
-# Si POST /login devuelve 500 y en logs aparece "No existe tenant_code": en Supabase
-# cree la fila en public.tenants, o en Environment ponga EVALUA_SINGLE_DB_TENANT=true
-# (un solo Postgres sin tabla tenants).
+# Transición: TENANCY_MODE=legacy usa DATABASE_URL como única base operacional.
+# Modo definitivo: TENANCY_MODE=database_per_company exige IDENTITY_DATABASE_URL,
+# ADMIN_POSTGRES_URL y DB_CREDENTIALS_KEY. En ese modo DATABASE_URL no es fallback.
 # DATABASE_URL con db.*.supabase.co:5432 (IPv6) en Render: la app reescribe al pooler :6543;
 # ajusta SUPABASE_POOLER_HOST si tu proyecto usa otro host del panel Connect.
 #
@@ -39,10 +37,18 @@ services:
         value: "false"
       - key: AUTH_COOKIE_SECURE
         value: "true"
+      - key: TRUST_X_FORWARDED_FOR
+        value: "true"
+      - key: ALLOWED_HOSTS
+        value: "localhost,127.0.0.1,.onrender.com"
       - key: LOG_LEVEL
         value: INFO
-      - key: DEFAULT_TENANT_CODE
-        value: athletic
+      - key: TENANCY_MODE
+        value: legacy
+      # Schema: entrypoint corre alembic vía tools/upgrade_company_schema.py --legacy.
+      # Nunca activar DDL implícito en arranque de producción.
+      - key: AUTO_MIGRATE_ON_STARTUP
+        value: "false"
       - key: DATABASE_URL
         sync: false
       - key: SECRET_KEY

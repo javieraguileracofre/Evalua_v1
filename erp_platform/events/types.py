@@ -1,0 +1,18 @@
+# platform/events/types.py
+# -*- coding: utf-8 -*-
+"""Nombres canónicos de eventos empresariales (contratos entre módulos)."""
+
+CLIENTE_CREADO = "ClienteCreado"
+COTIZACION_APROBADA = "CotizacionAprobada"
+VENTA_CONFIRMADA = "VentaConfirmada"
+VENTA_ANULADA = "VentaAnulada"
+CONTRATO_LEASING_ACTIVADO = "ContratoLeasingActivado"
+CUOTA_GENERADA = "CuotaGenerada"
+CUOTA_PAGADA = "CuotaPagada"
+FACTURA_REGISTRADA = "FacturaRegistrada"
+ORDEN_TRABAJO_CERRADA = "OrdenTrabajoCerrada"
+VEHICULO_MANTENCION_REALIZADA = "VehiculoMantencionRealizada"
+EMPLEADO_CONTRATADO = "EmpleadoContratado"
+LIQUIDACION_GENERADA = "LiquidacionGenerada"
+PAGO_REALIZADO = "PagoRealizado"
+FONDO_RENDIR_ENTREGADO = "FondoRendirEntregado"

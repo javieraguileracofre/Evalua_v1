@@ -93,7 +93,7 @@ def test_tenant_middleware_resetea_contextvar(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         tenant_module,
         "settings",
-        SimpleNamespace(default_tenant_code="athletic", app_debug=False),
+        SimpleNamespace(default_tenant_code="company_test", app_debug=False),
     )
 
     middleware = TenantResolutionMiddleware(app=lambda *args, **kwargs: None)
@@ -130,7 +130,7 @@ def test_tenant_middleware_resetea_contextvar_si_hay_excepcion(
     monkeypatch.setattr(
         tenant_module,
         "settings",
-        SimpleNamespace(default_tenant_code="athletic", app_debug=False),
+        SimpleNamespace(default_tenant_code="company_test", app_debug=False),
     )
 
     middleware = TenantResolutionMiddleware(app=lambda *args, **kwargs: None)
@@ -168,25 +168,18 @@ def test_create_app_no_ejecuta_migraciones_si_flag_off(monkeypatch: pytest.Monke
     main_module = importlib.import_module("main")
     main_module = importlib.reload(main_module)
 
-    calls = {"create_all": 0, "ensures": 0}
+    calls: dict[str, object] = {"create_all": 0, "startup": []}
 
     def _mark_create_all(*args, **kwargs):
-        calls["create_all"] += 1
+        calls["create_all"] = int(calls["create_all"]) + 1
 
-    def _mark_ensure(*args, **kwargs):
-        calls["ensures"] += 1
+    def _mark_startup(engine, *, allow_ddl, create_all=None):
+        calls["startup"].append({"allow_ddl": allow_ddl, "has_create_all": create_all is not None})
+        if create_all is not None:
+            create_all(bind=engine)
 
     monkeypatch.setattr(main_module.Base.metadata, "create_all", _mark_create_all)
-    monkeypatch.setattr(main_module, "ensure_ap_documento_contabilidad_columns", _mark_ensure)
-    monkeypatch.setattr(main_module, "ensure_taller_ordenes_cotizacion_columns", _mark_ensure)
-    monkeypatch.setattr(main_module, "ensure_fondos_rendir_asiento_columns", _mark_ensure)
-    monkeypatch.setattr(main_module, "ensure_vehiculo_transporte_consumo_column", _mark_ensure)
-    monkeypatch.setattr(main_module, "ensure_auth_roles_seed", _mark_ensure)
-    monkeypatch.setattr(main_module, "ensure_fin_config_contable_seed", _mark_ensure)
-    monkeypatch.setattr(main_module, "ensure_comercial_leasing_financiero_schema", _mark_ensure)
-    monkeypatch.setattr(main_module, "ensure_credito_riesgo_schema", _mark_ensure)
-    monkeypatch.setattr(main_module, "ensure_leasing_operativo_schema", _mark_ensure)
-    monkeypatch.setattr(main_module, "ensure_postventa_crm_schema", _mark_ensure)
+    monkeypatch.setattr(main_module, "apply_startup_schema", _mark_startup)
     monkeypatch.setattr(main_module, "get_engine", lambda tenant: object())
     monkeypatch.setattr(main_module, "include_ui_routers", lambda app: None)
     monkeypatch.setattr(
@@ -200,12 +193,15 @@ def test_create_app_no_ejecuta_migraciones_si_flag_off(monkeypatch: pytest.Monke
             secret_key="x" * 64,
             auth_session_max_age_seconds=3600,
             auth_cookie_secure=True,
-            default_tenant_code="athletic",
+            default_tenant_code="company_test",
             auto_migrate_on_startup=False,
+            allowed_hosts=("testserver", "localhost"),
+            trust_x_forwarded_for=False,
+            database_per_company=False,
         ),
     )
 
     app = main_module.create_app()
     assert app is not None
     assert calls["create_all"] == 0
-    assert calls["ensures"] == 0
+    assert calls["startup"] == [{"allow_ddl": False, "has_create_all": False}]

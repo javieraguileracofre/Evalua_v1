@@ -1,0 +1,45 @@
+{% extends "layout/base.html" %}
+{% block title %}Empresas · Evalua ERP{% endblock %}
+{% block page_title %}Empresas{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle mb-0">Cada compañía opera en su propia base. EvaluaERP no asigna una empresa por defecto.</p>{% endblock %}
+{% block page_actions %}
+<a class="btn btn-primary" href="{{ request.url_for('plataforma_empresa_nueva') }}">Nueva empresa</a>
+{% endblock %}
+{% block content %}
+{% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Código</th><th>Razón social</th><th>Nombre fantasía</th><th>RUT</th>
+          <th>Estado</th><th>Versión</th><th>Usuarios</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for empresa in empresas %}
+        <tr>
+          <td><code>{{ empresa.code }}</code></td>
+          <td>{{ empresa.legal_name }}</td>
+          <td>{{ empresa.trade_name or "—" }}</td>
+          <td>{{ empresa.rut }}</td>
+          <td>{{ empresa.status }}</td>
+          <td>
+            {{ empresa.schema_version or "—" }}
+            {% if empresa.schema_is_current %}
+            <span class="badge text-bg-success">ok</span>
+            {% else %}
+            <span class="badge text-bg-warning">desact.</span>
+            {% endif %}
+          </td>
+          <td>{{ empresa.users }}</td>
+          <td><a href="{{ request.url_for('plataforma_empresa_detalle', company_id=empresa.id) }}">Ver</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-muted p-4">Todavía no hay compañías. Cree la primera desde Nueva empresa.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

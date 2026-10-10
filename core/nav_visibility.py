@@ -8,8 +8,11 @@ from typing import Any
 from core.module_catalog import (
     ALL_ASSIGNABLE_KEYS,
     ALL_MODULE_KEYS,
+    NAV_CREDITO_COBRANZAS_SUBMODULE_KEYS,
     NAV_SUBMODULE_KEYS,
+    SUBMODULE_PARENT,
     default_visible_modules_for_roles,
+    siblings_of_submodule,
 )
 from core.rbac import auth_roles, usuario_es_admin
 
@@ -26,25 +29,24 @@ def modulos_visibles_en_sesion(auth: dict[str, Any] | None) -> frozenset[str]:
     return default_visible_modules_for_roles(auth_roles(auth))
 
 
-def _submodulos_comercial_asignados(visible: frozenset[str]) -> frozenset[str]:
-    return visible & frozenset(NAV_SUBMODULE_KEYS)
-
-
 def usuario_puede_ver_submodulo_nav(auth: dict[str, Any] | None, submodule_key: str) -> bool:
     """
-    Visibilidad de ítems bajo Comercial (leasing, crédito).
-    Si el usuario tiene COMERCIAL pero ningún sub-módulo explícito, ve todos (retrocompat).
+    Visibilidad de submódulos (leasing bajo Comercial; crédito/cobranza bajo Crédito y cobranzas).
+    Si el usuario tiene el padre pero ningún hijo explícito de ese padre, ve todos (retrocompat).
     """
     key = str(submodule_key or "").strip().upper()
-    if not key:
+    if not key or key not in NAV_SUBMODULE_KEYS:
         return False
     if usuario_es_admin(auth):
         return True
     visible = modulos_visibles_en_sesion(auth)
     if key in visible:
         return True
-    subs = _submodulos_comercial_asignados(visible)
-    if "COMERCIAL" in visible and not subs:
+    parent = SUBMODULE_PARENT.get(key)
+    if not parent:
+        return False
+    siblings = siblings_of_submodule(key)
+    if parent in visible and not (visible & siblings):
         return True
     return False
 
@@ -53,4 +55,12 @@ def usuario_puede_ver_modulo_nav(auth: dict[str, Any] | None, module_key: str) -
     key = str(module_key or "").strip().upper()
     if not key:
         return False
-    return key in modulos_visibles_en_sesion(auth)
+    if usuario_es_admin(auth):
+        return key in ALL_ASSIGNABLE_KEYS or key in ALL_MODULE_KEYS
+    visible = modulos_visibles_en_sesion(auth)
+    if key in visible:
+        return True
+    # Sección visible si solo hay hijos asignados (usuarios legacy con CREDITO_RIESGO / COBRANZA).
+    if key == "CREDITO_COBRANZAS":
+        return bool(visible & frozenset(NAV_CREDITO_COBRANZAS_SUBMODULE_KEYS))
+    return False

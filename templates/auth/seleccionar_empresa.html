@@ -1,0 +1,28 @@
+{% extends "auth/base_acceso.html" %}
+{% block title %}Seleccionar compañía · Evalua ERP{% endblock %}
+{% block card %}
+  <h2>Selecciona una compañía</h2>
+  <p class="sub">Elige la empresa con la que vas a trabajar.</p>
+  {% if error_message %}
+  <div class="alert alert-danger border-0 py-2 px-3 mb-3">{{ error_message }}</div>
+  {% endif %}
+  <form method="post" action="/empresa/seleccionar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+    <div class="d-flex flex-column gap-2 mb-3">
+      {% for company in companies %}
+      <label class="border rounded p-3 d-flex gap-2 align-items-start">
+        <input type="radio" name="company_id" value="{{ company.id }}" {% if loop.first %}checked required{% endif %}>
+        <span>
+          <strong>{{ company.trade_name or company.legal_name }}</strong><br>
+          <span class="text-muted small">{{ company.legal_name }} · RUT {{ company.rut }}</span>
+        </span>
+      </label>
+      {% else %}
+      <p>No existe una compañía activa disponible para este usuario. Contacte al administrador de la plataforma.</p>
+      {% endfor %}
+    </div>
+    {% if companies %}
+    <button class="btn btn-primary w-100" type="submit">Ingresar</button>
+    {% endif %}
+  </form>
+{% endblock %}

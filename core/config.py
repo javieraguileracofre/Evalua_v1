@@ -168,8 +168,12 @@ class Settings:
 
     database_url: str
     platform_database_url: str
+    identity_database_url: str
     admin_postgres_url: str | None
+    tenancy_mode: str
+    db_credentials_key: str
 
+    # Retirado como selector de compañía. Se conserva vacío para no romper lecturas antiguas.
     default_tenant_code: str
     tenant_header_name: str
     tenant_query_param: str
@@ -186,6 +190,10 @@ class Settings:
     db_connect_timeout_seconds: int
     auto_migrate_on_startup: bool
 
+    # Hosts permitidos (TrustedHost). Lista separada por comas en ALLOWED_HOSTS.
+    allowed_hosts: tuple[str, ...]
+    trust_x_forwarded_for: bool
+
     # Contabilidad — fondos por rendir (códigos en fin.plan_cuenta)
     fondo_rendir_cuenta_anticipo: str
     fondo_rendir_cuenta_caja: str
@@ -199,9 +207,48 @@ class Settings:
     # Leasing operativo comercial v2 (motor indexación, wizard, API preview).
     lop_comercial_v2: bool
 
+    # Cloudflare Tunnel (solo consulta de estado; sin secretos).
+    cloudflare_service_name: str
+    cloudflare_tunnel_name: str
+    cloudflare_hostname: str
+    cloudflare_gaval_express_hostname: str
+    cloudflare_origin: str
+
+    # OAuth correo (opcional). Si están vacíos, SMTP cifrado sigue disponible.
+    google_oauth_client_id: str
+    google_oauth_client_secret: str
+    microsoft_oauth_client_id: str
+    microsoft_oauth_client_secret: str
+
+    @property
+    def database_per_company(self) -> bool:
+        return self.tenancy_mode == "database_per_company"
+
+    @property
+    def db_credentials_key_is_strong(self) -> bool:
+        key = (self.db_credentials_key or "").strip()
+        return len(key) >= 32
+
     @property
     def is_dev(self) -> bool:
         return self.app_env.lower() in {"dev", "development", "local"}
+
+    @property
+    def secret_key_is_strong(self) -> bool:
+        key = (self.secret_key or "").strip()
+        if len(key) < 32:
+            return False
+        weak = {
+            "change-me-now",
+            "cambia-esto-en-produccion",
+            "secret",
+            "changeme",
+            "evalua",
+            "evaluaerp",
+            "evalua1234",
+            "evalua1234##",
+        }
+        return key.lower() not in weak and "evalua1234" not in key.lower()
 
     @staticmethod
     def load() -> "Settings":
@@ -220,16 +267,40 @@ class Settings:
         database_url = _ensure_sslmode_require_for_supabase(database_url)
         platform_database_url = _ensure_sslmode_require_for_supabase(platform_database_url)
 
-        if not database_url:
+        tenancy_mode = os.getenv("TENANCY_MODE", "legacy").strip().lower()
+        if tenancy_mode not in {"legacy", "database_per_company"}:
+            tenancy_mode = "legacy"
+
+        identity_database_url = os.getenv("IDENTITY_DATABASE_URL", "").strip()
+        if identity_database_url:
+            identity_database_url = _normalize_postgres_url_for_psycopg(identity_database_url)
+            identity_database_url = rewrite_supabase_direct_db_url_to_pooler(identity_database_url)
+            identity_database_url = _ensure_sslmode_require_for_supabase(identity_database_url)
+
+        db_credentials_key = os.getenv("DB_CREDENTIALS_KEY", "").strip()
+
+        if tenancy_mode == "database_per_company":
+            if not identity_database_url:
+                raise RuntimeError(
+                    "IDENTITY_DATABASE_URL es obligatorio cuando TENANCY_MODE=database_per_company. "
+                    "Esa base es erp_identity y no puede ser la base operacional de una compañía."
+                )
+            # Aunque DATABASE_URL exista en el entorno, no es fallback operacional ni de plataforma.
+            database_url = ""
+            platform_database_url = identity_database_url
+        elif not database_url:
             raise RuntimeError(
                 f"DATABASE_URL no está configurado (ni DB_HOST/DB_USER/DB_PASSWORD/DB_NAME). "
                 f"Revisa el archivo: {ENV_FILE}"
             )
 
         if not platform_database_url:
-            raise RuntimeError(
-                f"PLATFORM_DATABASE_URL no está configurado. Revisa el archivo: {ENV_FILE}"
-            )
+            if tenancy_mode == "database_per_company" and identity_database_url:
+                platform_database_url = identity_database_url
+            else:
+                raise RuntimeError(
+                    f"PLATFORM_DATABASE_URL no está configurado. Revisa el archivo: {ENV_FILE}"
+                )
 
         app_env_raw = os.getenv("APP_ENV", "development").strip()
         app_env_lower = app_env_raw.lower()
@@ -243,23 +314,45 @@ class Settings:
             "secret",
             "changeme",
             "evalua",
+            "evaluaerp",
+            "evalua1234",
+            "evalua1234##",
         }
+        secret_strong = (
+            len(secret_key) >= 32
+            and secret_key.lower() not in weak_keys
+            and "evalua1234" not in secret_key.lower()
+        )
         if not is_dev:
-            if secret_key.lower() in weak_keys or len(secret_key) < 32:
+            if not secret_strong:
                 raise RuntimeError(
                     "SECRET_KEY no es válida para producción: use al menos 32 caracteres "
                     "aleatorios (p. ej. openssl rand -hex 32) y defínala en .env. "
                     f"APP_ENV={app_env_raw!r}."
                 )
+            if tenancy_mode == "database_per_company" and len(db_credentials_key) < 32:
+                raise RuntimeError(
+                    "DB_CREDENTIALS_KEY debe tener al menos 32 caracteres en producción "
+                    "cuando TENANCY_MODE=database_per_company."
+                )
 
-        # Por defecto 0.0.0.0 para poder abrir la app desde el iPhone u otros equipos en la LAN.
-        uvicorn_host = os.getenv("UVICORN_HOST", "0.0.0.0").strip() or "0.0.0.0"
+        uvicorn_host = os.getenv("UVICORN_HOST", "127.0.0.1").strip() or "127.0.0.1"
+        if uvicorn_host in {"0.0.0.0", "::"} and is_dev:
+            import warnings
+
+            warnings.warn(
+                "UVICORN_HOST=0.0.0.0 en desarrollo expone EvaluaERP en toda la LAN. "
+                "Si SECRET_KEY es débil, main.py bloqueará el arranque; use 127.0.0.1 "
+                "o una SECRET_KEY de al menos 32 caracteres aleatorios.",
+                stacklevel=2,
+            )
         uvicorn_port = _to_int(os.getenv("UVICORN_PORT") or os.getenv("PORT"), 8000)
 
-        auth_cookie_secure = _to_bool(os.getenv("AUTH_COOKIE_SECURE"), default=not is_dev)
-        # En desarrollo local (http://127.0.0.1) las cookies Secure no se guardan: la sesión CSRF fallaría siempre.
-        if is_dev:
-            auth_cookie_secure = False
+        cookie_raw = os.getenv("AUTH_COOKIE_SECURE")
+        if cookie_raw is None:
+            auth_cookie_secure = not is_dev
+        else:
+            auth_cookie_secure = _to_bool(cookie_raw, default=not is_dev)
         auth_session_max_age = _to_int(os.getenv("AUTH_SESSION_MAX_AGE_SECONDS"), 28800)
         if auth_session_max_age < 300:
             auth_session_max_age = 28800
@@ -285,17 +378,28 @@ class Settings:
                 "Configuración insegura: AUTO_MIGRATE_ON_STARTUP=true no está permitido en producción."
             )
 
+        raw_hosts = os.getenv("ALLOWED_HOSTS", "").strip()
+        if raw_hosts:
+            allowed_hosts = tuple(h.strip() for h in raw_hosts.split(",") if h.strip())
+        elif is_dev:
+            allowed_hosts = ("localhost", "127.0.0.1", "testserver")
+        else:
+            allowed_hosts = ("localhost", "127.0.0.1", "testserver", ".onrender.com")
+
         return Settings(
             app_name=os.getenv("APP_NAME", "EvaluaERP").strip(),
             app_env=app_env_raw,
-            app_debug=_to_bool(os.getenv("APP_DEBUG"), default=True),
+            app_debug=_to_bool(os.getenv("APP_DEBUG"), default=is_dev),
             app_version=os.getenv("APP_VERSION", "1.0.0").strip(),
             uvicorn_host=uvicorn_host,
             uvicorn_port=uvicorn_port,
             database_url=database_url,
             platform_database_url=platform_database_url,
+            identity_database_url=identity_database_url,
             admin_postgres_url=admin_postgres_url,
-            default_tenant_code=os.getenv("DEFAULT_TENANT_CODE", "athletic").strip(),
+            tenancy_mode=tenancy_mode,
+            db_credentials_key=db_credentials_key,
+            default_tenant_code="",
             tenant_header_name=os.getenv("TENANT_HEADER_NAME", "X-Tenant-Code").strip(),
             tenant_query_param=os.getenv("TENANT_QUERY_PARAM", "tenant").strip(),
             tenant_cookie_name=os.getenv("TENANT_COOKIE_NAME", "tenant_code").strip(),
@@ -306,6 +410,8 @@ class Settings:
             auth_session_max_age_seconds=auth_session_max_age,
             db_connect_timeout_seconds=db_connect_timeout,
             auto_migrate_on_startup=auto_migrate_on_startup,
+            allowed_hosts=allowed_hosts,
+            trust_x_forwarded_for=_to_bool(os.getenv("TRUST_X_FORWARDED_FOR"), default=not is_dev),
             fondo_rendir_cuenta_anticipo=os.getenv("FONDO_RENDIR_CUENTA_ANTICIPO", "").strip(),
             fondo_rendir_cuenta_caja=os.getenv("FONDO_RENDIR_CUENTA_CAJA", "").strip(),
             fondo_rendir_cuenta_gasto=os.getenv("FONDO_RENDIR_CUENTA_GASTO", "").strip(),
@@ -313,6 +419,20 @@ class Settings:
             remuneracion_cuenta_banco=os.getenv("REMUNERACION_CUENTA_BANCO", "").strip(),
             remuneracion_cuenta_gasto_sueldos=os.getenv("REMUNERACION_CUENTA_GASTO_SUELDOS", "").strip(),
             lop_comercial_v2=_to_bool(os.getenv("LOP_COMERCIAL_V2"), default=True),
+            cloudflare_service_name=os.getenv("CLOUDFLARE_SERVICE_NAME", "Cloudflared").strip() or "Cloudflared",
+            cloudflare_tunnel_name=os.getenv("CLOUDFLARE_TUNNEL_NAME", "evaluaerp").strip() or "evaluaerp",
+            cloudflare_hostname=os.getenv("CLOUDFLARE_HOSTNAME", "gaval.evaluasoluciones.cl").strip()
+            or "gaval.evaluasoluciones.cl",
+            cloudflare_gaval_express_hostname=os.getenv(
+                "CLOUDFLARE_GAVAL_EXPRESS_HOSTNAME", "gaval.evaluasoluciones.cl"
+            ).strip()
+            or "gaval.evaluasoluciones.cl",
+            cloudflare_origin=os.getenv("CLOUDFLARE_ORIGIN", "").strip()
+            or f"http://localhost:{uvicorn_port}",
+            google_oauth_client_id=os.getenv("GOOGLE_OAUTH_CLIENT_ID", "").strip(),
+            google_oauth_client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "").strip(),
+            microsoft_oauth_client_id=os.getenv("MICROSOFT_OAUTH_CLIENT_ID", "").strip(),
+            microsoft_oauth_client_secret=os.getenv("MICROSOFT_OAUTH_CLIENT_SECRET", "").strip(),
         )
 
 

@@ -154,6 +154,15 @@ class CSRFMiddleware:
             return
 
         if is_public_path(path, settings):
+            if method not in _SAFE_METHODS:
+                req = Request(scope)
+                if not _same_origin(req):
+                    resp = JSONResponse(
+                        {"detail": "CSRF validation failed: invalid origin."},
+                        status_code=403,
+                    )
+                    await resp(scope, _replay_receive_factory(b""), send)
+                    return
             await self.app(scope, receive, send)
             return
 

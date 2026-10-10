@@ -2,25 +2,39 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from decimal import Decimal
-from datetime import date, datetime
 from io import BytesIO
+from typing import List
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from core.rbac import usuario_es_admin, usuario_tiene_rol
+from core.json_script import json_for_script
+from core.rbac import (
+    guard_leasing_op_consulta,
+    guard_leasing_op_mutacion,
+    usuario_es_admin,
+    usuario_puede_mutar_modulos_operacion,
+)
 from core.config import settings
 from core.paths import TEMPLATES_DIR
 from crud.leasing_operativo import crud as lo_crud
 from crud.maestros.cliente import listar_clientes
 from db.session import get_db
-from services.leasing_operativo.contrato_pdf import generar_contrato_pdf_bytes
 from services.leasing_operativo.market_data import fetch_cl_market_indicators
 from services.indicadores_mercado import obtener_uf_dolar_hoy
+from services.leasing_operativo.ui_forms import (
+    build_inputs_from_form as _build_inputs_from_form,
+    parse_date as _date,
+    parse_dec as _dec,
+    parse_int as _int,
+    parse_num as _num,
+    parse_unidades_y_inputs as _parse_unidades_y_inputs,
+)
 
 router = APIRouter(prefix="/comercial/leasing-operativo", tags=["Comercial · Leasing operativo"])
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -36,12 +50,18 @@ def _guard_param_admin(request: Request) -> RedirectResponse | None:
 
 
 def _guard_operacion_write(request: Request) -> RedirectResponse | None:
+    return guard_leasing_op_mutacion(request)
+
+
+def _puede_mutar_lop(request: Request) -> bool:
     auth = getattr(request.state, "auth_user", None)
-    if usuario_es_admin(auth) or usuario_tiene_rol(auth, "OPERACIONES") or usuario_tiene_rol(auth, "FINANZAS"):
-        return None
-    return RedirectResponse(
-        url="/?msg=No+tiene+permiso+para+modificar+leasing+operativo&sev=danger",
-        status_code=status.HTTP_303_SEE_OTHER,
+    if usuario_es_admin(auth):
+        return True
+    from core.nav_visibility import usuario_puede_ver_submodulo_nav
+
+    return bool(
+        usuario_puede_mutar_modulos_operacion(auth)
+        and usuario_puede_ver_submodulo_nav(auth, "LEASING_OPERATIVO")
     )
 
 
@@ -52,94 +72,59 @@ def _actor(request: Request) -> str:
     return "sistema"
 
 
-def _dec(raw: str | None, default: str = "0") -> Decimal:
-    v = str(raw or "").strip()
-    if not v:
-        return Decimal(default)
-    if "," in v:
-        v = v.replace(".", "").replace(",", ".")
-    try:
-        return Decimal(v)
-    except Exception:
-        return Decimal(default)
+def _redirect_lo(request: Request, name: str, *, msg: str = "", sev: str = "info", **path_params):
+    url = str(request.url_for(name, **path_params))
+    if msg:
+        sep = "&" if "?" in url else "?"
+        url = f"{url}{sep}msg={quote(msg)}&sev={quote(sev)}"
+    return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
 
 
-def _int(raw: str | None, d: int = 0) -> int:
-    try:
-        return int(str(raw or "").strip())
-    except Exception:
-        return d
+def _simulador_template_context(request: Request, db: Session, *, modo: str = "crear", sim=None) -> dict:
+    from services.leasing_operativo.catalogo_mercado_cl import catalogo_boot
+    from services.leasing_operativo.residual_model import TIPOS_USO
 
-
-def _date(raw: str | None) -> date:
-    v = (raw or "").strip()
-    if not v:
-        return datetime.utcnow().date()
-    try:
-        return datetime.strptime(v, "%Y-%m-%d").date()
-    except Exception:
-        return datetime.utcnow().date()
-
-
-def _num(raw: str | None, default: str = "0") -> float:
-    return float(_dec(raw, default))
-
-
-def _build_inputs_from_form(form: dict[str, str]) -> dict:
+    lo_crud.asegurar_parametros_tipo_default(db)
+    tipos = lo_crud.listar_tipos_activo(db)
+    params = lo_crud.listar_parametros_tipo(db)
+    params_by_tipo = {int(p.tipo_activo_id): p for p in params}
+    clientes, _ = listar_clientes(db, activos_solo=True, limit=400)
+    mkt = fetch_cl_market_indicators()
+    catalogo = catalogo_boot(tipos)
+    anios = list(range(2015, 2028))
+    tipos_uso = [{"codigo": k, "label": v["label"]} for k, v in TIPOS_USO.items()]
+    seed = None
+    if sim is not None:
+        inp = sim.inputs_json or {}
+        seed = {
+            "nombre": sim.nombre or "",
+            "cliente_id": int(sim.cliente_id) if sim.cliente_id else None,
+            "plazo_meses": int(sim.plazo_meses or 36),
+            "spread_pct": float(sim.spread_pct or 8),
+            "margen_pct": float(sim.margen_pct or 12) if sim.margen_pct is not None else 12,
+            "tir_objetivo_anual": float(sim.tir_objetivo_anual or 14) if sim.tir_objetivo_anual is not None else 14,
+            "moneda": str(inp.get("moneda") or "CLP"),
+            "escenario": str(sim.escenario or "BASE"),
+            "metodo_pricing": str(sim.metodo_pricing or "COSTO_SPREAD"),
+            "unidades": lo_crud.unidades_para_edicion(sim),
+        }
     return {
-        "moneda": (form.get("moneda") or "CLP").upper(),
-        "iva_pct": form.get("iva_pct") or "19",
-        "market_data": {
-            "uf_clp": form.get("uf_clp"),
-            "usd_clp": form.get("usd_clp"),
-            "ipc_pct": form.get("ipc_pct"),
-            "source": form.get("market_source"),
-            "as_of": form.get("market_as_of"),
-        },
-        "capex": {
-            "precio_compra": form.get("precio_compra"),
-            "importacion": form.get("importacion"),
-            "inscripcion": form.get("inscripcion"),
-            "patente": form.get("patente"),
-            "gps_telemetria": form.get("gps_telemetria"),
-            "traslado": form.get("traslado"),
-            "acondicionamiento": form.get("acondicionamiento"),
-            "puesta_marcha": form.get("puesta_marcha"),
-            "comision_proveedor": form.get("comision_proveedor"),
-            "otros_activables": form.get("otros_activables"),
-        },
-        "uso": {"km_anual": form.get("km_anual"), "horas_anual": form.get("horas_anual")},
-        "activo": {
-            "marca_modelo_factor": form.get("marca_modelo_factor"),
-            "sector_economico_mult": form.get("sector_economico_mult"),
-            "inflacion_activo_pct_anual": form.get("inflacion_activo_pct_anual"),
-            "condicion_factor": form.get("condicion_factor"),
-        },
-        "collateral": {
-            "valor_mercado": form.get("col_valor_mercado"),
-            "costo_repossession": form.get("col_repossession"),
-            "costo_legal": form.get("col_legal"),
-            "transporte": form.get("col_transporte"),
-            "reacondicionamiento": form.get("col_reacond"),
-            "descuento_venta_forzada_pct": form.get("col_desc_forzada_pct"),
-            "meses_liquidacion": form.get("col_meses_liq"),
-            "tasa_fin_liquidacion_mensual": form.get("col_tasa_fin_m"),
-        },
-        "comercial": {
-            "comision_vendedor": form.get("com_vendedor"),
-            "comision_canal": form.get("com_canal"),
-            "costo_adquisicion": form.get("com_adq"),
-            "evaluacion": form.get("com_eval"),
-            "legal": form.get("com_legal"),
-            "onboarding": form.get("com_onb"),
-        },
-        "riesgo": {
-            "segmento_cliente": (form.get("riesgo_segmento") or "MEDIO").upper(),
-            "sector_mult": form.get("riesgo_sector_mult"),
-            "activo_mult": form.get("riesgo_activo_mult"),
-            "uso_intensivo_mult": form.get("riesgo_uso_mult"),
-            "liquidez_mult": form.get("riesgo_liq_mult"),
-        },
+        "request": request,
+        "tipos": tipos,
+        "params_by_tipo": params_by_tipo,
+        "clientes": clientes,
+        "market": mkt,
+        "marcas": catalogo["marcas"],
+        "modelos": catalogo["modelos"],
+        "catalogo_mercado": catalogo,
+        "anios": anios,
+        "tipos_uso": tipos_uso,
+        "active_menu": "leasing_operativo",
+        "lop_v2": settings.lop_comercial_v2,
+        "modo": modo,
+        "sim": sim,
+        "seed": seed,
+        "seed_json": json_for_script(seed) if seed is not None else "null",
     }
 
 
@@ -165,6 +150,8 @@ def _mercado_hub() -> dict | None:
 
 @router.get("/hub", response_class=HTMLResponse, name="leasing_operativo_hub")
 def lo_hub(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     try:
         resumen = lo_crud.get_hub_resumen(db)
     except Exception as exc:
@@ -174,12 +161,27 @@ def lo_hub(request: Request, db: Session = Depends(get_db)):
             "y db/supabase/lop_comercial_v2.sql en Supabase SQL Editor o reinicie la app tras migración. "
             f"Detalle: {exc}",
         ) from exc
+    puede_mutar = _puede_mutar_lop(request)
+    recientes_ui = []
+    for r in resumen.get("recientes") or []:
+        et = lo_crud.etapa_actual(r)
+        recientes_ui.append(
+            {
+                "sim": r,
+                "etapa": et,
+                "etapa_label": lo_crud.etiqueta_etapa(et),
+                "puede_editar": puede_mutar and lo_crud.puede_editar_simulacion(r),
+                "puede_eliminar": puede_mutar and lo_crud.puede_eliminar_simulacion(r),
+            }
+        )
+    resumen = {**resumen, "recientes_ui": recientes_ui}
     return templates.TemplateResponse(
         "leasing_operativo/hub.html",
         {
             "request": request,
             "mercado": _mercado_hub(),
             "active_menu": "leasing_operativo",
+            "puede_mutar": puede_mutar,
             **resumen,
         },
     )
@@ -187,6 +189,8 @@ def lo_hub(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/simulaciones", response_class=HTMLResponse, name="leasing_operativo_list")
 def lo_list(request: Request, db: Session = Depends(get_db), q: str = "", etapa: str = ""):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     rows = lo_crud.listar_simulaciones(db, limit=300, q=q or None, etapa=etapa or None)
     resumen = {
         "total": len(rows),
@@ -214,15 +218,40 @@ def lo_list(request: Request, db: Session = Depends(get_db), q: str = "", etapa:
             resumen["aprobadas"] += 1
         if r.decision_codigo == "RECHAZAR":
             resumen["rechazadas"] += 1
+    puede_mutar = _puede_mutar_lop(request)
+    rows_ui = []
+    for r in rows:
+        et = lo_crud.etapa_actual(r)
+        rows_ui.append(
+            {
+                "sim": r,
+                "etapa": et,
+                "etapa_label": lo_crud.etiqueta_etapa(et),
+                "puede_editar": puede_mutar and lo_crud.puede_editar_simulacion(r),
+                "puede_eliminar": puede_mutar and lo_crud.puede_eliminar_simulacion(r),
+            }
+        )
     return templates.TemplateResponse(
         "leasing_operativo/listado.html",
-        {"request": request, "rows": rows, "resumen": resumen, "active_menu": "leasing_operativo", "q": q, "etapa": etapa},
+        {
+            "request": request,
+            "rows": rows_ui,
+            "resumen": resumen,
+            "active_menu": "leasing_operativo",
+            "q": q,
+            "etapa": etapa,
+            "etapa_labels": lo_crud.ETAPA_LABELS,
+            "puede_mutar": puede_mutar,
+        },
     )
 
 
 @router.get("/tablero", response_class=HTMLResponse, name="leasing_operativo_tablero")
 def lo_tablero(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     rows = lo_crud.listar_simulaciones(db, limit=400)
+    puede_mutar = _puede_mutar_lop(request)
     etapas = [
         "COTIZACION",
         "CREDITO_EN_EVALUACION",
@@ -242,7 +271,13 @@ def lo_tablero(request: Request, db: Session = Depends(get_db)):
         etapa = str((wf or {}).get("etapa_actual") or "COTIZACION").upper()
         if etapa not in board:
             etapa = "OTROS"
-        board[etapa].append(r)
+        board[etapa].append(
+            {
+                "sim": r,
+                "puede_editar": puede_mutar and lo_crud.puede_editar_simulacion(r),
+                "puede_eliminar": puede_mutar and lo_crud.puede_eliminar_simulacion(r),
+            }
+        )
     return templates.TemplateResponse(
         "leasing_operativo/tablero.html",
         {
@@ -250,44 +285,25 @@ def lo_tablero(request: Request, db: Session = Depends(get_db)):
             "board": board,
             "etapas": etapas + ["OTROS"],
             "active_menu": "leasing_operativo",
+            "puede_mutar": puede_mutar,
         },
     )
 
 
 @router.get("/simulador", response_class=HTMLResponse, name="leasing_operativo_simulador")
 def lo_simulador_get(request: Request, db: Session = Depends(get_db)):
-    lo_crud.asegurar_parametros_tipo_default(db)
-    tipos = lo_crud.listar_tipos_activo(db)
-    params = lo_crud.listar_parametros_tipo(db)
-    params_by_tipo = {int(p.tipo_activo_id): p for p in params}
-    clientes, _ = listar_clientes(db, activos_solo=True, limit=400)
-    mkt = fetch_cl_market_indicators()
-    marcas = [
-        "Toyota", "Chevrolet", "Hyundai", "Kia", "Mitsubishi", "Volvo", "Scania", "Caterpillar", "Komatsu", "JCB"
-    ]
-    modelos = [
-        "Hilux", "D-Max", "NPR", "FH", "R450", "320D", "WB97", "PC200", "Actros", "Otro"
-    ]
-    anios = list(range(2010, 2027))
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     return templates.TemplateResponse(
         "leasing_operativo/simulador.html",
-        {
-            "request": request,
-            "tipos": tipos,
-            "params_by_tipo": params_by_tipo,
-            "clientes": clientes,
-            "market": mkt,
-            "marcas": marcas,
-            "modelos": modelos,
-            "anios": anios,
-            "active_menu": "leasing_operativo",
-            "lop_v2": settings.lop_comercial_v2,
-        },
+        _simulador_template_context(request, db, modo="crear"),
     )
 
 
 @router.get("/parametros", response_class=HTMLResponse, name="leasing_operativo_parametros")
 def lo_parametros_get(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     if (redir := _guard_param_admin(request)) is not None:
         return redir
     lo_crud.asegurar_parametros_tipo_default(db)
@@ -390,7 +406,7 @@ def lo_simulador_post(
     request: Request,
     db: Session = Depends(get_db),
     nombre: str = Form(""),
-    tipo_activo_id: str = Form(...),
+    tipo_activo_id: str = Form(""),
     cliente_id: str = Form(""),
     plazo_meses: str = Form("36"),
     escenario: str = Form("BASE"),
@@ -405,10 +421,18 @@ def lo_simulador_post(
     ipc_pct: str = Form("0"),
     market_source: str = Form(""),
     market_as_of: str = Form(""),
+    unidades_json: str = Form("[]"),
+    indexacion_tipo: str = Form("NINGUNA"),
+    indexacion_pct: str = Form("0"),
+    pie_inicial_pct: str = Form("0"),
+    opcion_compra_pct: str = Form("0"),
+    # Compatibilidad legacy (una sola unidad vía form clásico)
     activo_marca: str = Form(""),
     activo_modelo: str = Form(""),
     activo_anio: str = Form(""),
     precio_compra: str = Form("0"),
+    km_anual: str = Form("0"),
+    horas_anual: str = Form("0"),
     importacion: str = Form("0"),
     inscripcion: str = Form("0"),
     patente: str = Form("0"),
@@ -418,8 +442,6 @@ def lo_simulador_post(
     puesta_marcha: str = Form("0"),
     comision_proveedor: str = Form("0"),
     otros_activables: str = Form("0"),
-    km_anual: str = Form("0"),
-    horas_anual: str = Form("0"),
     marca_modelo_factor: str = Form("1"),
     sector_economico_mult: str = Form("1"),
     inflacion_activo_pct_anual: str = Form("0"),
@@ -443,70 +465,61 @@ def lo_simulador_post(
     riesgo_activo_mult: str = Form("1"),
     riesgo_uso_mult: str = Form("1"),
     riesgo_liq_mult: str = Form("1"),
-    indexacion_tipo: str = Form("NINGUNA"),
-    indexacion_pct: str = Form("0"),
-    pie_inicial_pct: str = Form("0"),
-    opcion_compra_pct: str = Form("0"),
 ):
     red = _guard_operacion_write(request)
     if red:
         return red
-    tid = _int(tipo_activo_id, 0)
-    if tid <= 0:
-        raise HTTPException(400, "Tipo de activo requerido")
-    cid_raw = str(cliente_id or "").strip()
-    cid = _int(cid_raw, 0) or None
-    form = {
-        "precio_compra": precio_compra,
-        "moneda": moneda,
-        "iva_pct": iva_pct,
-        "uf_clp": uf_clp,
-        "usd_clp": usd_clp,
-        "ipc_pct": ipc_pct,
-        "market_source": market_source,
-        "market_as_of": market_as_of,
-        "importacion": importacion,
-        "inscripcion": inscripcion,
-        "patente": patente,
-        "gps_telemetria": gps_telemetria,
-        "traslado": traslado,
-        "acondicionamiento": acondicionamiento,
-        "puesta_marcha": puesta_marcha,
-        "comision_proveedor": comision_proveedor,
-        "otros_activables": otros_activables,
-        "km_anual": km_anual,
-        "horas_anual": horas_anual,
-        "marca_modelo_factor": marca_modelo_factor,
-        "sector_economico_mult": sector_economico_mult,
-        "inflacion_activo_pct_anual": inflacion_activo_pct_anual,
-        "condicion_factor": condicion_factor,
-        "activo_marca": activo_marca,
-        "activo_modelo": activo_modelo,
-        "activo_anio": activo_anio,
-        "col_valor_mercado": col_valor_mercado,
-        "col_repossession": col_repossession,
-        "col_legal": col_legal,
-        "col_transporte": col_transporte,
-        "col_reacond": col_reacond,
-        "col_desc_forzada_pct": col_desc_forzada_pct,
-        "col_meses_liq": col_meses_liq,
-        "col_tasa_fin_m": col_tasa_fin_m,
-        "com_vendedor": com_vendedor,
-        "com_canal": com_canal,
-        "com_adq": com_adq,
-        "com_eval": com_eval,
-        "com_legal": com_legal,
-        "com_onb": com_onb,
-        "riesgo_segmento": riesgo_segmento,
-        "riesgo_sector_mult": riesgo_sector_mult,
-        "riesgo_activo_mult": riesgo_activo_mult,
-        "riesgo_uso_mult": riesgo_uso_mult,
-        "riesgo_liq_mult": riesgo_liq_mult,
-    }
-    inputs = _build_inputs_from_form(form)
-    inputs["activo"]["marca"] = activo_marca
-    inputs["activo"]["modelo"] = activo_modelo
-    inputs["activo"]["anio"] = _int(activo_anio, 0)
+    tid, cid, met, inputs = _parse_unidades_y_inputs(
+        unidades_json=unidades_json,
+        tipo_activo_id=tipo_activo_id,
+        moneda=moneda,
+        iva_pct=iva_pct,
+        uf_clp=uf_clp,
+        usd_clp=usd_clp,
+        ipc_pct=ipc_pct,
+        market_source=market_source,
+        market_as_of=market_as_of,
+        cliente_id=cliente_id,
+        metodo_pricing=metodo_pricing,
+        activo_marca=activo_marca,
+        activo_modelo=activo_modelo,
+        activo_anio=activo_anio,
+        precio_compra=precio_compra,
+        km_anual=km_anual,
+        horas_anual=horas_anual,
+        importacion=importacion,
+        inscripcion=inscripcion,
+        patente=patente,
+        gps_telemetria=gps_telemetria,
+        traslado=traslado,
+        acondicionamiento=acondicionamiento,
+        puesta_marcha=puesta_marcha,
+        comision_proveedor=comision_proveedor,
+        otros_activables=otros_activables,
+        marca_modelo_factor=marca_modelo_factor,
+        sector_economico_mult=sector_economico_mult,
+        inflacion_activo_pct_anual=inflacion_activo_pct_anual,
+        condicion_factor=condicion_factor,
+        col_valor_mercado=col_valor_mercado,
+        col_repossession=col_repossession,
+        col_legal=col_legal,
+        col_transporte=col_transporte,
+        col_reacond=col_reacond,
+        col_desc_forzada_pct=col_desc_forzada_pct,
+        col_meses_liq=col_meses_liq,
+        col_tasa_fin_m=col_tasa_fin_m,
+        com_vendedor=com_vendedor,
+        com_canal=com_canal,
+        com_adq=com_adq,
+        com_eval=com_eval,
+        com_legal=com_legal,
+        com_onb=com_onb,
+        riesgo_segmento=riesgo_segmento,
+        riesgo_sector_mult=riesgo_sector_mult,
+        riesgo_activo_mult=riesgo_activo_mult,
+        riesgo_uso_mult=riesgo_uso_mult,
+        riesgo_liq_mult=riesgo_liq_mult,
+    )
     try:
         sim = lo_crud.crear_simulacion_y_calcular(
             db,
@@ -515,10 +528,10 @@ def lo_simulador_post(
             nombre=nombre,
             plazo_meses=_int(plazo_meses, 36),
             escenario=str(escenario).upper()[:24],
-            metodo_pricing=str(metodo_pricing).upper()[:24],
-            margen_pct=_dec(margen_pct) if str(metodo_pricing).upper() == "MARGEN_VENTA" else None,
-            spread_pct=_dec(spread_pct) if str(metodo_pricing).upper() == "COSTO_SPREAD" else None,
-            tir_objetivo=_dec(tir_objetivo_anual) if str(metodo_pricing).upper() == "TIR_OBJETIVO" else None,
+            metodo_pricing=met,
+            margen_pct=_dec(margen_pct) if met == "MARGEN_VENTA" else None,
+            spread_pct=_dec(spread_pct) if met == "COSTO_SPREAD" else None,
+            tir_objetivo=_dec(tir_objetivo_anual) if met == "TIR_OBJETIVO" else None,
             inputs=inputs,
             indexacion_tipo=str(indexacion_tipo or "NINGUNA").upper(),
             indexacion_pct=_dec(indexacion_pct),
@@ -528,14 +541,231 @@ def lo_simulador_post(
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    return RedirectResponse(
-        str(request.url_for("leasing_operativo_detail", sim_id=int(sim.id))),
-        status_code=status.HTTP_303_SEE_OTHER,
+    return _redirect_lo(
+        request,
+        "leasing_operativo_detail",
+        sim_id=int(sim.id),
+        msg="Cotización creada correctamente.",
+        sev="success",
+    )
+
+
+@router.get("/operacion/{sim_id}/editar", response_class=HTMLResponse, name="leasing_operativo_editar")
+def lo_editar_get(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404, "Cotización no encontrada")
+    if not lo_crud.puede_editar_simulacion(sim):
+        return _redirect_lo(
+            request,
+            "leasing_operativo_detail",
+            sim_id=sim_id,
+            msg="Esta cotización no se puede editar (contrato o formalización avanzada).",
+            sev="warning",
+        )
+    return templates.TemplateResponse(
+        "leasing_operativo/simulador.html",
+        _simulador_template_context(request, db, modo="editar", sim=sim),
+    )
+
+
+@router.post("/operacion/{sim_id}/editar", name="leasing_operativo_editar_post")
+def lo_editar_post(
+    request: Request,
+    sim_id: int,
+    db: Session = Depends(get_db),
+    nombre: str = Form(""),
+    tipo_activo_id: str = Form(""),
+    cliente_id: str = Form(""),
+    plazo_meses: str = Form("36"),
+    escenario: str = Form("BASE"),
+    metodo_pricing: str = Form("COSTO_SPREAD"),
+    spread_pct: str = Form("8"),
+    margen_pct: str = Form("12"),
+    tir_objetivo_anual: str = Form("14"),
+    moneda: str = Form("CLP"),
+    iva_pct: str = Form("19"),
+    uf_clp: str = Form("0"),
+    usd_clp: str = Form("0"),
+    ipc_pct: str = Form("0"),
+    market_source: str = Form(""),
+    market_as_of: str = Form(""),
+    unidades_json: str = Form("[]"),
+    indexacion_tipo: str = Form("NINGUNA"),
+    indexacion_pct: str = Form("0"),
+    pie_inicial_pct: str = Form("0"),
+    opcion_compra_pct: str = Form("0"),
+    activo_marca: str = Form(""),
+    activo_modelo: str = Form(""),
+    activo_anio: str = Form(""),
+    precio_compra: str = Form("0"),
+    km_anual: str = Form("0"),
+    horas_anual: str = Form("0"),
+    importacion: str = Form("0"),
+    inscripcion: str = Form("0"),
+    patente: str = Form("0"),
+    gps_telemetria: str = Form("0"),
+    traslado: str = Form("0"),
+    acondicionamiento: str = Form("0"),
+    puesta_marcha: str = Form("0"),
+    comision_proveedor: str = Form("0"),
+    otros_activables: str = Form("0"),
+    marca_modelo_factor: str = Form("1"),
+    sector_economico_mult: str = Form("1"),
+    inflacion_activo_pct_anual: str = Form("0"),
+    condicion_factor: str = Form("1"),
+    col_valor_mercado: str = Form("0"),
+    col_repossession: str = Form("0"),
+    col_legal: str = Form("0"),
+    col_transporte: str = Form("0"),
+    col_reacond: str = Form("0"),
+    col_desc_forzada_pct: str = Form("12"),
+    col_meses_liq: str = Form("4"),
+    col_tasa_fin_m: str = Form("0.008"),
+    com_vendedor: str = Form("0"),
+    com_canal: str = Form("0"),
+    com_adq: str = Form("0"),
+    com_eval: str = Form("0"),
+    com_legal: str = Form("0"),
+    com_onb: str = Form("0"),
+    riesgo_segmento: str = Form("MEDIO"),
+    riesgo_sector_mult: str = Form("1"),
+    riesgo_activo_mult: str = Form("1"),
+    riesgo_uso_mult: str = Form("1"),
+    riesgo_liq_mult: str = Form("1"),
+):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
+    sim = lo_crud.obtener_simulacion(db, sim_id)
+    if not sim:
+        raise HTTPException(404, "Cotización no encontrada")
+    tid, cid, met, inputs = _parse_unidades_y_inputs(
+        unidades_json=unidades_json,
+        tipo_activo_id=tipo_activo_id,
+        moneda=moneda,
+        iva_pct=iva_pct,
+        uf_clp=uf_clp,
+        usd_clp=usd_clp,
+        ipc_pct=ipc_pct,
+        market_source=market_source,
+        market_as_of=market_as_of,
+        cliente_id=cliente_id,
+        metodo_pricing=metodo_pricing,
+        activo_marca=activo_marca,
+        activo_modelo=activo_modelo,
+        activo_anio=activo_anio,
+        precio_compra=precio_compra,
+        km_anual=km_anual,
+        horas_anual=horas_anual,
+        importacion=importacion,
+        inscripcion=inscripcion,
+        patente=patente,
+        gps_telemetria=gps_telemetria,
+        traslado=traslado,
+        acondicionamiento=acondicionamiento,
+        puesta_marcha=puesta_marcha,
+        comision_proveedor=comision_proveedor,
+        otros_activables=otros_activables,
+        marca_modelo_factor=marca_modelo_factor,
+        sector_economico_mult=sector_economico_mult,
+        inflacion_activo_pct_anual=inflacion_activo_pct_anual,
+        condicion_factor=condicion_factor,
+        col_valor_mercado=col_valor_mercado,
+        col_repossession=col_repossession,
+        col_legal=col_legal,
+        col_transporte=col_transporte,
+        col_reacond=col_reacond,
+        col_desc_forzada_pct=col_desc_forzada_pct,
+        col_meses_liq=col_meses_liq,
+        col_tasa_fin_m=col_tasa_fin_m,
+        com_vendedor=com_vendedor,
+        com_canal=com_canal,
+        com_adq=com_adq,
+        com_eval=com_eval,
+        com_legal=com_legal,
+        com_onb=com_onb,
+        riesgo_segmento=riesgo_segmento,
+        riesgo_sector_mult=riesgo_sector_mult,
+        riesgo_activo_mult=riesgo_activo_mult,
+        riesgo_uso_mult=riesgo_uso_mult,
+        riesgo_liq_mult=riesgo_liq_mult,
+    )
+    try:
+        sim = lo_crud.actualizar_simulacion_y_calcular(
+            db,
+            sim,
+            tipo_activo_id=tid,
+            cliente_id=cid,
+            nombre=nombre,
+            plazo_meses=_int(plazo_meses, 36),
+            escenario=str(escenario).upper()[:24],
+            metodo_pricing=met,
+            margen_pct=_dec(margen_pct) if met == "MARGEN_VENTA" else None,
+            spread_pct=_dec(spread_pct) if met == "COSTO_SPREAD" else None,
+            tir_objetivo=_dec(tir_objetivo_anual) if met == "TIR_OBJETIVO" else None,
+            inputs=inputs,
+            indexacion_tipo=str(indexacion_tipo or "NINGUNA").upper(),
+            indexacion_pct=_dec(indexacion_pct),
+            pie_inicial_pct=_dec(pie_inicial_pct),
+            opcion_compra_pct=_dec(opcion_compra_pct),
+            usuario=_actor(request),
+        )
+    except ValueError as e:
+        return _redirect_lo(
+            request,
+            "leasing_operativo_detail",
+            sim_id=sim_id,
+            msg=str(e),
+            sev="warning",
+        )
+    return _redirect_lo(
+        request,
+        "leasing_operativo_detail",
+        sim_id=int(sim.id),
+        msg="Cotización actualizada correctamente.",
+        sev="success",
+    )
+
+
+@router.post("/operacion/{sim_id}/eliminar", name="leasing_operativo_eliminar")
+def lo_eliminar(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
+    try:
+        resultado = lo_crud.eliminar_simulaciones(db, ids=[sim_id])
+    except ValueError as exc:
+        return _redirect_lo(request, "leasing_operativo_list", msg=str(exc), sev="warning")
+    except SQLAlchemyError:
+        return _redirect_lo(
+            request,
+            "leasing_operativo_list",
+            msg="No fue posible eliminar la cotización por un problema de base de datos.",
+            sev="danger",
+        )
+    if int(resultado.get("eliminadas") or 0) == 0:
+        return _redirect_lo(
+            request,
+            "leasing_operativo_list",
+            msg="La cotización no puede eliminarse (contrato o formalización avanzada).",
+            sev="warning",
+        )
+    return _redirect_lo(
+        request,
+        "leasing_operativo_list",
+        msg="Cotización eliminada correctamente.",
+        sev="success",
     )
 
 
 @router.get("/operacion/{sim_id}", response_class=HTMLResponse, name="leasing_operativo_detail")
 def lo_detail(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404, "Simulación no encontrada")
@@ -546,14 +776,71 @@ def lo_detail(request: Request, sim_id: int, db: Session = Depends(get_db)):
     res = sim.result_json or {}
     ctr = getattr(sim, "contrato", None)
     workflow = (res.get("workflow_v1") or {}) if isinstance(res, dict) else {}
+    etapa = lo_crud.etapa_actual(sim)
     return templates.TemplateResponse(
         "leasing_operativo/operacion_detail.html",
-        {"request": request, "sim": sim, "res": res, "workflow": workflow, "contrato": ctr, "active_menu": "leasing_operativo"},
+        {
+            "request": request,
+            "sim": sim,
+            "res": res,
+            "workflow": workflow,
+            "contrato": ctr,
+            "active_menu": "leasing_operativo",
+            "puede_editar": _puede_mutar_lop(request) and lo_crud.puede_editar_simulacion(sim),
+            "puede_eliminar": _puede_mutar_lop(request) and lo_crud.puede_eliminar_simulacion(sim),
+            "etapa_label": lo_crud.etiqueta_etapa(etapa),
+        },
     )
 
 
+@router.post("/simulaciones/eliminar-masivo", name="leasing_operativo_eliminar_masivo")
+def lo_eliminar_masivo(
+    request: Request,
+    db: Session = Depends(get_db),
+    ids: List[int] = Form(default=[]),
+    q: str = Form(""),
+    etapa: str = Form(""),
+):
+    red = _guard_operacion_write(request)
+    if red:
+        return red
+    try:
+        resultado = lo_crud.eliminar_simulaciones(db, ids=ids or [])
+    except ValueError as exc:
+        return _redirect_lo(request, "leasing_operativo_list", msg=str(exc), sev="warning")
+    except SQLAlchemyError:
+        return _redirect_lo(
+            request,
+            "leasing_operativo_list",
+            msg="No fue posible eliminar las cotizaciones por un problema de base de datos.",
+            sev="danger",
+        )
+    eliminadas = int(resultado.get("eliminadas") or 0)
+    bloqueadas = int(resultado.get("bloqueadas") or 0)
+    if eliminadas and bloqueadas:
+        msg = f"Se eliminaron {eliminadas} cotización(es). {bloqueadas} no se pudieron eliminar."
+        sev = "warning"
+    elif eliminadas:
+        msg = f"Se eliminaron {eliminadas} cotización(es) correctamente."
+        sev = "success"
+    else:
+        msg = "No se eliminó ninguna cotización (contrato o formalización avanzada)."
+        sev = "warning"
+    url = str(request.url_for("leasing_operativo_list"))
+    params = []
+    if q:
+        params.append(f"q={quote(q)}")
+    if etapa:
+        params.append(f"etapa={quote(etapa)}")
+    params.append(f"msg={quote(msg)}")
+    params.append(f"sev={sev}")
+    return RedirectResponse(url=f"{url}?{'&'.join(params)}", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.get("/operacion/{sim_id}/cotizacion.pdf", name="leasing_operativo_cotizacion_pdf")
-def lo_cotizacion_pdf(sim_id: int, db: Session = Depends(get_db)):
+def lo_cotizacion_pdf(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     try:
         from services.leasing_operativo.cotizacion_pdf import generar_cotizacion_pdf_bytes
     except ImportError as e:
@@ -670,6 +957,8 @@ def lo_registrar_hito(
 
 @router.get("/operacion/{sim_id}/contrato", response_class=HTMLResponse, name="leasing_operativo_contrato_builder")
 def lo_contrato_builder(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
@@ -714,6 +1003,8 @@ def lo_contrato_builder_save(
 
 @router.get("/operacion/{sim_id}/orden-compra", response_class=HTMLResponse, name="leasing_operativo_oc_builder")
 def lo_oc_builder(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
@@ -785,6 +1076,8 @@ def lo_oc_builder_save(
 
 @router.get("/operacion/{sim_id}/acta-entrega", response_class=HTMLResponse, name="leasing_operativo_acta_builder")
 def lo_acta_builder(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
@@ -833,6 +1126,8 @@ def lo_acta_builder_save(
 
 @router.get("/operacion/{sim_id}/factura-compra", response_class=HTMLResponse, name="leasing_operativo_factura_builder")
 def lo_factura_builder(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
@@ -909,6 +1204,8 @@ def lo_contrato_facturar_periodo(
 
 @router.get("/cartera", response_class=HTMLResponse, name="leasing_operativo_cartera")
 def lo_cartera(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     items = lo_crud.listar_contratos_cartera(db, limit=400)
     return templates.TemplateResponse(
         "leasing_operativo/cartera.html",
@@ -918,6 +1215,8 @@ def lo_cartera(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/cartera/contrato/{cid}", response_class=HTMLResponse, name="leasing_operativo_contrato_detail")
 def lo_contrato_detail(request: Request, cid: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     ctr = lo_crud.obtener_contrato(db, cid)
     if not ctr:
         raise HTTPException(404)
@@ -929,6 +1228,10 @@ def lo_contrato_detail(request: Request, cid: int, db: Session = Depends(get_db)
 
 @router.get("/cartera/contrato/{cid}/pdf", name="leasing_operativo_contrato_pdf")
 def lo_contrato_pdf(request: Request, cid: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
+    from services.leasing_operativo.contrato_pdf import generar_contrato_pdf_bytes
+
     ctr = lo_crud.obtener_contrato(db, cid)
     if not ctr:
         raise HTTPException(404)
@@ -1002,6 +1305,8 @@ def lo_contrato_renovar(
 
 @router.get("/operacion/{sim_id}/export.xlsx", name="leasing_operativo_export_xlsx")
 def lo_export_xlsx(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)
@@ -1036,6 +1341,8 @@ def lo_export_xlsx(request: Request, sim_id: int, db: Session = Depends(get_db))
 
 @router.get("/comite", response_class=HTMLResponse, name="leasing_operativo_comite_list")
 def lo_comite_list(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     items = lo_crud.listar_comite_pendiente(db)
     return templates.TemplateResponse(
         "leasing_operativo/comite.html",
@@ -1045,6 +1352,8 @@ def lo_comite_list(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/comite/{cid}", response_class=HTMLResponse, name="leasing_operativo_comite_detail")
 def lo_comite_detail(request: Request, cid: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     c = lo_crud.obtener_comite(db, cid)
     if not c:
         raise HTTPException(404)
@@ -1089,6 +1398,8 @@ def lo_comite_abrir(request: Request, sim_id: int, db: Session = Depends(get_db)
 
 @router.get("/activos", response_class=HTMLResponse, name="leasing_operativo_activos")
 def lo_activos(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     items = lo_crud.listar_activos_fijos(db, limit=300)
     tipos = lo_crud.listar_tipos_activo(db)
     return templates.TemplateResponse(
@@ -1132,6 +1443,8 @@ def lo_activos_post(
 
 @router.get("/activos/{aid}", response_class=HTMLResponse, name="leasing_operativo_activo_detail")
 def lo_activo_detail(request: Request, aid: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     a = lo_crud.obtener_activo_fijo(db, aid)
     if not a:
         raise HTTPException(404)
@@ -1171,14 +1484,272 @@ def lo_activo_depreciar(
     )
 
 
-@router.get("/politicas", response_class=HTMLResponse, name="leasing_operativo_politicas")
-def lo_politicas_get(request: Request, db: Session = Depends(get_db)):
+@router.get("/tipos-activo", response_class=HTMLResponse, name="leasing_operativo_tipos_activo")
+def lo_tipos_activo_list(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     if (redir := _guard_param_admin(request)) is not None:
         return redir
-    rows = lo_crud.listar_politica(db)
+    from services.leasing_operativo.market_benchmarks import comparar_tipo_con_mercado, contexto_mercado_cl
+
+    lo_crud.asegurar_parametros_tipo_default(db)
+    tipos = lo_crud.listar_tipos_activo_admin(db)
+    params = {int(p.tipo_activo_id): p for p in lo_crud.listar_parametros_tipo(db)}
+    mercado_cmp = {int(t.id): comparar_tipo_con_mercado(t) for t in tipos}
+    return templates.TemplateResponse(
+        "leasing_operativo/tipos_activo_lista.html",
+        {
+            "request": request,
+            "tipos": tipos,
+            "params_by_tipo": params,
+            "mercado_cmp": mercado_cmp,
+            "mercado_ctx": contexto_mercado_cl(),
+            "active_menu": "leasing_operativo",
+            "msg": request.query_params.get("msg") or "",
+            "sev": request.query_params.get("sev") or "success",
+        },
+    )
+
+
+@router.get("/tipos-activo/nuevo", response_class=HTMLResponse, name="leasing_operativo_tipo_nuevo")
+def lo_tipo_activo_nuevo(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    return templates.TemplateResponse(
+        "leasing_operativo/tipo_activo_form.html",
+        {
+            "request": request,
+            "tipo": None,
+            "plantillas": [],
+            "param": None,
+            "active_menu": "leasing_operativo",
+            "error": request.query_params.get("msg") or "",
+        },
+    )
+
+
+@router.get("/tipos-activo/{tipo_id}", response_class=HTMLResponse, name="leasing_operativo_tipo_editar")
+def lo_tipo_activo_editar(request: Request, tipo_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    from services.leasing_operativo.market_benchmarks import comparar_tipo_con_mercado
+
+    tipo = lo_crud.obtener_tipo(db, tipo_id)
+    if not tipo:
+        raise HTTPException(404, "Tipo de activo no encontrado")
+    lo_crud.asegurar_parametros_tipo_default(db)
+    return templates.TemplateResponse(
+        "leasing_operativo/tipo_activo_form.html",
+        {
+            "request": request,
+            "tipo": tipo,
+            "plantillas": lo_crud.plantillas_por_tipo(db, tipo_id),
+            "param": lo_crud.obtener_parametro_tipo(db, tipo_id),
+            "mercado": comparar_tipo_con_mercado(tipo),
+            "active_menu": "leasing_operativo",
+            "error": request.query_params.get("msg") or "",
+            "msg": request.query_params.get("ok") or "",
+        },
+    )
+
+
+@router.post("/tipos-activo", name="leasing_operativo_tipo_crear")
+def lo_tipo_activo_crear(
+    request: Request,
+    db: Session = Depends(get_db),
+    codigo: str = Form(""),
+    nombre: str = Form(""),
+    sector: str = Form(""),
+    residual_base_pct: str = Form("15"),
+    residual_max_pct: str = Form("45"),
+    liquidez_factor: str = Form("1"),
+    obsolescencia_factor: str = Form("1"),
+    desgaste_km_factor: str = Form("0.0001"),
+    desgaste_hora_factor: str = Form("0.0005"),
+    haircut_residual_pct: str = Form("5"),
+    activo: str = Form("1"),
+):
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    try:
+        row = lo_crud.upsert_tipo_activo(
+            db,
+            tipo_id=None,
+            codigo=codigo,
+            nombre=nombre,
+            sector=sector,
+            residual_base_pct=_dec(residual_base_pct, "15"),
+            residual_max_pct=_dec(residual_max_pct, "45"),
+            liquidez_factor=_dec(liquidez_factor, "1"),
+            obsolescencia_factor=_dec(obsolescencia_factor, "1"),
+            desgaste_km_factor=_dec(desgaste_km_factor, "0.0001"),
+            desgaste_hora_factor=_dec(desgaste_hora_factor, "0.0005"),
+            haircut_residual_pct=_dec(haircut_residual_pct, "5"),
+            activo=(activo or "1") in ("1", "true", "on", "True"),
+        )
+    except ValueError as e:
+        return _redirect_lo(request, "leasing_operativo_tipo_nuevo", msg=str(e), sev="danger")
+    return RedirectResponse(
+        str(request.url_for("leasing_operativo_tipo_editar", tipo_id=int(row.id)))
+        + f"?ok={quote('Tipo de activo creado. Configure también los parámetros comerciales.')}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/tipos-activo/{tipo_id}", name="leasing_operativo_tipo_guardar")
+def lo_tipo_activo_guardar(
+    request: Request,
+    tipo_id: int,
+    db: Session = Depends(get_db),
+    codigo: str = Form(""),
+    nombre: str = Form(""),
+    sector: str = Form(""),
+    residual_base_pct: str = Form("15"),
+    residual_max_pct: str = Form("45"),
+    liquidez_factor: str = Form("1"),
+    obsolescencia_factor: str = Form("1"),
+    desgaste_km_factor: str = Form("0.0001"),
+    desgaste_hora_factor: str = Form("0.0005"),
+    haircut_residual_pct: str = Form("5"),
+    activo: str = Form("1"),
+    return_to: str = Form(""),
+):
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    go_lista = (return_to or "").strip().lower() in ("lista", "list", "tipos")
+    try:
+        lo_crud.upsert_tipo_activo(
+            db,
+            tipo_id=tipo_id,
+            codigo=codigo,
+            nombre=nombre,
+            sector=sector,
+            residual_base_pct=_dec(residual_base_pct, "15"),
+            residual_max_pct=_dec(residual_max_pct, "45"),
+            liquidez_factor=_dec(liquidez_factor, "1"),
+            obsolescencia_factor=_dec(obsolescencia_factor, "1"),
+            desgaste_km_factor=_dec(desgaste_km_factor, "0.0001"),
+            desgaste_hora_factor=_dec(desgaste_hora_factor, "0.0005"),
+            haircut_residual_pct=_dec(haircut_residual_pct, "5"),
+            activo=(activo or "1") in ("1", "true", "on", "True"),
+        )
+    except ValueError as e:
+        if go_lista:
+            return _redirect_lo(request, "leasing_operativo_tipos_activo", msg=str(e), sev="danger")
+        return RedirectResponse(
+            str(request.url_for("leasing_operativo_tipo_editar", tipo_id=tipo_id))
+            + f"?msg={quote(str(e))}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    if go_lista:
+        return _redirect_lo(
+            request,
+            "leasing_operativo_tipos_activo",
+            msg="Valores del tipo guardados.",
+            sev="success",
+        )
+    return RedirectResponse(
+        str(request.url_for("leasing_operativo_tipo_editar", tipo_id=tipo_id))
+        + f"?ok={quote('Parámetros del tipo guardados. Impactan residual y renta del simulador.')}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/tipos-activo/{tipo_id}/toggle", name="leasing_operativo_tipo_toggle")
+def lo_tipo_activo_toggle(
+    request: Request,
+    tipo_id: int,
+    db: Session = Depends(get_db),
+    activo: str = Form("0"),
+):
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    try:
+        lo_crud.set_tipo_activo_activo(db, tipo_id, (activo or "0") in ("1", "true", "on", "True"))
+    except ValueError as e:
+        return _redirect_lo(request, "leasing_operativo_tipos_activo", msg=str(e), sev="danger")
+    return _redirect_lo(
+        request,
+        "leasing_operativo_tipos_activo",
+        msg="Disponibilidad del tipo actualizada en el catálogo del simulador.",
+    )
+
+
+@router.post("/tipos-activo/{tipo_id}/aplicar-mercado", name="leasing_operativo_tipo_aplicar_mercado")
+def lo_tipo_activo_aplicar_mercado(request: Request, tipo_id: int, db: Session = Depends(get_db)):
+    """Aplica la sugerencia de mercado chileno; el usuario confirma con este POST."""
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    from services.leasing_operativo.market_benchmarks import params_sugeridos_para_aplicar
+
+    tipo = lo_crud.obtener_tipo(db, tipo_id)
+    if not tipo:
+        raise HTTPException(404, "Tipo de activo no encontrado")
+    sugeridos = params_sugeridos_para_aplicar(tipo)
+    if not sugeridos:
+        return _redirect_lo(
+            request,
+            "leasing_operativo_tipos_activo",
+            msg="No hay sugerencia de mercado para este tipo.",
+            sev="warning",
+        )
+    try:
+        lo_crud.upsert_tipo_activo(
+            db,
+            tipo_id=tipo_id,
+            codigo=tipo.codigo,
+            nombre=tipo.nombre,
+            sector=tipo.sector or "",
+            residual_base_pct=sugeridos["residual_base_pct"],
+            residual_max_pct=sugeridos["residual_max_pct"],
+            liquidez_factor=sugeridos["liquidez_factor"],
+            obsolescencia_factor=sugeridos["obsolescencia_factor"],
+            desgaste_km_factor=sugeridos["desgaste_km_factor"],
+            desgaste_hora_factor=sugeridos["desgaste_hora_factor"],
+            haircut_residual_pct=sugeridos["haircut_residual_pct"],
+            activo=bool(tipo.activo),
+        )
+    except ValueError as e:
+        return _redirect_lo(request, "leasing_operativo_tipos_activo", msg=str(e), sev="danger")
+    return _redirect_lo(
+        request,
+        "leasing_operativo_tipos_activo",
+        msg=f"Se aplicó la sugerencia de mercado CL a «{tipo.nombre}». Revise y ajuste si su cartera lo requiere.",
+        sev="success",
+    )
+
+
+@router.get("/politicas", response_class=HTMLResponse, name="leasing_operativo_politicas")
+def lo_politicas_get(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    from services.leasing_operativo.politicas_ui import (
+        build_politica_cards,
+        build_summary,
+        valores_by_clave,
+    )
+
+    rows = lo_crud.listar_politica(db, incluir_inactivas=True)
+    cards = build_politica_cards(rows)
+    activos = [r for r in rows if getattr(r, "activo", True)]
+    summary = build_summary(valores_by_clave(activos))
     return templates.TemplateResponse(
         "leasing_operativo/politicas.html",
-        {"request": request, "politicas": rows, "active_menu": "leasing_operativo"},
+        {
+            "request": request,
+            "politicas": rows,
+            "cards": cards,
+            "summary": summary,
+            "msg": request.query_params.get("msg") or "",
+            "sev": request.query_params.get("sev") or "info",
+            "active_menu": "leasing_operativo",
+        },
     )
 
 
@@ -1186,25 +1757,85 @@ def lo_politicas_get(request: Request, db: Session = Depends(get_db)):
 async def lo_politicas_save(request: Request, clave: str, db: Session = Depends(get_db)):
     if (redir := _guard_param_admin(request)) is not None:
         return redir
-    form = await request.form()
-    import json
+    from services.leasing_operativo.politicas_ui import meta_for, parse_form_valor
 
-    raw = (form.get("valor_json") or "").strip()
+    form = await request.form()
     try:
-        valor = json.loads(raw) if raw else {}
-    except json.JSONDecodeError as e:
-        raise HTTPException(400, f"JSON inválido: {e}") from e
-    lo_crud.upsert_politica(
+        valor = parse_form_valor(clave, form)
+    except Exception as e:
+        return _redirect_lo(
+            request,
+            "leasing_operativo_politicas",
+            msg=f"No se pudo guardar «{clave}»: {e}",
+            sev="danger",
+        )
+    desc = str(form.get("descripcion") or "").strip() or meta_for(clave).get("resumen") or ""
+    lo_crud.upsert_politica(db, clave=clave, valor_json=valor, descripcion=desc)
+    titulo = meta_for(clave).get("titulo") or clave
+    return _redirect_lo(
+        request,
+        "leasing_operativo_politicas",
+        msg=f"Política «{titulo}» guardada. El motor usará estos valores en nuevas simulaciones.",
+        sev="success",
+    )
+
+
+@router.post("/politicas/{clave}/restaurar", name="leasing_operativo_politicas_reset")
+async def lo_politicas_reset(request: Request, clave: str, db: Session = Depends(get_db)):
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    from services.leasing_operativo.politicas_ui import defaults_for, meta_for
+
+    defaults = defaults_for(clave)
+    if not defaults:
+        return _redirect_lo(
+            request,
+            "leasing_operativo_politicas",
+            msg=f"No hay valores de fábrica para «{clave}».",
+            sev="warning",
+        )
+    meta = meta_for(clave)
+    lo_crud.restaurar_politica_defaults(
         db,
         clave=clave,
-        valor_json=valor,
-        descripcion=str(form.get("descripcion") or ""),
+        valor_json=defaults,
+        descripcion=meta.get("resumen") or "",
     )
-    return RedirectResponse(str(request.url_for("leasing_operativo_politicas")), status_code=303)
+    return _redirect_lo(
+        request,
+        "leasing_operativo_politicas",
+        msg=f"«{meta.get('titulo') or clave}» restaurada a valores de fábrica.",
+        sev="success",
+    )
+
+
+@router.post("/politicas/{clave}/toggle", name="leasing_operativo_politicas_toggle")
+async def lo_politicas_toggle(request: Request, clave: str, db: Session = Depends(get_db)):
+    if (redir := _guard_param_admin(request)) is not None:
+        return redir
+    from services.leasing_operativo.politicas_ui import meta_for
+
+    form = await request.form()
+    activo = str(form.get("activo") or "0").strip() in {"1", "true", "on"}
+    try:
+        lo_crud.set_politica_activa(db, clave=clave, activo=activo)
+    except ValueError as e:
+        return _redirect_lo(request, "leasing_operativo_politicas", msg=str(e), sev="warning")
+    titulo = meta_for(clave).get("titulo") or clave
+    if activo:
+        msg = f"«{titulo}» reactivada. Vuelve a aplicar al motor."
+    else:
+        msg = (
+            f"«{titulo}» desactivada. El motor usará defaults internos "
+            "mientras no esté activa."
+        )
+    return _redirect_lo(request, "leasing_operativo_politicas", msg=msg, sev="success")
 
 
 @router.get("/operacion/{sim_id}/amortizacion", response_class=HTMLResponse, name="leasing_operativo_amortizacion")
 def lo_amortizacion(request: Request, sim_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_leasing_op_consulta(request)) is not None:
+        return redir
     sim = lo_crud.obtener_simulacion(db, sim_id)
     if not sim:
         raise HTTPException(404)

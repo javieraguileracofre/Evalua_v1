@@ -1,0 +1,43 @@
+# CI: tests de arquitectura, schema, seguridad y humo HTTP (sin Postgres real).
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: development
+      AUTO_MIGRATE_ON_STARTUP: "false"
+      SECRET_KEY: "ci-secret-key-not-for-production-0123456789abcdef"
+      ALLOWED_HOSTS: "testserver,localhost,127.0.0.1"
+      TENANCY_MODE: legacy
+      UVICORN_HOST: "127.0.0.1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Pytest (fase operativa)
+        run: >
+          python -m pytest
+          tests/test_schema_revision_alembic.py
+          tests/test_architecture_boundaries.py
+          tests/test_security_startup_tenant_rbac.py
+          tests/test_security_hardening.py
+          tests/test_http_smoke.py
+          tests/test_schema_upgrade.py
+          tests/test_database_per_company.py
+          tests/test_deploy_render.py

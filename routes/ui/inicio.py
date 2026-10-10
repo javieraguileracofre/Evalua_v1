@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from core.config import settings
 from core.paths import TEMPLATES_DIR
 from core.public_errors import log_unhandled
+from core.rbac import usuario_puede_ver_kpis_financieros
 from crud.cobranza import cobranza as crud_cobranza
 from crud.finanzas.cuentas_por_pagar import cuentas_por_pagar as crud_cxp
 from db.session import get_session_local
@@ -92,62 +93,70 @@ def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
     hoy = date.today()
     anio = hoy.year
     mes = hoy.month
+    auth = getattr(request.state, "auth_user", None)
+    kpis_financieros_visibles = usuario_puede_ver_kpis_financieros(auth)
 
-    row_ventas_mes = (
-        db.execute(
-            select(
-                func.coalesce(func.sum(NotaVenta.total_total), 0).label("total_ventas"),
-                func.count(NotaVenta.id).label("documentos"),
-            ).where(
-                extract("year", NotaVenta.fecha) == anio,
-                extract("month", NotaVenta.fecha) == mes,
-                NotaVenta.estado != "ANULADA",
+    if kpis_financieros_visibles:
+        row_ventas_mes = (
+            db.execute(
+                select(
+                    func.coalesce(func.sum(NotaVenta.total_total), 0).label("total_ventas"),
+                    func.count(NotaVenta.id).label("documentos"),
+                ).where(
+                    extract("year", NotaVenta.fecha) == anio,
+                    extract("month", NotaVenta.fecha) == mes,
+                    NotaVenta.estado != "ANULADA",
+                )
             )
-        )
-        .mappings()
-        .first()
-    ) or {"total_ventas": 0, "documentos": 0}
+            .mappings()
+            .first()
+        ) or {"total_ventas": 0, "documentos": 0}
 
-    row_ventas_anual = (
-        db.execute(
-            select(
-                func.coalesce(func.sum(NotaVenta.total_total), 0).label("total_ventas"),
-                func.count(NotaVenta.id).label("documentos"),
-            ).where(
-                extract("year", NotaVenta.fecha) == anio,
-                NotaVenta.estado != "ANULADA",
+        row_ventas_anual = (
+            db.execute(
+                select(
+                    func.coalesce(func.sum(NotaVenta.total_total), 0).label("total_ventas"),
+                    func.count(NotaVenta.id).label("documentos"),
+                ).where(
+                    extract("year", NotaVenta.fecha) == anio,
+                    NotaVenta.estado != "ANULADA",
+                )
             )
-        )
-        .mappings()
-        .first()
-    ) or {"total_ventas": 0, "documentos": 0}
+            .mappings()
+            .first()
+        ) or {"total_ventas": 0, "documentos": 0}
 
-    row_cobranza_mes = (
-        db.execute(
-            select(
-                func.coalesce(func.sum(PagoCliente.monto_pago), 0).label("total_cobrado"),
-                func.count(PagoCliente.id).label("documentos"),
-            ).where(
-                extract("year", PagoCliente.fecha_pago) == anio,
-                extract("month", PagoCliente.fecha_pago) == mes,
+        row_cobranza_mes = (
+            db.execute(
+                select(
+                    func.coalesce(func.sum(PagoCliente.monto_pago), 0).label("total_cobrado"),
+                    func.count(PagoCliente.id).label("documentos"),
+                ).where(
+                    extract("year", PagoCliente.fecha_pago) == anio,
+                    extract("month", PagoCliente.fecha_pago) == mes,
+                )
             )
-        )
-        .mappings()
-        .first()
-    ) or {"total_cobrado": 0, "documentos": 0}
+            .mappings()
+            .first()
+        ) or {"total_cobrado": 0, "documentos": 0}
 
-    row_cobranza_anual = (
-        db.execute(
-            select(
-                func.coalesce(func.sum(PagoCliente.monto_pago), 0).label("total_cobrado"),
-                func.count(PagoCliente.id).label("documentos"),
-            ).where(
-                extract("year", PagoCliente.fecha_pago) == anio,
+        row_cobranza_anual = (
+            db.execute(
+                select(
+                    func.coalesce(func.sum(PagoCliente.monto_pago), 0).label("total_cobrado"),
+                    func.count(PagoCliente.id).label("documentos"),
+                ).where(
+                    extract("year", PagoCliente.fecha_pago) == anio,
+                )
             )
-        )
-        .mappings()
-        .first()
-    ) or {"total_cobrado": 0, "documentos": 0}
+            .mappings()
+            .first()
+        ) or {"total_cobrado": 0, "documentos": 0}
+    else:
+        row_ventas_mes = {"total_ventas": 0, "documentos": 0}
+        row_ventas_anual = {"total_ventas": 0, "documentos": 0}
+        row_cobranza_mes = {"total_cobrado": 0, "documentos": 0}
+        row_cobranza_anual = {"total_cobrado": 0, "documentos": 0}
 
     productos_stock = list(
         db.scalars(
@@ -181,29 +190,38 @@ def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
     )
 
     periodo_mes_estado: str | None = None
-    try:
-        periodo_row = db.scalars(
-            select(Periodo).where(Periodo.anio == anio, Periodo.mes == mes)
-        ).first()
-        if periodo_row is not None:
-            periodo_mes_estado = str(periodo_row.estado)
-    except Exception:
-        periodo_mes_estado = None
+    if kpis_financieros_visibles:
+        try:
+            periodo_row = db.scalars(
+                select(Periodo).where(Periodo.anio == anio, Periodo.mes == mes)
+            ).first()
+            if periodo_row is not None:
+                periodo_mes_estado = str(periodo_row.estado)
+        except Exception:
+            periodo_mes_estado = None
 
-    try:
-        resumen_cxp = crud_cxp.get_resumen(db)
-        cxp_schema_ok = crud_cxp.ap_tablas_operativas(db)
-    except Exception:
-        logger.exception(
-            "Inicio: falló el resumen CxP (tablas AP o SQL); se muestran cerros y KPI AP desactivado."
-        )
+        try:
+            resumen_cxp = crud_cxp.get_resumen(db)
+            cxp_schema_ok = crud_cxp.ap_tablas_operativas(db)
+        except Exception:
+            logger.exception(
+                "Inicio: falló el resumen CxP (tablas AP o SQL); se muestran cerros y KPI AP desactivado."
+            )
+            resumen_cxp = dict(_CXP_RESUMEN_FALLBACK)
+            cxp_schema_ok = False
+
+        try:
+            resumen_cobranza_global = crud_cobranza.resumen_cobranza_general(db)
+        except Exception:
+            logger.exception("Inicio: falló resumen_cobranza_general; usando ceros.")
+            resumen_cobranza_global = {
+                "total_documentos": 0,
+                "total_monto": 0,
+                "total_saldo": 0,
+            }
+    else:
         resumen_cxp = dict(_CXP_RESUMEN_FALLBACK)
         cxp_schema_ok = False
-
-    try:
-        resumen_cobranza_global = crud_cobranza.resumen_cobranza_general(db)
-    except Exception:
-        logger.exception("Inicio: falló resumen_cobranza_general; usando ceros.")
         resumen_cobranza_global = {
             "total_documentos": 0,
             "total_monto": 0,
@@ -228,24 +246,25 @@ def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
     proy_90 = run_rate_mensual * Decimal("3")
 
     alertas_criticas: list[dict[str, str]] = []
-    if por_cobrar_total > Decimal("0"):
-        alertas_criticas.append(
-            {
-                "nivel": "ALTA" if por_cobrar_total > ventas_mes_total else "MEDIA",
-                "titulo": "Cartera por cobrar relevante",
-                "detalle": f"Saldo por cobrar vigente: {float(por_cobrar_total):,.0f}",
-                "ruta": "cobranza_dashboard",
-            }
-        )
-    if cxp_vencido > 0:
-        alertas_criticas.append(
-            {
-                "nivel": "ALTA",
-                "titulo": "Compromisos vencidos con proveedores",
-                "detalle": f"Saldo vencido CxP: {float(cxp_vencido):,.0f}",
-                "ruta": "cxp_lista",
-            }
-        )
+    if kpis_financieros_visibles:
+        if por_cobrar_total > Decimal("0"):
+            alertas_criticas.append(
+                {
+                    "nivel": "ALTA" if por_cobrar_total > ventas_mes_total else "MEDIA",
+                    "titulo": "Cartera por cobrar relevante",
+                    "detalle": f"Saldo por cobrar vigente: {float(por_cobrar_total):,.0f}",
+                    "ruta": "cobranza_dashboard",
+                }
+            )
+        if cxp_vencido > 0:
+            alertas_criticas.append(
+                {
+                    "nivel": "ALTA",
+                    "titulo": "Compromisos vencidos con proveedores",
+                    "detalle": f"Saldo vencido CxP: {float(cxp_vencido):,.0f}",
+                    "ruta": "cxp_lista",
+                }
+            )
     if (n_productos_alerta_stock or 0) > 0:
         alertas_criticas.append(
             {
@@ -255,7 +274,7 @@ def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
                 "ruta": "productos_list",
             }
         )
-    if periodo_mes_estado == "CERRADO":
+    if kpis_financieros_visibles and periodo_mes_estado == "CERRADO":
         alertas_criticas.append(
             {
                 "nivel": "MEDIA",
@@ -293,11 +312,23 @@ def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
     ]
 
     salud_modulos = [
-        {"modulo": "Comercial", "estado": "VERDE" if ventas_mes_total > 0 else "AMARILLO"},
-        {"modulo": "Cobranza", "estado": "ROJO" if tasa_cobranza_mes < 55 else ("AMARILLO" if tasa_cobranza_mes < 75 else "VERDE")},
+        {"modulo": "Comercial", "estado": "VERDE" if (kpis_financieros_visibles and ventas_mes_total > 0) else ("AMARILLO" if kpis_financieros_visibles else "—")},
+        {"modulo": "Cobranza", "estado": (
+            "ROJO" if kpis_financieros_visibles and tasa_cobranza_mes < 55 else (
+                "AMARILLO" if kpis_financieros_visibles and tasa_cobranza_mes < 75 else (
+                    "VERDE" if kpis_financieros_visibles else "—"
+                )
+            )
+        )},
         {"modulo": "Abastecimiento", "estado": "ROJO" if (n_productos_alerta_stock or 0) >= 10 else ("AMARILLO" if (n_productos_alerta_stock or 0) > 0 else "VERDE")},
-        {"modulo": "Cuentas por pagar", "estado": "ROJO" if cxp_vencido > 0 else ("AMARILLO" if cxp_pendiente > 0 else "VERDE")},
-        {"modulo": "Riesgo crédito", "estado": "VERDE"},
+        {"modulo": "Cuentas por pagar", "estado": (
+            "ROJO" if kpis_financieros_visibles and cxp_vencido > 0 else (
+                "AMARILLO" if kpis_financieros_visibles and cxp_pendiente > 0 else (
+                    "VERDE" if kpis_financieros_visibles else "—"
+                )
+            )
+        )},
+        {"modulo": "Riesgo crédito", "estado": "VERDE" if kpis_financieros_visibles else "—"},
     ]
 
     return templates.TemplateResponse(
@@ -341,6 +372,7 @@ def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
             "alertas_criticas": alertas_criticas,
             "acciones_sugeridas": acciones_sugeridas,
             "salud_modulos": salud_modulos,
+            "kpis_financieros_visibles": kpis_financieros_visibles,
         },
     )
 

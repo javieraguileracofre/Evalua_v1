@@ -1,0 +1,97 @@
+{% extends "layout/base.html" %}
+{% block title %}{{ empresa.legal_name }} · Evalua ERP{% endblock %}
+{% block page_title %}{{ empresa.trade_name or empresa.legal_name }}{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle mb-0">{{ empresa.legal_name }} · RUT {{ empresa.rut }} · {{ empresa.status }}</p>{% endblock %}
+{% block content %}
+{% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+{% if ok %}<div class="alert alert-success">{{ ok }}</div>{% endif %}
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <p class="mb-1"><strong>Código</strong> {{ empresa.code }}</p>
+        <p class="mb-1"><strong>Estado</strong> {{ empresa.status }}</p>
+        <p class="mb-1"><strong>Conexión</strong> {{ empresa.database_status or "—" }}</p>
+        <p class="mb-1"><strong>Versión identity</strong> {{ empresa.schema_version or "—" }}</p>
+        <p class="mb-1"><strong>Versión runtime</strong> {{ empresa.schema_runtime or "—" }}</p>
+        <p class="mb-1"><strong>Esperado</strong> <code>{{ empresa.schema_expected }}</code>
+          {% if empresa.schema_is_current %}
+          <span class="badge text-bg-success">al día</span>
+          {% else %}
+          <span class="badge text-bg-warning">desactualizada</span>
+          {% endif %}
+        </p>
+        {% if empresa.schema_detail %}<p class="small text-muted mb-1">{{ empresa.schema_detail }}</p>{% endif %}
+        {% if empresa.status_detail %}<p class="text-muted">{{ empresa.status_detail }}</p>{% endif %}
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          {% if empresa.status == "FAILED" %}
+          <form method="post" action="/plataforma/empresas/{{ empresa.id }}/reintentar"><button class="btn btn-primary btn-sm" type="submit">Reintentar</button></form>
+          {% endif %}
+          {% if empresa.schema_needs_upgrade %}
+          <form method="post" action="/plataforma/empresas/{{ empresa.id }}/actualizar-esquema"
+                onsubmit="return confirm('¿Aplicar alembic upgrade head y sellar esta compañía?');">
+            <button class="btn btn-primary btn-sm" type="submit">Actualizar esquema</button>
+          </form>
+          {% endif %}
+          {% if empresa.status == "ACTIVE" %}
+          <form method="post" action="/plataforma/empresas/{{ empresa.id }}/suspender"><button class="btn btn-outline-warning btn-sm" type="submit">Suspender</button></form>
+          <form method="post" action="/plataforma/empresas/{{ empresa.id }}/inactivar"><button class="btn btn-outline-danger btn-sm" type="submit">Inactivar</button></form>
+          {% endif %}
+          {% if empresa.status in ["SUSPENDED", "INACTIVE"] %}
+          <form method="post" action="/plataforma/empresas/{{ empresa.id }}/activar"><button class="btn btn-outline-success btn-sm" type="submit">Activar</button></form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <form method="post" action="/plataforma/empresas/{{ empresa.id }}/editar" class="card border-0 shadow-sm mt-3">
+      <div class="card-header">Ficha legal</div>
+      <div class="card-body row g-2">
+        <div class="col-12"><input class="form-control" name="legal_name" required value="{{ empresa.legal_name }}" placeholder="Razón social"></div>
+        <div class="col-md-6"><input class="form-control" name="trade_name" value="{{ empresa.trade_name }}" placeholder="Nombre de fantasía"></div>
+        <div class="col-md-6"><input class="form-control" name="rut" required value="{{ empresa.rut }}" placeholder="RUT"></div>
+        <div class="col-md-6"><input class="form-control" name="legal_representative_name" value="{{ empresa.legal_representative_name }}" placeholder="Representante legal"></div>
+        <div class="col-md-6"><input class="form-control" name="legal_representative_rut" value="{{ empresa.legal_representative_rut }}" placeholder="RUT representante"></div>
+        <div class="col-12"><input class="form-control" name="address" value="{{ empresa.address }}" placeholder="Dirección"></div>
+        <div class="col-md-6"><input class="form-control" name="region" value="{{ empresa.region }}" placeholder="Región"></div>
+        <div class="col-md-6"><input class="form-control" name="commune" value="{{ empresa.commune }}" placeholder="Comuna"></div>
+        <div class="col-md-6"><input class="form-control" name="phone" value="{{ empresa.phone }}" placeholder="Teléfono"></div>
+        <div class="col-md-6"><input class="form-control" name="email" value="{{ empresa.email }}" placeholder="Email"></div>
+        <div class="col-12"><button class="btn btn-primary btn-sm" type="submit">Guardar ficha</button></div>
+      </div>
+    </form>
+  </div>
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header">Usuarios de esta compañía</div>
+      <ul class="list-group list-group-flush">
+        {% for usuario in usuarios %}
+        <li class="list-group-item">
+          <strong>{{ usuario.nombre }}</strong> · {{ usuario.email }}<br>
+          <span class="small text-muted">{{ usuario.roles|join(", ") }} · {{ usuario.modules|join(", ") }}</span>
+        </li>
+        {% else %}
+        <li class="list-group-item text-muted">Sin usuarios asignados.</li>
+        {% endfor %}
+      </ul>
+    </div>
+    <form method="post" action="/plataforma/empresas/{{ empresa.id }}/usuarios" class="card border-0 shadow-sm">
+      <div class="card-body row g-2">
+        <div class="col-md-6"><input class="form-control" name="email" type="email" required placeholder="Correo"></div>
+        <div class="col-md-6"><input class="form-control" name="nombre" placeholder="Nombre"></div>
+        <div class="col-12"><input class="form-control" name="password" type="password" placeholder="Clave solo si el usuario es nuevo" autocomplete="new-password"></div>
+        <div class="col-12 small">Roles
+          {% for role in ["ADMIN", "OPERACIONES", "FINANZAS", "RRHH", "CONSULTA"] %}
+          <label class="me-2"><input type="checkbox" name="roles" value="{{ role }}"> {{ role }}</label>
+          {% endfor %}
+        </div>
+        <div class="col-12 small">Módulos
+          {% for key, label in modulos %}
+          <label class="me-2"><input type="checkbox" name="modules" value="{{ key }}"> {{ label }}</label>
+          {% endfor %}
+        </div>
+        <div class="col-12"><button class="btn btn-primary btn-sm" type="submit">Asignar</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

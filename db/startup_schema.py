@@ -1,9 +1,17 @@
 # db/startup_schema.py
 # -*- coding: utf-8 -*-
-"""Parches de esquema idempotentes al arrancar (BD ya existente sin migración SQL manual)."""
+"""Parches de esquema idempotentes (legado / desarrollo).
+
+Política (fase schema canónico):
+- Producción / company DB: preferir `alembic upgrade head` o
+  `db.schema_bootstrap.apply_company_schema`.
+- Arranque con `AUTO_MIGRATE_ON_STARTUP=true` (solo no-prod): DDL + seeds.
+- Arranque con flag en false: solo seeds de datos (sin DDL).
+"""
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from sqlalchemy import func, select, text
@@ -56,7 +64,15 @@ _PATCH_127 = _ROOT / "db" / "psql" / "127_leasing_financiero_operacion_premium.s
 _PATCH_129 = _ROOT / "db" / "psql" / "129_leasing_financiero_operacion_completa.sql"
 _PATCH_130 = _ROOT / "db" / "psql" / "130_leasing_financiero_credito_documentos.sql"
 _PATCH_131 = _ROOT / "db" / "psql" / "131_leasing_financiero_aceptacion_cliente.sql"
+_PATCH_135 = _ROOT / "db" / "psql" / "135_leasing_financiero_cotizacion_fase1.sql"
+_PATCH_136 = _ROOT / "db" / "psql" / "136_leasing_financiero_estados_fase1.sql"
+_PATCH_132 = _ROOT / "db" / "psql" / "132_auth_password_reset_codes.sql"
+_PATCH_134 = _ROOT / "db" / "psql" / "134_auth_usuario_session_version.sql"
+_PATCH_133 = _ROOT / "db" / "psql" / "133_mail_accounts.sql"
 _PATCH_128 = _ROOT / "db" / "psql" / "128_auth_submodulos_nav.sql"
+_PATCH_137 = _ROOT / "db" / "psql" / "137_ops_audit_backups.sql"
+_PATCH_138 = _ROOT / "db" / "psql" / "138_leasing_operativo_tipos_flota.sql"
+_PATCH_139 = _ROOT / "db" / "psql" / "139_leasing_operativo_residual_engine.sql"
 
 
 def ensure_leasing_financiero_plan_cuentas_min(engine: Engine) -> None:
@@ -369,6 +385,108 @@ def ensure_auth_usuario_modulos_visibles(engine: Engine) -> None:
             logger.warning("No se pudo hacer backfill de módulos visibles: %s", exc)
 
 
+def ensure_auth_usuario_session_version(engine: Engine) -> None:
+    """Columna session_version para revocar cookies firmadas al cambiar clave/roles."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_134.is_file():
+        logger.warning("No se encontró %s; omitiendo session_version.", _PATCH_134)
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_134)
+        logger.info("Parche aplicado/verificado: auth_usuarios.session_version (134).")
+    except Exception as exc:
+        logger.warning(
+            "No se pudo aplicar 134_auth_usuario_session_version.sql. Detalle: %s",
+            exc,
+        )
+
+
+def ensure_auth_identity_user_id(engine: Engine) -> None:
+    """Enlace local hacia la identidad de plataforma. No guarda la clave."""
+    if engine.dialect.name != "postgresql":
+        return
+    try:
+        _run_sql_patch_autocommit_sql(
+            engine,
+            "ALTER TABLE auth_usuarios ADD COLUMN IF NOT EXISTS identity_user_id BIGINT",
+        )
+    except Exception as exc:
+        logger.warning("No se pudo agregar auth_usuarios.identity_user_id. Detalle: %s", type(exc).__name__)
+
+
+def _run_sql_patch_autocommit_sql(engine: Engine, sql: str) -> None:
+    with engine.connect() as conn:
+        conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+        conn.exec_driver_sql(_literal_sql(sql))
+
+
+def ensure_auth_password_reset_codes(engine: Engine) -> None:
+    """Tabla auth_password_reset_codes para el flujo de recuperación de contraseña."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_132.is_file():
+        logger.warning("No se encontró %s; omitiendo códigos de recuperación.", _PATCH_132)
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_132)
+        logger.info("Parche aplicado/verificado: auth_password_reset_codes (132).")
+    except Exception as exc:
+        logger.warning(
+            "No se pudo aplicar 132_auth_password_reset_codes.sql. Detalle: %s",
+            exc,
+        )
+
+
+def ensure_mail_accounts_schema(engine: Engine) -> None:
+    """Cuentas SMTP, canales de envío y columnas de auditoría en email_log."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_133.is_file():
+        logger.warning("No se encontró %s; omitiendo cuentas de correo.", _PATCH_133)
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_133)
+        logger.info("Parche aplicado/verificado: mail_accounts / canales (133).")
+    except Exception as exc:
+        logger.warning("No se pudo aplicar 133_mail_accounts.sql. Detalle: %s", exc)
+    _ensure_email_log_mail_audit_columns(engine)
+
+
+def ensure_ops_audit_backups_schema(engine: Engine) -> None:
+    """Auditoría operacional y metadatos de respaldos."""
+    if engine.dialect.name != "postgresql":
+        return
+    if not _PATCH_137.is_file():
+        logger.warning("No se encontró %s; omitiendo ops audit/backups.", _PATCH_137)
+        return
+    try:
+        _run_sql_patch_autocommit(engine, _PATCH_137)
+        logger.info("Parche aplicado/verificado: auth_audit_event / ops_database_backup (137).")
+    except Exception as exc:
+        logger.warning("No se pudo aplicar 137_ops_audit_backups.sql. Detalle: %s", exc)
+
+
+def _ensure_email_log_mail_audit_columns(engine: Engine) -> None:
+    if not _has_table(engine, schema="public", table="email_log"):
+        return
+    statements = (
+        "ALTER TABLE email_log ADD COLUMN IF NOT EXISTS channel_code VARCHAR(40)",
+        "ALTER TABLE email_log ADD COLUMN IF NOT EXISTS mail_account_id BIGINT",
+        "ALTER TABLE email_log ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE email_log ADD COLUMN IF NOT EXISTS provider_message_id VARCHAR(255)",
+        "CREATE INDEX IF NOT EXISTS ix_email_log_channel ON email_log (channel_code, created_at DESC)",
+    )
+    for sql in statements:
+        try:
+            with engine.connect() as conn:
+                conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+                conn.exec_driver_sql(sql)
+        except Exception as exc:
+            logger.warning("No se pudo alterar email_log para auditoría de correo. Detalle: %s", exc)
+            return
+
+
 def _has_table(engine: Engine, *, schema: str, table: str) -> bool:
     with engine.connect() as conn:
         return bool(
@@ -406,8 +524,13 @@ def _has_column(engine: Engine, *, schema: str, table: str, column: str) -> bool
         )
 
 
+def _literal_sql(sql: str) -> str:
+    """psycopg trata % como marcador. Los parches SQL usan % literal."""
+    return sql.replace("%", "%%")
+
+
 def _run_sql_patch_autocommit(engine: Engine, path: Path) -> None:
-    sql = path.read_text(encoding="utf-8")
+    sql = _literal_sql(path.read_text(encoding="utf-8"))
     with engine.connect() as conn:
         conn = conn.execution_options(isolation_level="AUTOCOMMIT")
         conn.exec_driver_sql(sql)
@@ -705,6 +828,24 @@ def ensure_comercial_leasing_financiero_schema(engine: Engine) -> None:
                 "No se pudo aplicar 131_leasing_financiero_aceptacion_cliente.sql. Detalle: %s",
                 exc,
             )
+    if _PATCH_135.is_file() and _has_table(engine, schema="public", table="comercial_lf_cotizaciones"):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_135)
+            logger.info("Parche aplicado: leasing financiero cotización fase 1 tasa_tipo (135).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 135_leasing_financiero_cotizacion_fase1.sql. Detalle: %s",
+                exc,
+            )
+    if _PATCH_136.is_file() and _has_table(engine, schema="public", table="comercial_lf_cotizaciones"):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_136)
+            logger.info("Parche aplicado: estados leasing financiero fase 1 (136).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 136_leasing_financiero_estados_fase1.sql. Detalle: %s",
+                exc,
+            )
 
 
 def ensure_lf_cotizaciones_cleanup_prueba(engine: Engine) -> None:
@@ -910,6 +1051,50 @@ def ensure_leasing_operativo_schema(engine: Engine) -> None:
                 logger.info("Re-seed leasing operativo aplicado (105) por parámetros vacíos.")
             except Exception as exc:
                 logger.warning("No se pudo re-seed 105_leasing_operativo_parametros_tipo.sql: %s", exc)
+    # Ampliar catálogo flota (liviano, gerencial, grúa, furgón) sin vaciar tipos existentes.
+    if _has_table(engine, schema="public", table="leasing_op_tipo_activo") and _PATCH_138.is_file():
+        try:
+            with engine.connect() as conn:
+                faltantes = int(
+                    conn.execute(
+                        text(
+                            """
+                            SELECT COUNT(*) FROM (
+                              VALUES
+                                ('VEHICULO_LIVIANO'),
+                                ('VEHICULO_GERENCIAL'),
+                                ('GRUA'),
+                                ('FURGON')
+                            ) AS v(codigo)
+                            WHERE NOT EXISTS (
+                              SELECT 1 FROM public.leasing_op_tipo_activo t WHERE t.codigo = v.codigo
+                            )
+                            """
+                        )
+                    ).scalar()
+                    or 0
+                )
+            if faltantes > 0:
+                _run_sql_patch_autocommit(engine, _PATCH_138)
+                logger.info("Parche aplicado: tipos flota LOP (138) — %s códigos nuevos.", faltantes)
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 138_leasing_operativo_tipos_flota.sql. Detalle: %s",
+                exc,
+            )
+    if (
+        _PATCH_139.is_file()
+        and _has_table(engine, schema="public", table="leasing_op_simulacion")
+        and not _has_table(engine, schema="public", table="leasing_op_market_valuation_snapshot")
+    ):
+        try:
+            _run_sql_patch_autocommit(engine, _PATCH_139)
+            logger.info("Parche aplicado: motor residual LOP (139).")
+        except Exception as exc:
+            logger.warning(
+                "No se pudo aplicar 139_leasing_operativo_residual_engine.sql. Detalle: %s",
+                exc,
+            )
 
 
 def ensure_fin_config_contable_seed(engine: Engine) -> None:
@@ -1235,3 +1420,75 @@ def ensure_remuneraciones_seed(engine: Engine) -> None:
         except Exception as exc:
             db.rollback()
             logger.warning("No se pudo sembrar conceptos/parametros de remuneración: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Catálogo de arranque (DDL vs seeds) — usado por main.create_app
+# ---------------------------------------------------------------------------
+
+STARTUP_DDL_ENSURES: tuple[Callable[[Engine], None], ...] = (
+    ensure_ap_documento_contabilidad_columns,
+    ensure_taller_ordenes_cotizacion_columns,
+    ensure_fondos_rendir_asiento_columns,
+    ensure_vehiculo_transporte_consumo_column,
+    ensure_transporte_fondos_control_schema,
+    ensure_empleados_bootstrap,
+    ensure_remuneraciones_bootstrap,
+    ensure_remuneraciones_parametros_periodo_schema,
+    ensure_remuneraciones_horas_periodo_schema,
+    ensure_remuneraciones_auditoria_schema,
+    ensure_remuneraciones_asiento_provision_column,
+    ensure_empleados_transferencia_bancaria_columns,
+    ensure_auth_usuario_modulos_visibles,
+    ensure_auth_usuario_session_version,
+    ensure_auth_password_reset_codes,
+    ensure_mail_accounts_schema,
+    ensure_ops_audit_backups_schema,
+    ensure_comercial_leasing_financiero_schema,
+    ensure_credito_riesgo_schema,
+    ensure_leasing_operativo_schema,
+    ensure_postventa_crm_schema,
+    ensure_credito_riesgo_empresarial_schema,
+    ensure_auth_identity_user_id,
+    ensure_lf_cotizaciones_cleanup_prueba,
+)
+
+STARTUP_SEED_ENSURES: tuple[Callable[[Engine], None], ...] = (
+    ensure_auth_roles_seed,
+    ensure_remuneraciones_seed,
+    ensure_fin_config_contable_seed,
+    ensure_leasing_financiero_plan_cuentas_min,
+)
+
+
+def _run_ensures(engine: Engine, ensures: Sequence[Callable[[Engine], None]], *, label: str) -> None:
+    for fn in ensures:
+        try:
+            fn(engine)
+        except Exception as exc:
+            logger.warning("Startup %s %s: %s", label, fn.__name__, type(exc).__name__, exc_info=True)
+
+
+def apply_startup_schema(
+    engine: Engine,
+    *,
+    allow_ddl: bool,
+    create_all: Callable[..., None] | None = None,
+) -> None:
+    """Aplica DDL (opcional) + seeds y sella `ERP_SCHEMA_REVISION` si hay DDL."""
+    if allow_ddl:
+        if create_all is not None:
+            create_all(bind=engine)
+        _run_ensures(engine, STARTUP_DDL_ENSURES, label="ddl")
+        try:
+            from db.schema_revision import stamp_schema_revision
+
+            stamp_schema_revision(engine)
+        except Exception as exc:
+            logger.warning("No se pudo sellar app_metadata: %s", type(exc).__name__)
+    else:
+        logger.info(
+            "AUTO_MIGRATE_ON_STARTUP=false: se omiten create_all y DDL ensure_*; "
+            "solo seeds. Use alembic upgrade head / apply_company_schema para schema."
+        )
+    _run_ensures(engine, STARTUP_SEED_ENSURES, label="seed")

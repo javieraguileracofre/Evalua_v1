@@ -1,0 +1,40 @@
+{% extends "layout/base.html" %}
+{% block title %}Nueva empresa · Evalua ERP{% endblock %}
+{% block page_title %}Nueva empresa{% endblock %}
+{% block page_subtitle %}<p class="page-subtitle mb-0">EvaluaERP crea la base y deja la compañía activa solo si la conexión queda validada.</p>{% endblock %}
+{% block content %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<form method="post" action="{{ request.url_for('plataforma_empresa_crear') }}" enctype="multipart/form-data" class="card border-0 shadow-sm">
+  <div class="card-body row g-3">
+    <div class="col-md-4"><label class="form-label">Código interno</label><input class="form-control" name="code" required pattern="[a-z][a-z0-9_]*" placeholder="empresa_norte"></div>
+    <div class="col-md-8"><label class="form-label">Razón social</label><input class="form-control" name="legal_name" required></div>
+    <div class="col-md-6"><label class="form-label">Nombre de fantasía</label><input class="form-control" name="trade_name"></div>
+    <div class="col-md-6"><label class="form-label">RUT</label><input class="form-control" name="rut" required placeholder="76123456-7"></div>
+    <div class="col-md-6"><label class="form-label">Holding</label><input class="form-control" name="holding_name" placeholder="Opcional. Agrupa compañías, no comparte su base."></div>
+    <div class="col-md-6"><label class="form-label">Representante legal</label><input class="form-control" name="legal_representative_name"></div>
+    <div class="col-md-4"><label class="form-label">RUT representante</label><input class="form-control" name="legal_representative_rut"></div>
+    <div class="col-md-8"><label class="form-label">Dirección</label><input class="form-control" name="address"></div>
+    <div class="col-md-4"><label class="form-label">Región</label><input class="form-control" name="region"></div>
+    <div class="col-md-4"><label class="form-label">Comuna</label><input class="form-control" name="commune"></div>
+    <div class="col-md-4"><label class="form-label">Teléfono</label><input class="form-control" name="phone"></div>
+    <div class="col-md-6"><label class="form-label">Email</label><input class="form-control" type="email" name="email"></div>
+    <div class="col-md-6"><label class="form-label">Logo</label><input class="form-control" type="file" name="logo" accept="image/png,image/jpeg,image/webp"></div>
+    <div class="col-12"><hr><p class="small text-muted mb-0">La base se crea sola. Puede ajustar el nombre y el usuario. La clave la genera el servidor y no se muestra.</p></div>
+    <div class="col-md-6"><label class="form-label">Nombre de la base</label><input class="form-control" name="database_name" placeholder="Se propone desde el código"></div>
+    <div class="col-md-6"><label class="form-label">Usuario de la base</label><input class="form-control" name="database_user" placeholder="Se propone desde el código"></div>
+    <div class="col-12"><button class="btn btn-primary" type="submit">Crear empresa</button></div>
+  </div>
+</form>
+<form method="post" action="{{ request.url_for('plataforma_registrar_base') }}" class="card border-0 shadow-sm mt-3">
+  <div class="card-body row g-3">
+    <div class="col-12"><h2 class="h6 mb-0">Registrar base existente</h2><p class="small text-muted">No copia datos ni le asigna un nombre automático. La clave se guarda cifrada y no vuelve a mostrarse.</p></div>
+    <div class="col-md-3"><input class="form-control" name="code" required placeholder="Código"></div>
+    <div class="col-md-5"><input class="form-control" name="legal_name" required placeholder="Razón social"></div>
+    <div class="col-md-4"><input class="form-control" name="rut" required placeholder="RUT"></div>
+    <div class="col-md-4"><input class="form-control" name="database_name" required placeholder="Nombre de la base"></div>
+    <div class="col-md-4"><input class="form-control" name="database_user" required placeholder="Usuario"></div>
+    <div class="col-md-4"><input class="form-control" type="password" name="database_password" required placeholder="Clave, solo esta vez" autocomplete="new-password"></div>
+    <div class="col-12"><button class="btn btn-outline-primary" type="submit">Registrar base existente</button></div>
+  </div>
+</form>
+{% endblock %}

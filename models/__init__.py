@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from .auth.usuario import Rol, Usuario
 from .auth.modulo_visible import UsuarioModuloVisible
+from .auth.password_reset import PasswordResetCode
+from .auth.audit_event import AuthAuditEvent
+from .ops.backup import DatabaseBackup
 
 # ============================================================
 # MAESTROS
@@ -35,8 +38,11 @@ from .leasing_operativo.models import (
     LeasingOpCuota,
     LeasingOpDocumentoProceso,
     LeasingOpHistorial,
+    LeasingOpMarketValuationSnapshot,
     LeasingOpParametroTipo,
     LeasingOpPolitica,
+    LeasingOpResidualOverride,
+    LeasingOpResidualValueCurve,
     LeasingOpSimulacion,
     LeasingOpTipoActivo,
 )
@@ -75,6 +81,7 @@ from .cobranza.cuentas_por_cobrar import CuentaPorCobrar, PagoCliente
 # ============================================================
 
 from .comunicaciones.email_log import EmailLog
+from .comunicaciones.mail_account import MailAccount, MailChannel, MailValidation
 
 # ============================================================
 # POSTVENTA / CRM
@@ -161,6 +168,9 @@ __all__ = [
     "Rol",
     "Usuario",
     "UsuarioModuloVisible",
+    "PasswordResetCode",
+    "AuthAuditEvent",
+    "DatabaseBackup",
     "Cliente",
     "ClienteAuditoria",
     "ClienteDireccion",
@@ -205,6 +215,9 @@ __all__ = [
     "CuentaPorCobrar",
     "PagoCliente",
     "EmailLog",
+    "MailAccount",
+    "MailChannel",
+    "MailValidation",
     "PostventaInteraccion",
     "PostventaSolicitud",
     "PostventaCasoEvento",
