@@ -25,6 +25,7 @@ from core.auth_middleware import AuthMiddleware
 from core.config import settings
 from core.csrf_middleware import CSRFMiddleware
 from core.logging import setup_logging
+from core.observability_middleware import ObservabilityMiddleware
 from core.security_headers import SecurityHeadersMiddleware
 from core.tenant import TenantResolutionMiddleware
 from db.base_class import Base
@@ -44,16 +45,58 @@ setup_logging()
 logger = logging.getLogger("evalua.main")
 
 
-def health_payload() -> dict[str, str]:
-    """Producción: solo status. Desarrollo: metadatos de diagnóstico."""
+def health_payload(*, deep: bool = False) -> dict[str, object]:
+    """Producción: status mínimo. Desarrollo /health/ready: dependencias."""
+    base: dict[str, object] = {"status": "ok"}
     if settings.is_dev:
-        return {
-            "status": "ok",
-            "app": settings.app_name,
-            "env": settings.app_env,
-            "tenancy_mode": getattr(settings, "tenancy_mode", "legacy"),
-        }
-    return {"status": "ok"}
+        base.update(
+            {
+                "app": settings.app_name,
+                "env": settings.app_env,
+                "tenancy_mode": getattr(settings, "tenancy_mode", "legacy"),
+            }
+        )
+    if not deep:
+        return base
+
+    checks: dict[str, object] = {}
+    overall = "ok"
+    try:
+        from db.schema_revision import ERP_SCHEMA_REVISION
+
+        checks["schema_revision"] = ERP_SCHEMA_REVISION
+    except Exception:
+        checks["schema_revision"] = "unavailable"
+        overall = "degraded"
+
+    if getattr(settings, "database_per_company", False):
+        try:
+            from db.identity_session import get_identity_engine
+            from sqlalchemy import text as sa_text
+
+            eng = get_identity_engine()
+            with eng.connect() as conn:
+                conn.execute(sa_text("SELECT 1"))
+            checks["identity_db"] = "ok"
+        except Exception:
+            checks["identity_db"] = "error"
+            overall = "error"
+    else:
+        try:
+            from db.session import get_engine
+            from sqlalchemy import text as sa_text
+
+            eng = get_engine(getattr(settings, "default_tenant_code", None) or None)
+            with eng.connect() as conn:
+                conn.execute(sa_text("SELECT 1"))
+            checks["operational_db"] = "ok"
+        except Exception:
+            checks["operational_db"] = "error"
+            overall = "error"
+
+    base["status"] = overall
+    base["checks"] = checks
+    return base
 
 
 # ============================================================
@@ -90,6 +133,7 @@ ROUTER_ORDER = [
     "cobranza",
     "cuentas_por_pagar",
     "finanzas",
+    "tesoreria",
     "fin_periodos",
     "contabilidad",
     "admin_seguridad",
@@ -244,7 +288,7 @@ def create_app() -> FastAPI:
         return HTMLResponse(content=body, status_code=500)
 
     # Orden: insert(0) en cada add → el último add queda en índice 0 del stack interno.
-    # Flujo real (tras ServerError): Session → CSRF → Tenant → Auth → rutas.
+    # Flujo real (tras ServerError): Observability → Session → CSRF → Tenant → Auth → rutas.
     # TrustedHost y cabeceras de seguridad quedan más afuera.
     app.add_middleware(AuthMiddleware)
     app.add_middleware(TenantResolutionMiddleware)
@@ -257,6 +301,7 @@ def create_app() -> FastAPI:
         same_site="lax",
         https_only=settings.auth_cookie_secure,
     )
+    app.add_middleware(ObservabilityMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -303,11 +348,15 @@ def create_app() -> FastAPI:
     include_ui_routers(app)
 
     from routes.api.lop import router as lop_api_router
+    from routes.api.v1 import router as api_v1_router
 
+    app.include_router(api_v1_router)
     app.include_router(lop_api_router, prefix="/api/comercial/leasing-operativo")
     # Alias profesional pedido por motor residual (mismos handlers)
     app.include_router(lop_api_router, prefix="/api/leasing", include_in_schema=False)
-    logger.info("Router API LOP v2 cargado en /api/comercial/leasing-operativo (+ alias /api/leasing)")
+    logger.info(
+        "API v1 en /api/v1; LOP en /api/comercial/leasing-operativo (+ alias /api/leasing)"
+    )
 
     try:
         from modules.bootstrap import register_domain_handlers
@@ -316,9 +365,29 @@ def create_app() -> FastAPI:
     except Exception as exc:
         logger.warning("No se pudieron registrar handlers de dominio: %s", type(exc).__name__)
 
+    try:
+        from erp_platform.events.sweeper import start_outbox_sweeper
+
+        start_outbox_sweeper()
+    except Exception as exc:
+        logger.warning("No se pudo iniciar el barrido de outbox: %s", type(exc).__name__)
+
     @app.get("/health", tags=["Health"])
-    def healthcheck() -> dict[str, str]:
-        return health_payload()
+    def healthcheck() -> dict[str, object]:
+        return health_payload(deep=False)
+
+    @app.get("/health/ready", tags=["Health"])
+    def health_ready() -> dict[str, object]:
+        payload = health_payload(deep=True)
+        # No exponer detalles de infraestructura sensibles en producción.
+        if not settings.is_dev and isinstance(payload.get("checks"), dict):
+            safe = {
+                k: ("ok" if v == "ok" else "error")
+                for k, v in payload["checks"].items()
+                if k in {"identity_db", "operational_db"}
+            }
+            payload["checks"] = safe
+        return payload
 
     favicon_path = STATIC_DIR / "favicon.ico"
     if favicon_path.is_file():

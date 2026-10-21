@@ -313,3 +313,61 @@ class LeasingOpGestionEvento(Base):
 
     contrato: Mapped["LeasingOpContrato"] = relationship("LeasingOpContrato", back_populates="gestion_eventos")
     cuota: Mapped["LeasingOpCuota | None"] = relationship("LeasingOpCuota")
+
+
+class LeasingOpResidualValueCurve(Base):
+    """Curva residual parametrizable (asset_type / brand / segment / age_month)."""
+
+    __tablename__ = "leasing_op_residual_value_curve"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    asset_type: Mapped[str] = mapped_column(String(60), nullable=False, default="VEHICULO", server_default="VEHICULO")
+    brand: Mapped[str] = mapped_column(String(80), nullable=False, default="*", server_default="*")
+    segment: Mapped[str] = mapped_column(String(80), nullable=False, default="*", server_default="*")
+    age_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    residual_percentage: Mapped[Decimal] = mapped_column(Numeric(9, 4), nullable=False)
+    min_percentage: Mapped[Decimal] = mapped_column(Numeric(9, 4), nullable=False)
+    max_percentage: Mapped[Decimal] = mapped_column(Numeric(9, 4), nullable=False)
+    effective_from: Mapped[date | None] = mapped_column(Date)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+
+class LeasingOpMarketValuationSnapshot(Base):
+    """Snapshot auditable de valorización de mercado/residual por cotización."""
+
+    __tablename__ = "leasing_op_market_valuation_snapshot"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cotizacion_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_simulacion.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    unidad_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    model_version: Mapped[str] = mapped_column(String(32), nullable=False, default="RV-2026.10.01", server_default="RV-2026.10.01")
+    fuente: Mapped[str] = mapped_column(String(80), nullable=False, default="", server_default="")
+    valor_actual: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"), server_default="0")
+    valor_proyectado: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"), server_default="0")
+    escenario: Mapped[str] = mapped_column(String(24), nullable=False, default="BASE", server_default="BASE")
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    usuario: Mapped[str] = mapped_column(String(200), nullable=False, default="sistema", server_default="sistema")
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+
+class LeasingOpResidualOverride(Base):
+    """Auditoría obligatoria de override manual del residual."""
+
+    __tablename__ = "leasing_op_residual_override"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cotizacion_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("leasing_op_simulacion.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    unidad_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    valor_anterior: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"), server_default="0")
+    valor_nuevo: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"), server_default="0")
+    motivo: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
+    observacion: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    model_version: Mapped[str] = mapped_column(String(32), nullable=False, default="", server_default="")
+    usuario: Mapped[str] = mapped_column(String(200), nullable=False, default="sistema", server_default="sistema")
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))

@@ -8,9 +8,10 @@
 {% endblock %}
 
 {% block content %}
+<div data-live-list>
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-body">
-    <form method="get" class="row g-2 align-items-end">
+    <form method="get" class="row g-2 align-items-end" data-live-form action="{{ request.url_for('remuneraciones_parametros') }}">
       <div class="col-md-4">
         <label class="form-label">Periodo (opcional)</label>
         <select name="periodo_id" class="form-select form-select-sm">
@@ -30,9 +31,10 @@
   </div>
 </div>
 
+<div data-live-results>
 <div class="card border-0 shadow-sm">
   <div class="card-body p-0">
-    <div class="table-responsive">
+    <div class="evalua-table-wrap">
       <table class="table table-sm align-middle mb-0">
         <thead class="table-light">
           <tr>
@@ -66,5 +68,7 @@
       </table>
     </div>
   </div>
+</div>
+</div>
 </div>
 {% endblock %}

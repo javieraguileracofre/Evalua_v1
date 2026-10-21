@@ -40,16 +40,10 @@
   <div class="col-md-2"><div class="pv-kpi"><div class="lbl">Sin asignar</div><div class="num text-warning">{{ metricas.backlog_sin_asignar }}</div></div></div>
 </div>
 
-<div class="d-flex flex-wrap gap-2 mb-3">
-  <a class="btn btn-outline-primary btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=mis_casos">Mis casos</a>
-  <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=sin_asignar">Sin asignar</a>
-  <a class="btn btn-outline-danger btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=urgentes">Urgentes</a>
-  <a class="btn btn-outline-warning btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=vencidos">Vencidos</a>
-  <a class="btn btn-outline-success btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=resueltos">Resueltos</a>
-</div>
-
-<form method="get" class="row g-2 mb-3">
-  <div class="col-md-2"><input class="form-control" name="q" value="{{ q or '' }}" placeholder="Buscar..."></div>
+<div data-live-list>
+<form method="get" class="row g-2 mb-3" data-live-form action="{{ request.url_for('postventa_casos_lista') }}">
+  <input type="hidden" name="vista" value="{{ vista or '' }}">
+  <div class="col-md-2"><input class="form-control" type="search" name="q" value="{{ q or '' }}" placeholder="Buscar..." autocomplete="off"></div>
   <div class="col-md-2">
     <select class="form-select" name="estado">
       <option value="">Estado</option>
@@ -75,10 +69,22 @@
       {% endfor %}
     </select>
   </div>
-  <div class="col-md-3 d-grid"><button class="btn btn-primary">Filtrar</button></div>
+  <div class="col-md-3 d-flex gap-2">
+    <button class="btn btn-primary w-100" type="submit">Filtrar</button>
+    <a class="btn btn-light" href="{{ request.url_for('postventa_casos_lista') }}" data-live-reset title="Limpiar"><i class="bi bi-x-circle"></i></a>
+  </div>
 </form>
 
-<div class="table-responsive">
+<div data-live-results>
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a class="btn btn-outline-primary btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=mis_casos">Mis casos</a>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=sin_asignar">Sin asignar</a>
+  <a class="btn btn-outline-danger btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=urgentes">Urgentes</a>
+  <a class="btn btn-outline-warning btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=vencidos">Vencidos</a>
+  <a class="btn btn-outline-success btn-sm" href="{{ request.url_for('postventa_casos_lista') }}?vista=resueltos">Resueltos</a>
+</div>
+
+<div class="evalua-table-wrap">
   <table class="table table-hover align-middle pv-table">
     <thead>
       <tr>
@@ -87,7 +93,7 @@
     </thead>
     <tbody>
       {% for c in casos %}
-      <tr>
+      <tr data-row-href="{{ request.url_for('postventa_caso_detalle', caso_id=c.id) }}">
         <td><a href="{{ request.url_for('postventa_caso_detalle', caso_id=c.id) }}">{{ c.numero_caso or c.numero_caso_display or ('PV-' ~ c.id) }}</a></td>
         <td>{{ c.cliente.razon_social if c.cliente else c.cliente_id }}</td>
         <td>{{ c.titulo }}</td>
@@ -115,5 +121,7 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
+</div>
 </div>
 {% endblock %}

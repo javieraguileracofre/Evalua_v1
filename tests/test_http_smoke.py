@@ -67,3 +67,20 @@ def test_critical_paths_respond(client: TestClient, path: str) -> None:
     if r.status_code in {302, 303, 307}:
         loc = r.headers.get("location", "")
         assert loc.startswith("/")
+
+
+def test_api_v1_sin_sesion_responde_401(client: TestClient) -> None:
+    r = client.get("/api/v1/analytics/cartera", follow_redirects=False)
+    assert r.status_code == 401
+    assert r.json().get("detail")
+
+
+def test_api_v1_search_sin_sesion_responde_401(client: TestClient) -> None:
+    r = client.get("/api/v1/search?q=cliente", follow_redirects=False)
+    assert r.status_code == 401
+    assert r.json().get("detail")
+
+
+def test_sugerencias_cliente_sin_sesion_no_explota(client: TestClient) -> None:
+    r = client.get("/clientes/sugerencias?q=ac", follow_redirects=False)
+    assert r.status_code in {302, 303, 307, 401}

@@ -69,6 +69,47 @@ def calcular_preview(
     incluir_sensibilidad: bool = False,
     incluir_escenarios: bool = False,
 ) -> dict[str, Any]:
+    unidades = (inputs or {}).get("unidades") if isinstance(inputs, dict) else None
+    if isinstance(unidades, list) and len(unidades) > 0:
+        from services.leasing_operativo.cotizacion_flota import calcular_cotizacion_flota
+
+        # Si ya hay residual aceptado/sugerido, no reconsultar portales (evita 503/timeouts).
+        def _has_residual(u: Any) -> bool:
+            if not isinstance(u, dict):
+                return False
+            try:
+                return float(u.get("residual_sugerido") or 0) > 0 or float(u.get("residual_aceptado") or 0) > 0
+            except (TypeError, ValueError):
+                return False
+
+        ya_estimados = all(_has_residual(u) for u in unidades)
+        flota = calcular_cotizacion_flota(
+            db,
+            unidades=unidades,
+            plazo_meses=plazo_meses,
+            escenario=escenario,
+            metodo_pricing=metodo_pricing,
+            margen_pct=margen_pct,
+            spread_pct=spread_pct,
+            tir_objetivo=tir_objetivo,
+            cliente_id=cliente_id,
+            indexacion_tipo=str(indexacion_tipo or "NINGUNA"),
+            indexacion_pct=indexacion_pct or 0,
+            pie_inicial_pct=pie_inicial_pct or 0,
+            opcion_compra_pct=opcion_compra_pct or 0,
+            moneda=str((inputs or {}).get("moneda") or "CLP"),
+            iva_pct=(inputs or {}).get("iva_pct") or 19,
+            market_data=(inputs or {}).get("market_data") if isinstance((inputs or {}).get("market_data"), dict) else {},
+            estimar_residual_si_falta=not ya_estimados,
+        )
+        return {
+            "inputs": {**(inputs or {}), "unidades": flota["unidades"], "cotizacion_modo": "FLOTA"},
+            "result": flota["result"],
+            "unidades": flota["unidades"],
+            "total_unidades": flota["total_unidades"],
+            "evaluacion_economica": (flota["result"] or {}).get("evaluacion_economica"),
+        }
+
     tipo, politica, plantillas, param = cargar_contexto_motor(db, tipo_activo_id)
     inp = preparar_inputs_simulacion(
         inputs=inputs,

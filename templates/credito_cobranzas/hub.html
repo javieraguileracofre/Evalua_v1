@@ -1,0 +1,180 @@
+{# templates/credito_cobranzas/hub.html #}
+{% extends "layout/base.html" %}
+
+{% block title %}Crédito y cobranzas · Evalua ERP{% endblock %}
+{% block page_title %}Crédito y cobranzas{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">
+  Evaluación de riesgo crediticio y gestión de recuperación de cartera en un solo módulo.
+</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item active" aria-current="page">Crédito y cobranzas</li>
+{% endblock %}
+
+{% block head %}
+<style>
+  .cc-hub-hero {
+    background: linear-gradient(135deg, #0B1F3B 0%, #1e3a5f 55%, #0f766e 100%);
+    color: #e2e8f0;
+    border-radius: 16px;
+    box-shadow: 0 10px 24px rgba(11, 31, 59, .18);
+  }
+  .cc-hub-hero .kpi {
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 10px;
+    padding: .65rem .8rem;
+  }
+  .cc-hub-card {
+    border: 0;
+    border-radius: 14px;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, .08);
+    overflow: hidden;
+    height: 100%;
+  }
+  .cc-hub-card .top {
+    height: 5px;
+  }
+  .cc-hub-card.credito .top { background: linear-gradient(90deg, #1d4ed8, #0ea5e9); }
+  .cc-hub-card.cobranza .top { background: linear-gradient(90deg, #0f766e, #22c55e); }
+  .cc-flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .45rem;
+  }
+  .cc-flow-step {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .22rem .65rem;
+    border-radius: 999px;
+    font-size: .72rem;
+    font-weight: 600;
+    border: 1px solid #E5E7EB;
+    background: #F9FAFB;
+    color: #111827;
+  }
+  .cc-metric {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #0B1F3B;
+    font-variant-numeric: tabular-nums;
+  }
+  .cc-metric-lbl {
+    font-size: .72rem;
+    color: #6B7280;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-weight: 600;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% macro clp(valor) -%}
+  {% set v = (valor or 0) | float %}
+  $ {{ "{:,.0f}".format(v).replace(",", ".") }}
+{%- endmacro %}
+
+<div class="cc-hub-hero p-3 p-md-4 mb-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+    <div>
+      <h2 class="h5 mb-1 text-white">Centro de crédito y cobranzas</h2>
+      <p class="mb-0 small text-white-50">
+        Del análisis de riesgo a la recuperación: solicitudes, comité, CxC, aging y pagos.
+      </p>
+    </div>
+  </div>
+  <div class="cc-flow mt-3">
+    <span class="cc-flow-step bg-white">1. Solicitud</span>
+    <span class="cc-flow-step bg-white">2. Evaluación</span>
+    <span class="cc-flow-step bg-white">3. Comité / límites</span>
+    <span class="cc-flow-step bg-white">4. Cartera CxC</span>
+    <span class="cc-flow-step bg-white">5. Gestión / pago</span>
+  </div>
+</div>
+
+<div class="row g-3">
+  {% if show_credito %}
+  <div class="col-lg-6">
+    <div class="card cc-hub-card credito">
+      <div class="top"></div>
+      <div class="card-body d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+          <div>
+            <h3 class="h6 fw-semibold mb-1"><i class="bi bi-clipboard-data text-primary"></i> Crédito y riesgo</h3>
+            <p class="text-muted small mb-0">Solicitudes, motor de score, políticas y comité.</p>
+          </div>
+          <a href="{{ request.url_for('credito_riesgo_dashboard') }}" class="btn btn-sm btn-primary">Abrir</a>
+        </div>
+        {% if kpi_credito %}
+        <div class="row g-2 my-2">
+          <div class="col-4">
+            <div class="cc-metric-lbl">Solicitudes</div>
+            <div class="cc-metric">{{ kpi_credito.total_solicitudes or 0 }}</div>
+          </div>
+          <div class="col-4">
+            <div class="cc-metric-lbl">Aprobadas</div>
+            <div class="cc-metric text-success">{{ kpi_credito.aprobadas or 0 }}</div>
+          </div>
+          <div class="col-4">
+            <div class="cc-metric-lbl">En comité</div>
+            <div class="cc-metric text-warning">{{ kpi_credito.comite or 0 }}</div>
+          </div>
+        </div>
+        {% endif %}
+        <div class="mt-auto d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('credito_riesgo_solicitudes_list') }}" class="btn btn-sm btn-outline-secondary">Solicitudes</a>
+          <a href="{{ request.url_for('credito_riesgo_solicitud_nueva_get') }}" class="btn btn-sm btn-outline-primary">Nueva solicitud</a>
+          <a href="{{ request.url_for('credito_riesgo_politicas_flujos') }}" class="btn btn-sm btn-outline-secondary">Reglas motor</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if show_cobranza %}
+  <div class="col-lg-6">
+    <div class="card cc-hub-card cobranza">
+      <div class="top"></div>
+      <div class="card-body d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+          <div>
+            <h3 class="h6 fw-semibold mb-1"><i class="bi bi-cash-stack text-success"></i> Cobranza</h3>
+            <p class="text-muted small mb-0">CxC, aging, recordatorios y aplicación de pagos.</p>
+          </div>
+          <a href="{{ request.url_for('cobranza_resumen') }}" class="btn btn-sm btn-success">Abrir</a>
+        </div>
+        {% if kpi_cobranza %}
+        <div class="row g-2 my-2">
+          <div class="col-4">
+            <div class="cc-metric-lbl">Docs. con saldo</div>
+            <div class="cc-metric">{{ kpi_cobranza.total_documentos or 0 }}</div>
+          </div>
+          <div class="col-8">
+            <div class="cc-metric-lbl">Saldo por cobrar</div>
+            <div class="cc-metric text-danger">{{ clp(kpi_cobranza.total_saldo) }}</div>
+          </div>
+        </div>
+        {% endif %}
+        <div class="mt-auto d-flex flex-wrap gap-2">
+          <a href="{{ request.url_for('cobranza_resumen') }}" class="btn btn-sm btn-outline-secondary">Resumen</a>
+          <a href="{{ request.url_for('cobranza_dashboard') }}" class="btn btn-sm btn-outline-success">Dashboard</a>
+          <a href="{{ request.url_for('cobranza_export_cuentas_excel') }}?solo_con_saldo=true" class="btn btn-sm btn-outline-secondary">Export CxC</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% if not show_credito and not show_cobranza %}
+<div class="alert alert-warning border-0 shadow-sm mt-3 mb-0">
+  No tiene submódulos de crédito ni cobranza asignados. Solicite acceso a un administrador.
+</div>
+{% endif %}
+{% endblock %}

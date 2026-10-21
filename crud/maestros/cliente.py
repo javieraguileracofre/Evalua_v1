@@ -49,23 +49,7 @@ def get_cliente_por_rut(db: Session, rut: str) -> "ModelCliente | None":
     return db.scalar(stmt)
 
 
-def listar_clientes(
-    db: Session,
-    *,
-    activos_solo: bool = False,
-    busqueda: str | None = None,
-    skip: int = 0,
-    limit: int = 100,
-) -> tuple[list["ModelCliente"], bool]:
-    """
-    Lista clientes con paginación.
-
-    Devuelve (filas, hay_mas) usando ``limit + 1`` filas.
-    """
-    lim = max(1, min(int(limit), 500))
-    sk = max(0, int(skip))
-    stmt = select(Cliente)
-
+def _filtrar_clientes(stmt, *, activos_solo: bool, busqueda: str | None):
     if activos_solo:
         stmt = stmt.where(Cliente.activo.is_(True))
 
@@ -83,11 +67,63 @@ def listar_clientes(
         if rut_q:
             condiciones.append(Cliente.rut == rut_q)
         stmt = stmt.where(or_(*condiciones))
+    return stmt
 
+
+def listar_clientes(
+    db: Session,
+    *,
+    activos_solo: bool = False,
+    busqueda: str | None = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> tuple[list["ModelCliente"], bool]:
+    """
+    Lista clientes con paginación.
+
+    Devuelve (filas, hay_mas) usando ``limit + 1`` filas.
+    """
+    lim = max(1, min(int(limit), 500))
+    sk = max(0, int(skip))
+    stmt = _filtrar_clientes(select(Cliente), activos_solo=activos_solo, busqueda=busqueda)
     stmt = stmt.order_by(Cliente.razon_social.asc()).offset(sk).limit(lim + 1)
     rows = list(db.scalars(stmt))
     hay_mas = len(rows) > lim
     return rows[:lim], hay_mas
+
+
+def resumen_listado_clientes(
+    db: Session,
+    *,
+    activos_solo: bool = False,
+    busqueda: str | None = None,
+) -> dict[str, int]:
+    """Totales del filtro completo, no de la página visible."""
+
+    def _n(**extra_activo: bool | None) -> int:
+        solo = activos_solo if extra_activo.get("forzar") is None else bool(extra_activo["forzar"])
+        stmt = _filtrar_clientes(
+            select(func.count()).select_from(Cliente),
+            activos_solo=solo,
+            busqueda=busqueda,
+        )
+        if extra_activo.get("con_email"):
+            stmt = stmt.where(Cliente.email.isnot(None), Cliente.email != "")
+        return int(db.scalar(stmt) or 0)
+
+    total = _n()
+    if activos_solo:
+        activos = total
+        inactivos = 0
+    else:
+        activos = _n(forzar=True)
+        inactivos = max(total - activos, 0)
+    return {
+        "total": total,
+        "activos": activos,
+        "inactivos": inactivos,
+        "con_email": _n(con_email=True),
+    }
 
 
 def _registrar_auditoria(

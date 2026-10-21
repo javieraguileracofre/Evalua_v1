@@ -101,17 +101,29 @@ def puede_editar_periodo(pr: PeriodoRemuneracion) -> bool:
     return pr.estado in ("BORRADOR", "CALCULADO")
 
 
-def _suma_montos_imponibles(db: Session, detalle_id: int) -> Decimal:
+def _suma_montos_imponibles(
+    db: Session,
+    detalle_id: int,
+    conceptos: dict[int, ConceptoRemuneracion] | None = None,
+) -> Decimal:
     """Suma ítems cuyo concepto está marcado imponible (base simple para AFP/salud en MVP)."""
-    total = db.scalar(
-        select(func.coalesce(func.sum(ItemRemuneracion.monto_total), 0))
-        .join(ConceptoRemuneracion, ConceptoRemuneracion.id == ItemRemuneracion.concepto_remuneracion_id)
-        .where(
-            ItemRemuneracion.detalle_remuneracion_id == detalle_id,
-            ConceptoRemuneracion.imponible.is_(True),
-        )
-    )
-    return _d(total)
+    items = db.scalars(
+        select(ItemRemuneracion).where(ItemRemuneracion.detalle_remuneracion_id == detalle_id)
+    ).all()
+    if conceptos is None:
+        ids = {it.concepto_remuneracion_id for it in items}
+        conceptos = {}
+        if ids:
+            conceptos = {
+                c.id: c
+                for c in db.scalars(select(ConceptoRemuneracion).where(ConceptoRemuneracion.id.in_(ids))).all()
+            }
+    total = Decimal("0")
+    for it in items:
+        concepto = conceptos.get(it.concepto_remuneracion_id)
+        if concepto is not None and concepto.imponible:
+            total += _d(it.monto_total)
+    return total
 
 
 def _contrato_vigente_en_fecha(db: Session, empleado_id: int, ref: date) -> ContratoLaboral | None:
@@ -137,10 +149,22 @@ def recalcular_totales_detalle_remuneracion(db: Session, detalle_id: int) -> Det
     return det
 
 
-def _recalcular_totales_detalle(db: Session, det: DetalleRemuneracion) -> None:
+def _recalcular_totales_detalle(
+    db: Session,
+    det: DetalleRemuneracion,
+    conceptos: dict[int, ConceptoRemuneracion] | None = None,
+) -> None:
     items = list(
         db.scalars(select(ItemRemuneracion).where(ItemRemuneracion.detalle_remuneracion_id == det.id)).all()
     )
+    if conceptos is None:
+        ids = {it.concepto_remuneracion_id for it in items}
+        conceptos = {}
+        if ids:
+            conceptos = {
+                c.id: c
+                for c in db.scalars(select(ConceptoRemuneracion).where(ConceptoRemuneracion.id.in_(ids))).all()
+            }
     hab_imp = Decimal("0")
     hab_no = Decimal("0")
     des_leg = Decimal("0")
@@ -148,7 +172,7 @@ def _recalcular_totales_detalle(db: Session, det: DetalleRemuneracion) -> None:
     ap_emp = Decimal("0")
 
     for it in items:
-        c = db.get(ConceptoRemuneracion, it.concepto_remuneracion_id)
+        c = conceptos.get(it.concepto_remuneracion_id)
         if not c:
             continue
         m = _d(it.monto_total)
@@ -191,42 +215,18 @@ def calcular_periodo(db: Session, periodo_id: int) -> PeriodoRemuneracion:
     if not puede_editar_periodo(pr):
         raise ValueError("Este periodo no admite recálculo en su estado actual.")
 
-    concepto_sueldo = db.scalars(
-        select(ConceptoRemuneracion).where(
-            ConceptoRemuneracion.codigo == "SUELDO_BASE",
-            ConceptoRemuneracion.activo.is_(True),
-        )
-    ).first()
-    concepto_bono = db.scalars(
-        select(ConceptoRemuneracion).where(
-            ConceptoRemuneracion.codigo == "BONO_VIAJE",
-            ConceptoRemuneracion.activo.is_(True),
-        )
-    ).first()
-    concepto_anticipo = db.scalars(
-        select(ConceptoRemuneracion).where(
-            ConceptoRemuneracion.codigo == "ANTICIPO",
-            ConceptoRemuneracion.activo.is_(True),
-        )
-    ).first()
-    concepto_afp = db.scalars(
-        select(ConceptoRemuneracion).where(ConceptoRemuneracion.codigo == "AFP", ConceptoRemuneracion.activo.is_(True))
-    ).first()
-    concepto_salud = db.scalars(
-        select(ConceptoRemuneracion).where(ConceptoRemuneracion.codigo == "SALUD", ConceptoRemuneracion.activo.is_(True))
-    ).first()
-    concepto_horas_extras = db.scalars(
-        select(ConceptoRemuneracion).where(
-            ConceptoRemuneracion.codigo == "HORAS_EXTRAS",
-            ConceptoRemuneracion.activo.is_(True),
-        )
-    ).first()
-    concepto_bono_nocturno = db.scalars(
-        select(ConceptoRemuneracion).where(
-            ConceptoRemuneracion.codigo == "BONO_NOCTURNO",
-            ConceptoRemuneracion.activo.is_(True),
-        )
-    ).first()
+    conceptos_activos = list(
+        db.scalars(select(ConceptoRemuneracion).where(ConceptoRemuneracion.activo.is_(True))).all()
+    )
+    por_codigo = {c.codigo: c for c in conceptos_activos}
+    por_id = {c.id: c for c in conceptos_activos}
+    concepto_sueldo = por_codigo.get("SUELDO_BASE")
+    concepto_bono = por_codigo.get("BONO_VIAJE")
+    concepto_anticipo = por_codigo.get("ANTICIPO")
+    concepto_afp = por_codigo.get("AFP")
+    concepto_salud = por_codigo.get("SALUD")
+    concepto_horas_extras = por_codigo.get("HORAS_EXTRAS")
+    concepto_bono_nocturno = por_codigo.get("BONO_NOCTURNO")
     if not concepto_sueldo or not concepto_bono or not concepto_anticipo:
         raise ValueError(
             "Faltan conceptos activos (SUELDO_BASE, BONO_VIAJE, ANTICIPO). Ejecute el arranque o seeder."
@@ -252,9 +252,51 @@ def calcular_periodo(db: Session, periodo_id: int) -> PeriodoRemuneracion:
             select(RemuneracionHorasPeriodo).where(RemuneracionHorasPeriodo.periodo_remuneracion_id == pr.id)
         ).all()
     }
+    contrato_por_empleado: dict[int, ContratoLaboral] = {}
+    for contrato_row in db.scalars(
+        select(ContratoLaboral)
+        .where(
+            ContratoLaboral.estado == "VIGENTE",
+            ContratoLaboral.fecha_inicio <= ref_mid,
+            or_(ContratoLaboral.fecha_fin.is_(None), ContratoLaboral.fecha_fin >= ref_mid),
+        )
+        .order_by(ContratoLaboral.fecha_inicio.desc())
+    ).all():
+        contrato_por_empleado.setdefault(contrato_row.empleado_id, contrato_row)
+    flete_por_empleado: dict[int, Decimal] = {}
+    if pct_bono > 0:
+        for emp_id, total in db.execute(
+            select(
+                TransporteViaje.empleado_id,
+                func.coalesce(func.sum(TransporteViaje.valor_flete), 0),
+            )
+            .where(
+                TransporteViaje.estado == "CERRADO",
+                TransporteViaje.real_salida.isnot(None),
+                TransporteViaje.real_salida >= t0,
+                TransporteViaje.real_salida <= t1,
+            )
+            .group_by(TransporteViaje.empleado_id)
+        ).all():
+            flete_por_empleado[int(emp_id)] = _d(total)
+    anticipo_por_empleado: dict[int, Decimal] = {}
+    for emp_id, total in db.execute(
+        select(
+            FondoRendir.empleado_id,
+            func.coalesce(func.sum(FondoRendir.monto_anticipo), 0),
+        )
+        .where(
+            FondoRendir.estado == "APROBADO",
+            FondoRendir.fecha_aprobacion.isnot(None),
+            FondoRendir.fecha_aprobacion >= t0,
+            FondoRendir.fecha_aprobacion <= t1,
+        )
+        .group_by(FondoRendir.empleado_id)
+    ).all():
+        anticipo_por_empleado[int(emp_id)] = _d(total)
 
     for emp in empleados:
-        contrato = _contrato_vigente_en_fecha(db, emp.id, ref_mid)
+        contrato = contrato_por_empleado.get(emp.id)
         if not contrato:
             continue
 
@@ -334,16 +376,7 @@ def calcular_periodo(db: Session, periodo_id: int) -> PeriodoRemuneracion:
                 )
 
         if pct_bono > 0:
-            sum_flete = db.scalar(
-                select(func.coalesce(func.sum(TransporteViaje.valor_flete), 0)).where(
-                    TransporteViaje.empleado_id == emp.id,
-                    TransporteViaje.estado == "CERRADO",
-                    TransporteViaje.real_salida.isnot(None),
-                    TransporteViaje.real_salida >= t0,
-                    TransporteViaje.real_salida <= t1,
-                )
-            )
-            sum_flete_d = _d(sum_flete)
+            sum_flete_d = flete_por_empleado.get(emp.id, Decimal("0"))
             if sum_flete_d > 0:
                 monto_bono = (sum_flete_d * pct_bono / Decimal("100")).quantize(Q2, rounding=ROUND_HALF_UP)
                 if monto_bono > 0:
@@ -361,16 +394,7 @@ def calcular_periodo(db: Session, periodo_id: int) -> PeriodoRemuneracion:
                         )
                     )
 
-        sum_anticipos = db.scalar(
-            select(func.coalesce(func.sum(FondoRendir.monto_anticipo), 0)).where(
-                FondoRendir.empleado_id == emp.id,
-                FondoRendir.estado == "APROBADO",
-                FondoRendir.fecha_aprobacion.isnot(None),
-                FondoRendir.fecha_aprobacion >= t0,
-                FondoRendir.fecha_aprobacion <= t1,
-            )
-        )
-        sum_ant_d = _d(sum_anticipos)
+        sum_ant_d = anticipo_por_empleado.get(emp.id, Decimal("0"))
         if sum_ant_d > 0:
             db.add(
                 ItemRemuneracion(
@@ -386,7 +410,7 @@ def calcular_periodo(db: Session, periodo_id: int) -> PeriodoRemuneracion:
                 )
             )
 
-        base_imp = _suma_montos_imponibles(db, det.id)
+        base_imp = _suma_montos_imponibles(db, det.id, por_id)
         if base_imp > 0 and concepto_afp is not None and pct_afp > 0:
             m_afp = (base_imp * pct_afp / Decimal("100")).quantize(Q2, rounding=ROUND_HALF_UP)
             if m_afp > 0:
@@ -420,7 +444,7 @@ def calcular_periodo(db: Session, periodo_id: int) -> PeriodoRemuneracion:
                     )
                 )
 
-        _recalcular_totales_detalle(db, det)
+        _recalcular_totales_detalle(db, det, por_id)
 
     pr.estado = "CALCULADO"
     pr.fecha_calculo = datetime.utcnow()

@@ -1,0 +1,186 @@
+{% extends "layout/base.html" %}
+{% block title %}{% if tipo %}Editar tipo{% else %}Nuevo tipo{% endif %} · LOP{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/leasing_operativo.css" />
+<div class="container py-4 lo-page">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <a href="{{ request.url_for('leasing_operativo_tipos_activo') }}" class="small text-decoration-none">← Tipos de activo</a>
+      <h1 class="h5 fw-semibold mt-1 mb-0">
+        {% if tipo %}Parámetros · {{ tipo.nombre }}{% else %}Nuevo tipo de activo{% endif %}
+      </h1>
+      <p class="text-secondary small mb-0">
+        Define residual, liquidez, obsolescencia y desgaste que usa el motor económico.
+      </p>
+    </div>
+    {% if tipo %}
+    <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_parametros') }}#tipo-{{ tipo.id }}">
+      Parámetros comerciales →
+    </a>
+    {% endif %}
+  </div>
+
+  {% if error %}
+  <div class="alert alert-danger py-2 small">{{ error }}</div>
+  {% endif %}
+  {% if msg %}
+  <div class="alert alert-success py-2 small">{{ msg }}</div>
+  {% endif %}
+
+  {% set m = mercado or {} %}
+  {% if tipo and m.tiene_sugerencia %}
+  <div class="lo-market-strip mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+      <div>
+        <span class="lo-market-badge"><i class="bi bi-graph-up-arrow"></i> Sugerencia mercado Chile</span>
+        <div class="small mt-2 fw-semibold">{{ m.sugerencia.nombre_ref }} · plazo ref. {{ m.sugerencia.plazo_ref_meses }}m · confianza {{ m.sugerencia.confianza }}</div>
+        <ul class="small mb-0 mt-1 ps-3">
+          {% for f in m.sugerencia.fuentes[:2] %}
+          <li>{{ f }}</li>
+          {% endfor %}
+        </ul>
+        {% if m.sugerencia.decision_hint %}
+        <div class="lo-decision-hint small mt-2"><strong>Para decidir:</strong> {{ m.sugerencia.decision_hint }}</div>
+        {% endif %}
+      </div>
+      {% if not m.alineado %}
+      <form method="post" action="{{ request.url_for('leasing_operativo_tipo_aplicar_mercado', tipo_id=tipo.id) }}">
+        <button type="submit" class="btn btn-sm btn-outline-dark" onclick="return confirm('¿Aplicar sugerencia de mercado a este tipo?');">
+          Aplicar sugerencia mercado
+        </button>
+      </form>
+      {% else %}
+      <span class="badge text-bg-success-subtle border">Alineado a mercado</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <form
+    method="post"
+    action="{% if tipo %}{{ request.url_for('leasing_operativo_tipo_guardar', tipo_id=tipo.id) }}{% else %}{{ request.url_for('leasing_operativo_tipo_crear') }}{% endif %}"
+    class="card border-0 shadow-sm mb-4"
+  >
+    <div class="card-body row g-3 small">
+      <div class="col-12 lo-section-title">Identidad</div>
+      <div class="col-md-3">
+        <label class="form-label">Código</label>
+        <input
+          name="codigo"
+          class="form-control form-control-sm font-monospace"
+          required
+          maxlength="40"
+          value="{{ tipo.codigo if tipo else '' }}"
+          placeholder="CAMIONETA"
+          {% if tipo %}title="Cambiar el código afecta reportes; use con cuidado"{% endif %}
+        />
+      </div>
+      <div class="col-md-5">
+        <label class="form-label">Nombre (simulador)</label>
+        <input name="nombre" class="form-control form-control-sm" required maxlength="160" value="{{ tipo.nombre if tipo else '' }}" placeholder="Camioneta liviana" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Sector</label>
+        <input name="sector" class="form-control form-control-sm" maxlength="120" value="{{ tipo.sector if tipo and tipo.sector else '' }}" placeholder="TRANSPORTE" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Disponible</label>
+        <select name="activo" class="form-select form-select-sm">
+          <option value="1" {% if not tipo or tipo.activo %}selected{% endif %}>Activo en cotización</option>
+          <option value="0" {% if tipo and not tipo.activo %}selected{% endif %}>Inactivo</option>
+        </select>
+      </div>
+
+      <div class="col-12 lo-section-title">Residual / mercado</div>
+      <div class="col-md-2">
+        <label class="form-label">Residual base %</label>
+        <input name="residual_base_pct" class="form-control form-control-sm" value="{{ tipo.residual_base_pct if tipo else 15 }}" />
+        <div class="form-text">% del valor al término (base).</div>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Residual máx. %</label>
+        <input name="residual_max_pct" class="form-control form-control-sm" value="{{ tipo.residual_max_pct if tipo else 45 }}" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Colchón residual %</label>
+        <input name="haircut_residual_pct" class="form-control form-control-sm" value="{{ tipo.haircut_residual_pct if tipo else 5 }}" />
+        <div class="form-text">Descuento prudencial sobre el residual estimado.</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Factor liquidez</label>
+        <input name="liquidez_factor" class="form-control form-control-sm" value="{{ tipo.liquidez_factor if tipo else 1 }}" />
+        <div class="form-text">&gt;1 = más líquido (mejor residual).</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Factor obsolescencia</label>
+        <input name="obsolescencia_factor" class="form-control form-control-sm" value="{{ tipo.obsolescencia_factor if tipo else 1 }}" />
+        <div class="form-text">&gt;1 = pierde valor más rápido.</div>
+      </div>
+
+      <div class="col-12 lo-section-title">Desgaste por uso</div>
+      <div class="col-md-3">
+        <label class="form-label">Desgaste por km</label>
+        <input name="desgaste_km_factor" class="form-control form-control-sm font-monospace" value="{{ tipo.desgaste_km_factor if tipo else '0.0001' }}" />
+        <div class="form-text">Vehículos / flota. 0 si no aplica (p.ej. TI).</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Desgaste por hora</label>
+        <input name="desgaste_hora_factor" class="form-control form-control-sm font-monospace" value="{{ tipo.desgaste_hora_factor if tipo else '0.0005' }}" />
+        <div class="form-text">Maquinaria / horas motor.</div>
+      </div>
+      {% if param %}
+      <div class="col-md-6">
+        <div class="border rounded p-2 bg-light h-100">
+          <div class="fw-semibold mb-1">Defaults comerciales vinculados</div>
+          <div class="text-muted">
+            {{ param.moneda }} · plazo {{ param.plazo_default }}m · spread {{ param.spread_default_pct }}% ·
+            margen {{ param.margen_default_pct }}% · TIR {{ param.tir_default_pct }}%
+          </div>
+          <a class="small" href="{{ request.url_for('leasing_operativo_parametros') }}#tipo-{{ tipo.id }}">Editar parámetros comerciales →</a>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    <div class="card-footer bg-white d-flex flex-wrap justify-content-between gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_tipos_activo') }}">Cancelar</a>
+      <button type="submit" class="btn btn-sm btn-primary">
+        {% if tipo %}Guardar parámetros del tipo{% else %}Crear tipo de activo{% endif %}
+      </button>
+    </div>
+  </form>
+
+  {% if tipo %}
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white fw-semibold">Plantillas de costo operativo</div>
+    <div class="card-body p-0">
+      {% if plantillas %}
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Código</th>
+              <th>Descripción</th>
+              <th>Periodicidad</th>
+              <th class="text-end">Monto mens. equiv.</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for c in plantillas %}
+            <tr>
+              <td class="font-monospace small">{{ c.codigo }}</td>
+              <td>{{ c.descripcion }}</td>
+              <td class="small">{{ c.periodicidad }}</td>
+              <td class="text-end font-monospace small">${{ "{:,.0f}".format(c.monto_mensual_equiv or 0).replace(",", ".") }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="small text-muted mb-0 p-3">Sin plantillas de costo para este tipo. Se pueden cargar por SQL (costo_plantilla).</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

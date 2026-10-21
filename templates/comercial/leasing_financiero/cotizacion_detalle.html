@@ -21,7 +21,7 @@
 {% endblock head %}
 
 {% block content %}
-<div class="container py-4">
+<div class="container-fluid py-4 lf-page">
   {% set cli = cotizacion.cliente %}
   {% set cli_nombre = (cli.razon_social if cli else 'Cliente no disponible') %}
   {% set cli_rut = (cli.rut if cli else '') %}
@@ -33,7 +33,7 @@
       </h1>
       <div class="small" style="color:var(--eva-muted);">
         {% if cli_rut %}RUT {{ cli_rut }} · {% endif %}
-        Moneda {{ cotizacion.moneda or 'CLP' }} · Estado {{ cotizacion.estado or 'PENDIENTE' }}
+        Moneda {{ cotizacion.moneda or 'CLP' }} · Estado {{ estado_label if estado_label is defined else (cotizacion.estado or 'PENDIENTE') }}
       </div>
     </div>
     <div class="d-flex flex-wrap gap-2">
@@ -43,26 +43,40 @@
         <a href="{{ request.url_for('clientes_form_editar', cliente_id=cli.id) }}" class="btn btn-sm btn-outline-secondary">Ficha cliente</a>
         <a href="{{ request.url_for('lf_cotizacion_nueva_form') }}?cliente_id={{ cli.id }}" class="btn btn-sm btn-eva-primary">+ Nueva cotización</a>
       {% endif %}
+      {% if puede_editar %}
+      <a href="{{ request.url_for('lf_cotizacion_editar_form', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-primary">Editar</a>
+      {% endif %}
       <a href="{{ request.url_for('lf_cotizacion_amortizacion', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-eva-primary">Ver amortización</a>
       <a href="{{ request.url_for('lf_cotizacion_pdf', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-danger">PDF cotizador</a>
-      <a href="{{ request.url_for('lf_cotizacion_editar_form', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-warning">Editar</a>
       <a href="{{ request.url_for('lf_credito_form', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Scoring crédito</a>
       <a href="{{ request.url_for('lf_cotizacion_amortizacion_excel', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-success">Excel</a>
       <a href="{{ request.url_for('lf_cotizacion_amortizacion_pdf', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-danger">PDF amortización</a>
+      {% if puede_eliminar %}
+      <form method="post" action="{{ request.url_for('lf_cotizacion_eliminar', cotizacion_id=cotizacion.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar la cotización #{{ cotizacion.id }}? Esta acción no se puede deshacer.');">
+        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+      </form>
+      {% endif %}
     </div>
   </div>
 
   <div class="row g-3 mb-3">
     <div class="col-12">
-      {% set steps = ['COTIZADA','EN_ANALISIS_CREDITO','APROBADA','EN_FORMALIZACION','DOCUMENTACION_COMPLETA','ACTIVADA','VIGENTE'] %}
+      {% set steps = flujo_canonico if flujo_canonico is defined else [
+        ('BORRADOR','Borrador'),('COTIZADA','Cotizada'),('EN_EVALUACION','En evaluación'),
+        ('APROBADA','Aprobada'),('ACUERDO_FIRMADO','Acuerdo firmado'),
+        ('ACTIVO_PENDIENTE_COMPRA','Pendiente de compra'),('ACTIVO_ADQUIRIDO','Activo adquirido')
+      ] %}
       {% set current = (cotizacion.estado or 'BORRADOR')|upper %}
       <div class="card eva-card lf-card shadow-sm border-0">
         <div class="card-body small">
-          <strong>Etapas:</strong>
+          <strong>Flujo:</strong>
           {% for s in steps %}
-            <span class="eva-badge lf-badge {% if current == s %}eva-badge--ok lf-badge--ok{% endif %}">{{ s }}</span>
+            {% set code = s[0] if s is sequence and s|length == 2 else s %}
+            {% set label = s[1] if s is sequence and s|length == 2 else s %}
+            <span class="eva-badge lf-badge {% if current == code %}eva-badge--ok lf-badge--ok{% endif %}">{{ label }}</span>
             {% if not loop.last %}<span class="text-muted">→</span>{% endif %}
           {% endfor %}
+          <div class="text-muted mt-2">Estado actual: <strong>{{ estado_label if estado_label is defined else cotizacion.estado }}</strong>. El activo no se adquiere al cotizar.</div>
         </div>
       </div>
     </div>
@@ -278,10 +292,35 @@
           </ul>
 
           {% set est = (cotizacion.estado or '')|upper %}
-          {% if est in ['BORRADOR','COTIZADA','EN_ANALISIS_COMERCIAL'] %}
-          <form method="post" action="{{ request.url_for('lf_cotizacion_enviar_credito', cotizacion_id=cotizacion.id) }}" class="mb-2">
-            <button class="btn btn-sm btn-eva-primary w-100" type="submit">Enviar a análisis de crédito</button>
+          {% if est in ['BORRADOR','COTIZADA'] %}
+          <form method="post" action="{{ request.url_for('lf_cotizacion_enviar_evaluacion', cotizacion_id=cotizacion.id) }}" class="mb-2">
+            <button class="btn btn-sm btn-eva-primary w-100" type="submit">Enviar a evaluación</button>
           </form>
+          {% endif %}
+          {% if est in ['BORRADOR','COTIZADA','EN_ANALISIS_COMERCIAL','EN_EVALUACION'] %}
+          <form method="post" action="{{ request.url_for('lf_cotizacion_enviar_credito', cotizacion_id=cotizacion.id) }}" class="mb-2">
+            <button class="btn btn-sm btn-outline-primary w-100" type="submit">Abrir scoring de crédito</button>
+          </form>
+          {% endif %}
+          {% if est in ['APROBADA','APROBADA_CONDICIONES'] %}
+          <form method="post" action="{{ request.url_for('lf_cotizacion_acuerdo_firmado', cotizacion_id=cotizacion.id) }}" class="mb-2">
+            <button class="btn btn-sm btn-success w-100" type="submit">Marcar acuerdo firmado</button>
+          </form>
+          {% endif %}
+          {% if est in ['ACUERDO_FIRMADO','EN_FORMALIZACION'] %}
+          <form method="post" action="{{ request.url_for('lf_cotizacion_habilitar_compra', cotizacion_id=cotizacion.id) }}" class="mb-2">
+            <button class="btn btn-sm btn-eva-primary w-100" type="submit">Habilitar compra del activo</button>
+          </form>
+          {% endif %}
+          {% if puede_comprar is defined and puede_comprar and est in ['ACUERDO_FIRMADO','ACTIVO_PENDIENTE_COMPRA','EN_FORMALIZACION'] %}
+          <form method="post" action="{{ request.url_for('lf_cotizacion_adquirir_activo', cotizacion_id=cotizacion.id) }}" class="mb-2">
+            <button class="btn btn-sm btn-outline-success w-100" type="submit">Marcar activo adquirido</button>
+          </form>
+          {% endif %}
+          {% if not (puede_comprar is defined and puede_comprar) %}
+          <div class="alert alert-light border small py-2">
+            La compra del activo se habilita solo después del estado <strong>Acuerdo firmado</strong>.
+          </div>
           {% endif %}
 
           {% if est in ['APROBADA','APROBADA_CONDICIONES'] and not cotizacion.aceptada_en %}
@@ -334,10 +373,15 @@
         <div class="card-body">
           <h2 class="h6 fw-semibold mb-2">Documentos del proceso</h2>
           <div class="d-grid gap-2 small">
+            <a href="{{ request.url_for('lf_doc_contrato', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Contrato / acuerdo</a>
+            {% if puede_comprar is defined and puede_comprar %}
             <a href="{{ request.url_for('lf_doc_oc', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Orden de compra</a>
-            <a href="{{ request.url_for('lf_doc_contrato', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Contrato firmado</a>
             <a href="{{ request.url_for('lf_doc_acta', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Acta de recepción</a>
             <a href="{{ request.url_for('lf_doc_factura', cotizacion_id=cotizacion.id) }}" class="btn btn-sm btn-outline-primary">Factura de compra</a>
+            {% else %}
+            <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Disponible después del acuerdo firmado">Orden de compra</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" disabled>Factura de compra</button>
+            {% endif %}
           </div>
         </div>
       </div>

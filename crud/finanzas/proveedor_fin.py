@@ -7,7 +7,11 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session, joinedload
 
-from crud.finanzas.cxp_montos_sql import cxp_sql_saldo_desde_lineas, cxp_sql_total_desde_lineas
+from crud.finanzas.cxp_montos_sql import (
+    cxp_agregados_joins,
+    cxp_sql_saldo_desde_lineas,
+    cxp_sql_total_desde_lineas,
+)
 from models.finanzas.compras_finanzas import ProveedorFin
 from schemas.finanzas.proveedor_fin import ProveedorFinCreate, ProveedorFinUpdate
 
@@ -69,6 +73,7 @@ class ProveedorFinCRUD:
     def get_resumen_financiero(self, db: Session, proveedor_id: int) -> dict:
         _t = cxp_sql_total_desde_lineas("d")
         _s = cxp_sql_saldo_desde_lineas("d")
+        joins = cxp_agregados_joins("d")
         row = db.execute(
             text(
                 f"""
@@ -85,6 +90,7 @@ class ProveedorFinCRUD:
                         END
                     ), 0) AS docs_vencidos
                 FROM fin.ap_documento d
+                {joins}
                 WHERE d.proveedor_id = :proveedor_id
                 """
             ),

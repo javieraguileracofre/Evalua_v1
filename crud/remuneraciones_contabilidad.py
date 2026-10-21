@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from crud.finanzas.contabilidad_asientos import crear_asiento
+from modules.contabilidad import accounting_service
 from crud.finanzas.plan_cuentas import obtener_plan_cuenta_por_codigo
 from models.finanzas.plan_cuentas import PlanCuenta
 from models.remuneraciones.models import DetalleRemuneracion, PeriodoRemuneracion
@@ -120,7 +120,7 @@ def contabilizar_provision_nomina_periodo(
         else fecha_base
     )
 
-    aid = crear_asiento(
+    aid = accounting_service.post_entry(
         db,
         fecha=fecha_asiento,
         origen_tipo="REMUNERACION_PROVISION",
@@ -132,6 +132,19 @@ def contabilizar_provision_nomina_periodo(
         do_commit=False,
     )
     periodo.asiento_provision_id = aid  # type: ignore[assignment]
+    from erp_platform.events import publish_in_transaction
+    from erp_platform.events import types as event_types
+
+    publish_in_transaction(
+        db,
+        event_name=event_types.LIQUIDACION_GENERADA,
+        payload={
+            "periodo_id": int(periodo.id),
+            "asiento_id": int(aid),
+            "tipo": "NOMINA",
+        },
+        correlation_id=f"REMUNERACION_PROVISION:{int(periodo.id)}",
+    )
     return aid
 
 
@@ -187,7 +200,7 @@ def contabilizar_pago_nomina_periodo(
     ]
 
     fecha_asiento = periodo.fecha_pago or datetime.utcnow()
-    aid = crear_asiento(
+    aid = accounting_service.post_entry(
         db,
         fecha=fecha_asiento,
         origen_tipo="REMUNERACION_PAGO",

@@ -121,6 +121,56 @@ def test_finanzas_integracion_uses_accounting_service():
     assert "from crud.finanzas.contabilidad_asientos import" not in text
 
 
+def test_api_v1_enforces_permission_deps():
+    """Contrato /api/v1 de dominio debe exigir permisos canónicos, no solo auth."""
+    accounting = (ROOT / "routes" / "api" / "v1" / "accounting.py").read_text(encoding="utf-8")
+    leasing = (ROOT / "routes" / "api" / "v1" / "leasing.py").read_text(encoding="utf-8")
+    assert "require_permission" in accounting
+    assert "CONTABILIDAD_VIEW" in accounting
+    assert "require_permission" in leasing
+    assert "LEASING_VIEW" in leasing
+    assert "from routes.api.v1.deps import" in accounting
+
+
+def test_no_router_imports_from_services_inverted():
+    """CRUD no debe importar routers (dependencia inversa)."""
+    violations: list[str] = []
+    for path in _py_files("crud"):
+        for mod in _imports(path):
+            if mod.startswith("routes.") or mod == "routes":
+                violations.append(f"{path.relative_to(ROOT)} → {mod}")
+    assert violations == [], "CRUD no debe depender de routes:\n" + "\n".join(violations)
+
+
+def test_leasing_fin_crud_no_reentra_al_modulo_publico():
+    """crud.leasing_fin → modules.leasing → crud.leasing_fin rompe la carga de rutas."""
+    path = ROOT / "crud" / "comercial" / "leasing_fin.py"
+    bad = [
+        mod
+        for mod in _imports(path)
+        if mod == "modules.leasing" or mod.startswith("modules.leasing.")
+    ]
+    assert bad == [], "leasing_fin no debe importar modules.leasing:\n" + "\n".join(bad)
+
+
+def test_single_sqlalchemy_base_definition():
+    text = (ROOT / "db" / "base_class.py").read_text(encoding="utf-8")
+    assert "declarative_base" in text or "DeclarativeBase" in text
+    # Identity usa IdentityBase separado a propósito (multiempresa).
+    assert (ROOT / "db" / "identity_base.py").exists()
+
+
+def test_modules_are_not_mere_empty_packages():
+    """Contratos públicos deben exponer símbolos de caso de uso."""
+    from modules import cobranza, finanzas
+    from modules.leasing import financiero, operativo
+
+    assert callable(cobranza.registrar_pago_cliente)
+    assert callable(finanzas.registrar_documento_ap)
+    assert callable(financiero.activar_leasing_financiero)
+    assert callable(operativo.activar_leasing_operativo)
+
+
 def test_stdlib_platform_not_shadowed():
     import platform as std_platform
 

@@ -7,8 +7,10 @@ from decimal import Decimal
 from typing import Any, Sequence
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from core.domain_errors import AsientoDescuadradoError, AsientoInmutableError
 from crud.finanzas import periodos as crud_periodos
 from crud.finanzas.plan_cuentas import obtener_plan_cuenta_por_codigo
 
@@ -29,42 +31,37 @@ def _normalize_datetime(value: datetime | date | None) -> datetime:
 
 
 def _table_columns(db: Session, table_name: str, schema: str = "public") -> set[str]:
-    rows = db.execute(
-        text(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = :schema
-              AND table_name = :table_name
-            """
-        ),
-        {"schema": schema, "table_name": table_name},
-    ).scalars().all()
-    return set(rows)
-
-
-def _pick_first_existing(columns: set[str], candidates: list[str]) -> str | None:
-    for candidate in candidates:
-        if candidate in columns:
-            return candidate
-    return None
+    """Contrato fijo de la revisión de asientos. No consulta information_schema."""
+    del db, schema
+    if table_name == "asientos_contables":
+        return {
+            "id",
+            "fecha",
+            "origen_tipo",
+            "origen_id",
+            "glosa",
+            "moneda",
+            "estado",
+            "usuario",
+            "fecha_creacion",
+            "fecha_actualizacion",
+        }
+    if table_name == "asientos_detalle":
+        return {
+            "id",
+            "asiento_id",
+            "codigo_cuenta",
+            "nombre_cuenta",
+            "descripcion",
+            "debe",
+            "haber",
+        }
+    return set()
 
 
 def _detalle_exprs(db: Session) -> tuple[str, str]:
-    """
-    Expresiones SQL seguras para código/nombre de cuenta en asientos_detalle.
-    Compatibiliza esquemas legacy (cuenta_contable) y nuevos (codigo_cuenta).
-    """
-    det_cols = _table_columns(db, "asientos_detalle")
-    code_col = _pick_first_existing(det_cols, ["codigo_cuenta", "cuenta_contable"])
-    if not code_col:
-        raise ValueError("La tabla asientos_detalle no tiene columna de cuenta (codigo_cuenta/cuenta_contable).")
-    code_expr = f"ad.{code_col}"
-    if "nombre_cuenta" in det_cols:
-        name_expr = "ad.nombre_cuenta"
-    else:
-        name_expr = "pc.nombre"
-    return code_expr, name_expr
+    del db
+    return "ad.codigo_cuenta", "ad.nombre_cuenta"
 
 
 def _insert_header_dynamic(
@@ -77,63 +74,31 @@ def _insert_header_dynamic(
     usuario: str | None,
     moneda: str,
 ) -> int:
-    table_name = "asientos_contables"
-    cols = _table_columns(db, table_name)
-
-    if not cols:
-        raise ValueError("No existe la tabla 'asientos_contables' o no es accesible.")
-
-    payload: dict[str, Any] = {}
     now = datetime.utcnow()
-
-    if "fecha" in cols:
-        payload["fecha"] = fecha
-
-    origen_tipo_col = _pick_first_existing(cols, ["origen_tipo", "origen"])
-    if origen_tipo_col:
-        payload[origen_tipo_col] = origen_tipo
-
-    if "origen_id" in cols:
-        payload["origen_id"] = origen_id
-
-    texto_col = _pick_first_existing(cols, ["glosa", "descripcion", "detalle", "concepto", "observacion"])
-    if texto_col:
-        payload[texto_col] = (glosa or "")[:255]
-
-    if "moneda" in cols:
-        payload["moneda"] = moneda
-
-    if "estado" in cols:
-        payload["estado"] = "PUBLICADO"
-
-    usuario_col = _pick_first_existing(cols, ["usuario", "creado_por", "user_email"])
-    if usuario_col:
-        payload[usuario_col] = usuario
-
-    if "fecha_creacion" in cols:
-        payload["fecha_creacion"] = now
-    if "fecha_actualizacion" in cols:
-        payload["fecha_actualizacion"] = now
-    if "created_at" in cols:
-        payload["created_at"] = now
-    if "updated_at" in cols:
-        payload["updated_at"] = now
-
-    if not payload:
-        raise ValueError("No fue posible determinar columnas válidas para insertar el asiento contable.")
-
-    columns_sql = ", ".join(payload.keys())
-    values_sql = ", ".join(f":{key}" for key in payload.keys())
-
-    query = text(
-        f"""
-        INSERT INTO {table_name} ({columns_sql})
-        VALUES ({values_sql})
-        RETURNING id
-        """
-    )
-
-    asiento_id = db.execute(query, payload).scalar_one()
+    asiento_id = db.execute(
+        text(
+            """
+            INSERT INTO asientos_contables (
+                fecha, origen_tipo, origen_id, glosa, moneda, estado,
+                usuario, fecha_creacion, fecha_actualizacion
+            )
+            VALUES (
+                :fecha, :origen_tipo, :origen_id, :glosa, :moneda, 'PUBLICADO',
+                :usuario, :ahora, :ahora
+            )
+            RETURNING id
+            """
+        ),
+        {
+            "fecha": fecha,
+            "origen_tipo": origen_tipo,
+            "origen_id": origen_id,
+            "glosa": (glosa or "")[:255],
+            "moneda": moneda,
+            "usuario": usuario,
+            "ahora": now,
+        },
+    ).scalar_one()
     return int(asiento_id)
 
 
@@ -147,58 +112,81 @@ def _insert_detail_dynamic(
     debe: Decimal,
     haber: Decimal,
 ) -> None:
-    table_name = "asientos_detalle"
-    cols = _table_columns(db, table_name)
-
-    if not cols:
-        raise ValueError("No existe la tabla 'asientos_detalle' o no es accesible.")
-
-    required = {"asiento_id", "debe", "haber"}
-    if not required.issubset(cols):
-        faltantes = sorted(required - cols)
-        raise ValueError(
-            f"La tabla 'asientos_detalle' no tiene las columnas mínimas requeridas: {', '.join(faltantes)}"
-        )
-
-    payload: dict[str, Any] = {
-        "asiento_id": asiento_id,
-        "debe": debe,
-        "haber": haber,
-    }
-
-    if "codigo_cuenta" in cols:
-        payload["codigo_cuenta"] = codigo_cuenta
-    elif "cuenta_contable" in cols:
-        payload["cuenta_contable"] = codigo_cuenta
-    else:
-        raise ValueError("La tabla 'asientos_detalle' no tiene columna de cuenta.")
-
-    if "nombre_cuenta" in cols:
-        payload["nombre_cuenta"] = nombre_cuenta
-
-    if "descripcion" in cols:
-        payload["descripcion"] = descripcion
-
-    now = datetime.utcnow()
-    if "fecha_creacion" in cols:
-        payload["fecha_creacion"] = now
-    if "fecha_actualizacion" in cols:
-        payload["fecha_actualizacion"] = now
-    if "created_at" in cols:
-        payload["created_at"] = now
-    if "updated_at" in cols:
-        payload["updated_at"] = now
-
-    columns_sql = ", ".join(payload.keys())
-    values_sql = ", ".join(f":{key}" for key in payload.keys())
-
-    query = text(
-        f"""
-        INSERT INTO {table_name} ({columns_sql})
-        VALUES ({values_sql})
-        """
+    db.execute(
+        text(
+            """
+            INSERT INTO asientos_detalle (
+                asiento_id, codigo_cuenta, nombre_cuenta, descripcion, debe, haber
+            )
+            VALUES (
+                :asiento_id, :codigo_cuenta, :nombre_cuenta, :descripcion, :debe, :haber
+            )
+            """
+        ),
+        {
+            "asiento_id": asiento_id,
+            "codigo_cuenta": codigo_cuenta,
+            "nombre_cuenta": nombre_cuenta,
+            "descripcion": descripcion,
+            "debe": debe,
+            "haber": haber,
+        },
     )
-    db.execute(query, payload)
+
+
+# Orígenes con a lo sumo un asiento vivo por (origen_tipo, origen_id>0).
+ORIGENES_IDEMPOTENTES = frozenset(
+    {
+        "AP_DOCUMENTO",
+        "AP_PAGO",
+        "NOTA_VENTA",
+        "NOTA_VENTA_ANULACION",
+        "PAGO_CLIENTE",
+        "LEASING_FIN_ACTIVACION",
+        "LOP_ACTIVACION",
+        "LOP_FACTURACION",
+        "FONDO_RENDIR_ENT",
+        "FONDO_RENDIR_LIQ",
+        "REMUNERACION_PROVISION",
+        "REMUNERACION_PAGO",
+        "REV_MANUAL",
+        "INVENTARIO_MOV",
+        "LOP_DEPRECIACION",
+        "AP_DOCUMENTO_REVERSA",
+        "NOTA_VENTA_REVERSA",
+        "FONDO_RENDIR_ENT_REVERSA",
+        "INVENTARIO_SALIDA",
+        "DIFERENCIA_CAMBIO",
+        "CONCILIACION_DIF",
+    }
+)
+
+
+def obtener_asiento_id_por_origen(
+    db: Session,
+    *,
+    origen_tipo: str,
+    origen_id: int,
+) -> int | None:
+    """Devuelve el id del asiento existente para (origen_tipo, origen_id), si hay."""
+    if origen_id is None or int(origen_id) <= 0:
+        return None
+    row = db.execute(
+        text(
+            """
+            SELECT id
+            FROM asientos_contables
+            WHERE origen_tipo = :ot
+              AND origen_id = :oid
+            ORDER BY id ASC
+            LIMIT 1
+            """
+        ),
+        {"ot": str(origen_tipo or "").strip(), "oid": int(origen_id)},
+    ).first()
+    if row is None:
+        return None
+    return int(row[0])
 
 
 def crear_asiento(
@@ -212,9 +200,22 @@ def crear_asiento(
     usuario: str | None = None,
     moneda: str = "CLP",
     do_commit: bool = True,
+    idempotent: bool | None = None,
 ) -> int:
     if not detalles:
         raise ValueError("El asiento debe tener al menos un detalle.")
+
+    ot = str(origen_tipo or "").strip().upper()
+    oid = int(origen_id or 0)
+    use_idempotent = (
+        bool(idempotent)
+        if idempotent is not None
+        else (oid > 0 and ot in ORIGENES_IDEMPOTENTES)
+    )
+    if use_idempotent:
+        existing = obtener_asiento_id_por_origen(db, origen_tipo=ot, origen_id=oid)
+        if existing is not None:
+            return existing
 
     total_debe = Decimal("0")
     total_haber = Decimal("0")
@@ -260,33 +261,49 @@ def crear_asiento(
         )
 
     if total_debe != total_haber:
-        raise ValueError(f"Asiento no cuadra (Debe {total_debe} != Haber {total_haber})")
+        raise AsientoDescuadradoError(
+            f"Asiento no cuadra (Debe {total_debe} != Haber {total_haber})"
+        )
 
     try:
         # Bloqueo de período lo más cerca posible del INSERT para no retener
         # fin.periodo FOR UPDATE durante toda la validación de líneas.
         crud_periodos.assert_periodo_abierto_para_fecha(db, fecha_asiento)
 
-        asiento_id = _insert_header_dynamic(
-            db,
-            fecha=fecha_asiento,
-            origen_tipo=origen_tipo,
-            origen_id=origen_id,
-            glosa=glosa,
-            usuario=usuario,
-            moneda=moneda,
-        )
-
-        for item in detalle_normalizado:
-            _insert_detail_dynamic(
+        # SAVEPOINT: ante carrera concurrente el índice único puede fallar sin
+        # abortar toda la transacción de negocio padre.
+        nested = db.begin_nested()
+        try:
+            asiento_id = _insert_header_dynamic(
                 db,
-                asiento_id=asiento_id,
-                codigo_cuenta=item["codigo_cuenta"],
-                nombre_cuenta=item["nombre_cuenta"],
-                descripcion=item["descripcion"],
-                debe=item["debe"],
-                haber=item["haber"],
+                fecha=fecha_asiento,
+                origen_tipo=ot or str(origen_tipo or "").strip(),
+                origen_id=oid,
+                glosa=glosa,
+                usuario=usuario,
+                moneda=moneda,
             )
+
+            for item in detalle_normalizado:
+                _insert_detail_dynamic(
+                    db,
+                    asiento_id=asiento_id,
+                    codigo_cuenta=item["codigo_cuenta"],
+                    nombre_cuenta=item["nombre_cuenta"],
+                    descripcion=item["descripcion"],
+                    debe=item["debe"],
+                    haber=item["haber"],
+                )
+            nested.commit()
+        except IntegrityError:
+            nested.rollback()
+            if use_idempotent:
+                existing = obtener_asiento_id_por_origen(db, origen_tipo=ot, origen_id=oid)
+                if existing is not None:
+                    if do_commit:
+                        db.commit()
+                    return existing
+            raise
 
         if do_commit:
             db.commit()
@@ -299,15 +316,78 @@ def crear_asiento(
 
 
 def eliminar_asiento_contable(db: Session, asiento_id: int) -> None:
-    """Elimina detalle y cabecera del asiento (uso interno, p. ej. reversión al borrar documento AP)."""
+    """Prohibido. El historial contable se corrige con reversión, no con DELETE."""
+    raise AsientoInmutableError(
+        f"El asiento #{int(asiento_id)} no se elimina. Registre un asiento de reversión."
+    )
+
+
+def archivar_origen_asiento(db: Session, asiento_id: int) -> None:
+    """
+    Quita la clave viva (origen_tipo, origen_id) sin borrar líneas.
+
+    El asiento queda como ``<tipo>_HIST`` para poder registrar uno nuevo
+    del mismo documento (edición de nota de venta).
+    """
     if asiento_id <= 0:
         return
-    det_cols = _table_columns(db, "asientos_detalle")
-    cab_cols = _table_columns(db, "asientos_contables")
-    if not det_cols or not cab_cols:
-        return
-    db.execute(text("DELETE FROM asientos_detalle WHERE asiento_id = :id"), {"id": asiento_id})
-    db.execute(text("DELETE FROM asientos_contables WHERE id = :id"), {"id": asiento_id})
+    db.execute(
+        text(
+            """
+            UPDATE asientos_contables
+            SET origen_tipo = CASE
+                WHEN right(COALESCE(origen_tipo, ''), 5) = '_HIST' THEN origen_tipo
+                ELSE COALESCE(origen_tipo, 'ASIENTO') || '_HIST'
+            END
+            WHERE id = :id
+            """
+        ),
+        {"id": int(asiento_id)},
+    )
+
+
+def revertir_asiento_negocio(
+    db: Session,
+    *,
+    asiento_original_id: int,
+    origen_tipo: str,
+    origen_id: int,
+    glosa: str | None = None,
+    usuario: str | None = None,
+    do_commit: bool = False,
+) -> int:
+    """Asiento espejo idempotente. No borra el original."""
+    ot = str(origen_tipo or "").strip().upper()
+    if ot not in ORIGENES_IDEMPOTENTES:
+        raise ValueError(f"Origen de reversión no permitido: {ot}")
+    data = obtener_asiento_detalle(db, asiento_original_id)
+    if not data:
+        raise ValueError("Asiento original no encontrado.")
+
+    detalles_invertidos: list[dict[str, Any]] = []
+    for d in data["detalles"]:
+        detalles_invertidos.append(
+            {
+                "codigo_cuenta": d.get("codigo_cuenta"),
+                "descripcion": d.get("descripcion"),
+                "debe": d.get("haber"),
+                "haber": d.get("debe"),
+            }
+        )
+    cab = data["cabecera"]
+    glosa_final = (glosa or "").strip() or f"Reversión asiento #{asiento_original_id}"
+    return crear_asiento(
+        db,
+        fecha=datetime.utcnow(),
+        origen_tipo=ot,
+        origen_id=int(origen_id),
+        glosa=glosa_final[:255],
+        detalles=detalles_invertidos,
+        usuario=usuario,
+        moneda=str(cab.get("moneda") or "CLP"),
+        do_commit=do_commit,
+        idempotent=True,
+    )
 
 
 ORIGENES_MANUALES_REVERSIBLES = frozenset({"MANUAL_AJUSTE", "MANUAL_APERTURA"})
@@ -319,6 +399,7 @@ def crear_reversion_asiento_manual(
     asiento_original_id: int,
     glosa: str | None,
     usuario: str | None = None,
+    do_commit: bool = True,
 ) -> int:
     """
     Crea un asiento espejo (debe/haber intercambiados) ligado al original vía origen_tipo REV_MANUAL.
@@ -354,6 +435,8 @@ def crear_reversion_asiento_manual(
         detalles=detalles_invertidos,
         usuario=usuario,
         moneda=str(cab.get("moneda") or "CLP"),
+        do_commit=do_commit,
+        idempotent=True,
     )
 
 
@@ -365,49 +448,36 @@ def listar_asientos(
     origen_tipo: str | None = None,
     limit: int = 200,
 ) -> list[dict]:
-    cols = _table_columns(db, "asientos_contables")
-    if not cols:
-        return []
-
-    fecha_col = "fecha" if "fecha" in cols else "fecha_creacion"
-    glosa_col = _pick_first_existing(cols, ["glosa", "descripcion", "detalle", "concepto", "observacion"])
-    origen_tipo_col = _pick_first_existing(cols, ["origen_tipo", "origen"])
-    usuario_col = _pick_first_existing(cols, ["usuario", "creado_por", "user_email"])
-    moneda_col = "moneda" if "moneda" in cols else None
-    estado_col = "estado" if "estado" in cols else None
-
-    select_parts = [
-        "id",
-        f"{fecha_col} AS fecha",
-        f"{glosa_col} AS glosa" if glosa_col else "NULL::text AS glosa",
-        f"{origen_tipo_col} AS origen_tipo" if origen_tipo_col else "NULL::text AS origen_tipo",
-        "origen_id" if "origen_id" in cols else "NULL::bigint AS origen_id",
-        f"{moneda_col} AS moneda" if moneda_col else "'CLP'::text AS moneda",
-        f"{estado_col} AS estado" if estado_col else "'PUBLICADO'::text AS estado",
-        f"{usuario_col} AS usuario" if usuario_col else "NULL::text AS usuario",
-    ]
-
+    tope = max(1, min(int(limit), 500))
     where_parts = ["1=1"]
-    params: dict[str, Any] = {"limit": limit}
+    params: dict[str, Any] = {"limit": tope}
 
     if fecha_desde:
-        where_parts.append(f"{fecha_col} >= :fecha_desde")
+        where_parts.append("fecha >= :fecha_desde")
         params["fecha_desde"] = fecha_desde
 
     if fecha_hasta:
-        where_parts.append(f"{fecha_col} <= :fecha_hasta")
+        where_parts.append("fecha <= :fecha_hasta")
         params["fecha_hasta"] = fecha_hasta
 
-    if origen_tipo and origen_tipo_col:
-        where_parts.append(f"{origen_tipo_col} = :origen_tipo")
+    if origen_tipo:
+        where_parts.append("origen_tipo = :origen_tipo")
         params["origen_tipo"] = origen_tipo
 
     query = text(
         f"""
-        SELECT {", ".join(select_parts)}
+        SELECT
+            id,
+            fecha,
+            glosa,
+            origen_tipo,
+            origen_id,
+            moneda,
+            estado,
+            usuario
         FROM asientos_contables
         WHERE {" AND ".join(where_parts)}
-        ORDER BY id DESC
+        ORDER BY fecha DESC, id DESC
         LIMIT :limit
         """
     )
@@ -417,51 +487,35 @@ def listar_asientos(
 
 
 def obtener_asiento_detalle(db: Session, asiento_id: int) -> dict | None:
-    cab_cols = _table_columns(db, "asientos_contables")
-    det_cols = _table_columns(db, "asientos_detalle")
-
-    if not cab_cols or not det_cols:
-        return None
-
-    fecha_col = "fecha" if "fecha" in cab_cols else "fecha_creacion"
-    glosa_col = _pick_first_existing(cab_cols, ["glosa", "descripcion", "detalle", "concepto", "observacion"])
-    origen_tipo_col = _pick_first_existing(cab_cols, ["origen_tipo", "origen"])
-    usuario_col = _pick_first_existing(cab_cols, ["usuario", "creado_por", "user_email"])
-    moneda_col = "moneda" if "moneda" in cab_cols else None
-    estado_col = "estado" if "estado" in cab_cols else None
-
-    cab_query = text(
-        f"""
-        SELECT
-            id,
-            {fecha_col} AS fecha,
-            {glosa_col if glosa_col else "NULL::text"} AS glosa,
-            {origen_tipo_col if origen_tipo_col else "NULL::text"} AS origen_tipo,
-            {"origen_id" if "origen_id" in cab_cols else "NULL::bigint"} AS origen_id,
-            {moneda_col if moneda_col else "'CLP'::text"} AS moneda,
-            {estado_col if estado_col else "'PUBLICADO'::text"} AS estado,
-            {usuario_col if usuario_col else "NULL::text"} AS usuario
-        FROM asientos_contables
-        WHERE id = :asiento_id
-        """
-    )
-
-    cab = db.execute(cab_query, {"asiento_id": asiento_id}).mappings().first()
+    cab = db.execute(
+        text(
+            """
+            SELECT
+                id,
+                fecha,
+                glosa,
+                origen_tipo,
+                origen_id,
+                moneda,
+                estado,
+                usuario
+            FROM asientos_contables
+            WHERE id = :asiento_id
+            """
+        ),
+        {"asiento_id": asiento_id},
+    ).mappings().first()
     if not cab:
         return None
 
-    codigo_col = "codigo_cuenta" if "codigo_cuenta" in det_cols else "cuenta_contable"
-    nombre_col = "nombre_cuenta" if "nombre_cuenta" in det_cols else None
-    descripcion_col = "descripcion" if "descripcion" in det_cols else None
-
     det_query = text(
-        f"""
+        """
         SELECT
             id,
             asiento_id,
-            {codigo_col} AS codigo_cuenta,
-            {nombre_col if nombre_col else "NULL::text"} AS nombre_cuenta,
-            {descripcion_col if descripcion_col else "NULL::text"} AS descripcion,
+            codigo_cuenta,
+            nombre_cuenta,
+            descripcion,
             debe,
             haber
         FROM asientos_detalle
@@ -829,7 +883,7 @@ def obtener_libro_mayor_cuenta(
         raise ValueError("Debe indicar código de cuenta para el libro mayor.")
 
     params_si: dict[str, Any] = {"codigo_cuenta": code}
-    where_si = ["COALESCE(ad.codigo_cuenta, ad.cuenta_contable) = :codigo_cuenta"]
+    where_si = ["ad.codigo_cuenta = :codigo_cuenta"]
     if fecha_desde:
         where_si.append("ac.fecha < :fecha_desde")
         params_si["fecha_desde"] = fecha_desde
@@ -845,7 +899,7 @@ def obtener_libro_mayor_cuenta(
     saldo_inicial = Decimal(str(db.execute(query_saldo_inicial, params_si).scalar() or 0))
 
     params_mv: dict[str, Any] = {"codigo_cuenta": code}
-    where_mv = ["COALESCE(ad.codigo_cuenta, ad.cuenta_contable) = :codigo_cuenta"]
+    where_mv = ["ad.codigo_cuenta = :codigo_cuenta"]
     if fecha_desde:
         where_mv.append("ac.fecha >= :fecha_desde")
         params_mv["fecha_desde"] = fecha_desde
@@ -853,34 +907,19 @@ def obtener_libro_mayor_cuenta(
         where_mv.append("ac.fecha <= :fecha_hasta")
         params_mv["fecha_hasta"] = fecha_hasta
 
-    cab_cols = _table_columns(db, "asientos_contables")
-    det_cols = _table_columns(db, "asientos_detalle")
-    if not cab_cols or not det_cols:
-        raise ValueError("No se pudieron detectar columnas contables para el libro mayor.")
-
-    fecha_col = "fecha" if "fecha" in cab_cols else _pick_first_existing(cab_cols, ["fecha_creacion", "created_at"])
-    if not fecha_col:
-        raise ValueError("La tabla asientos_contables no tiene columna de fecha utilizable.")
-
-    glosa_col = _pick_first_existing(cab_cols, ["glosa", "descripcion", "detalle", "concepto", "observacion"])
-    glosa_sql = f"COALESCE(ac.{glosa_col}, '')" if glosa_col else "''"
-
-    det_desc_col = "descripcion" if "descripcion" in det_cols else None
-    det_desc_sql = f"COALESCE(ad.{det_desc_col}, '')" if det_desc_col else "''"
-
     query_movs = text(
         f"""
         SELECT
             ac.id AS asiento_id,
-            ac.{fecha_col} AS fecha,
-            {glosa_sql} AS glosa,
-            {det_desc_sql} AS detalle,
+            ac.fecha AS fecha,
+            COALESCE(ac.glosa, '') AS glosa,
+            COALESCE(ad.descripcion, '') AS detalle,
             COALESCE(ad.debe, 0) AS debe,
             COALESCE(ad.haber, 0) AS haber
         FROM asientos_detalle ad
         INNER JOIN asientos_contables ac ON ac.id = ad.asiento_id
         WHERE {' AND '.join(where_mv)}
-        ORDER BY ac.{fecha_col} ASC, ac.id ASC, ad.id ASC
+        ORDER BY ac.fecha ASC, ac.id ASC, ad.id ASC
         """
     )
     movs = [dict(r) for r in db.execute(query_movs, params_mv).mappings().all()]

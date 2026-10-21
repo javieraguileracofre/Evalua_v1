@@ -19,7 +19,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy.orm import Session
 
 from core.bulk_limits import BULK_CSV_MAX_BYTES, BULK_CSV_MAX_ROWS, LIST_PAGE_DEFAULT, LIST_PAGE_MAX
@@ -27,6 +27,12 @@ from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
 from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
 from crud.inventario import inventario as crud_inventario
+from modules.inventario import (
+    crear_producto as crear_producto_uc,
+    eliminar_producto as eliminar_producto_uc,
+    ingresar_stock_producto as ingresar_stock_uc,
+    registrar_ajuste_inventario as ajustar_stock_uc,
+)
 from db.session import get_db
 from schemas.inventario.inventario import (
     CategoriaProductoCreate,
@@ -169,6 +175,11 @@ def productos_list(
         skip=sk,
         limit=lim,
     )
+    resumen_productos = crud_inventario.resumen_listado_productos(
+        db,
+        activos_solo=activos_solo,
+        q=q,
+    )
     categorias = crud_inventario.listar_categorias(db)
     unidades = crud_inventario.listar_unidades_medida(db)
 
@@ -185,6 +196,10 @@ def productos_list(
             "limit": lim,
             "hay_mas": hay_mas,
             "list_page_max": LIST_PAGE_MAX,
+            "total_filtrado": resumen_productos["total"],
+            "productos_activos": resumen_productos["activos"],
+            "productos_inactivos": resumen_productos["inactivos"],
+            "productos_agotados": resumen_productos["agotados"],
             "msg": msg,
             "sev": sev,
             "active_menu": "inventario",
@@ -288,7 +303,7 @@ def producto_create(
             activo=_to_bool(activo, True),
         )
 
-        crud_inventario.crear_producto(db, data)
+        crear_producto_uc(db, data)
         return _redirect(
             request,
             "productos_list",
@@ -397,7 +412,7 @@ def producto_ingresar_stock(
             costo_unitario=_to_float(costo_unitario_ingreso),
             observacion=(observacion_ingreso or "").strip() or None,
         )
-        crud_inventario.ingresar_stock_producto(
+        ingresar_stock_uc(
             db,
             data=data,
             usuario=None,
@@ -515,7 +530,7 @@ def producto_delete(
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
     try:
-        crud_inventario.eliminar_producto(db, producto)
+        eliminar_producto_uc(db, producto)
         return _redirect(
             request,
             "productos_list",
@@ -563,7 +578,7 @@ def producto_ajustar_stock(
             observacion=(observacion or "").strip() or None,
         )
 
-        crud_inventario.registrar_ajuste_inventario(
+        ajustar_stock_uc(
             db,
             data=data,
             usuario=None,
@@ -810,7 +825,7 @@ async def productos_carga_masiva_upload(
                     activo=_to_bool(row.get("activo"), True),
                 )
 
-                crud_inventario.crear_producto(db, data)
+                crear_producto_uc(db, data)
                 creados += 1
             except Exception:
                 omitidos += 1

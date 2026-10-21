@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy.orm import Session
 
 from core.paths import TEMPLATES_DIR

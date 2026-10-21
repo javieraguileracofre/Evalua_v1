@@ -12,7 +12,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any
 
-from core.paths import PROJECT_ROOT
+from core.paths import PROJECT_ROOT, operational_storage
 
 TIPOS_DOCUMENTO = (
     "CARPETA_TRIBUTARIA",
@@ -32,7 +32,8 @@ ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".csv", ".txt", ".png", ".jpg", "
 MAX_FILE_BYTES = 15 * 1024 * 1024
 IVA_TASA = Decimal("0.19")
 
-STORAGE_ROOT = PROJECT_ROOT / "storage" / "leasing_credito"
+def _storage_root() -> Path:
+    return operational_storage("leasing_credito")
 
 
 def _q(v: Decimal | float | int | str | None, default: str = "0") -> Decimal:
@@ -118,7 +119,7 @@ class ExtraccionDocumento:
 
 
 def storage_dir_for(cotizacion_id: int) -> Path:
-    path = STORAGE_ROOT / str(int(cotizacion_id))
+    path = _storage_root() / str(int(cotizacion_id))
     path.mkdir(parents=True, exist_ok=True)
     return path
 

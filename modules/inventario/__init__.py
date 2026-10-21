@@ -1,21 +1,23 @@
 # modules/inventario — dueño de stock y movimientos.
 from __future__ import annotations
 
-from sqlalchemy.orm import Session
+from crud.inventario.inventario import (
+    crear_producto,
+    eliminar_producto,
+    get_producto,
+    ingresar_stock_producto,
+    registrar_ajuste_inventario,
+    registrar_movimiento_inventario,
+)
 
-from crud.inventario import inventario as crud_inv
+ajustar_stock = registrar_ajuste_inventario
 
-
-def get_producto(db: Session, producto_id: int):
-    if hasattr(crud_inv, "get_producto"):
-        return crud_inv.get_producto(db, producto_id)
-    return None
-
-
-def ajustar_stock(db: Session, **kwargs):
-    """Entrada pública para ajustes; Taller/Ventas no deben tocar tablas de stock directo."""
-    if hasattr(crud_inv, "ajustar_stock"):
-        return crud_inv.ajustar_stock(db, **kwargs)
-    if hasattr(crud_inv, "registrar_ajuste"):
-        return crud_inv.registrar_ajuste(db, **kwargs)
-    raise NotImplementedError("No hay operación de ajuste expuesta en crud.inventario.")
+__all__ = [
+    "ajustar_stock",
+    "crear_producto",
+    "eliminar_producto",
+    "get_producto",
+    "ingresar_stock_producto",
+    "registrar_ajuste_inventario",
+    "registrar_movimiento_inventario",
+]

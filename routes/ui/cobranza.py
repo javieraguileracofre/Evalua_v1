@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
@@ -17,12 +17,12 @@ from sqlalchemy.orm import Session
 
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
-from core.rbac import guard_finanzas_consulta, guard_finanzas_mutacion
+from core.rbac import guard_cobranza_consulta, guard_cobranza_mutacion
 from crud.cobranza import cobranza as crud_cobranza
 from crud.comunicaciones import email_log as crud_email_log
 from db.session import get_db
 from models import Caja, Cliente
-from services.cobranza.pago_service import contabilizar_pago_cliente
+from modules.cobranza import registrar_pago_cliente as contabilizar_pago_cliente
 from services.comunicaciones.email_service import enviar_recordatorio_cobranza
 
 router = APIRouter(tags=["Cobranza"])
@@ -163,7 +163,7 @@ def cobranza_resumen(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_finanzas_consulta(request)) is not None:
+    if (redir := guard_cobranza_consulta(request)) is not None:
         return redir
     resumen_clientes = _safe_read(
         db,
@@ -198,7 +198,7 @@ def cobranza_dashboard(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_finanzas_consulta(request)) is not None:
+    if (redir := guard_cobranza_consulta(request)) is not None:
         return redir
     kpis = _safe_read(
         db,
@@ -275,7 +275,7 @@ def cobranza_export_cuentas_excel(
     solo_con_saldo: bool | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_finanzas_consulta(request)) is not None:
+    if (redir := guard_cobranza_consulta(request)) is not None:
         return redir
     rows = crud_cobranza.export_cuentas_por_cobrar(
         db,
@@ -329,7 +329,7 @@ def cobranza_export_pagos_excel(
     hasta: date | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_finanzas_consulta(request)) is not None:
+    if (redir := guard_cobranza_consulta(request)) is not None:
         return redir
     rows = crud_cobranza.export_pagos_clientes(
         db,
@@ -388,7 +388,7 @@ def cobranza_detalle_cliente(
     cliente_id: int,
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_finanzas_consulta(request)) is not None:
+    if (redir := guard_cobranza_consulta(request)) is not None:
         return redir
     cliente = db.get(Cliente, cliente_id)
     if not cliente:
@@ -420,7 +420,7 @@ def cobranza_gestion(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_finanzas_consulta(request)) is not None:
+    if (redir := guard_cobranza_consulta(request)) is not None:
         return redir
     cliente = db.get(Cliente, cliente_id)
     if not cliente:
@@ -457,7 +457,7 @@ def cobranza_enviar_recordatorio(
     comentarios: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_finanzas_mutacion(request)) is not None:
+    if (redir := guard_cobranza_mutacion(request)) is not None:
         return redir
     cliente = db.get(Cliente, cliente_id)
     if not cliente:
@@ -539,7 +539,7 @@ def cobranza_automatizada_enviar(
     incluir_detalle: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_finanzas_mutacion(request)) is not None:
+    if (redir := guard_cobranza_mutacion(request)) is not None:
         return redir
     if not _en_horario_habil_chile():
         return _redirect(
@@ -626,7 +626,7 @@ def cobranza_pago_form(
     sev: str = Query("info"),
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_finanzas_consulta(request)) is not None:
+    if (redir := guard_cobranza_consulta(request)) is not None:
         return redir
     cxc = crud_cobranza.get_cuenta_por_cobrar(db, cxc_id)
     if not cxc:
@@ -663,7 +663,7 @@ def cobranza_registrar_pago(
     observacion: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    if (redir := guard_finanzas_mutacion(request)) is not None:
+    if (redir := guard_cobranza_mutacion(request)) is not None:
         return redir
     cxc = crud_cobranza.get_cuenta_por_cobrar(db, cxc_id)
     if not cxc:

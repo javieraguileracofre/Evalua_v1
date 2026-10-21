@@ -1,35 +1,49 @@
 {# templates/comercial/nota_venta_form.html #}
 {% extends "layout/base.html" %}
+{% set is_edit = modo is defined and modo == 'editar' and nota is defined and nota %}
 
-{% block title %}Nueva venta · Evalua_V1{% endblock title %}
+{% block title %}{% if is_edit %}Editar {{ nota.numero }}{% else %}Nueva venta{% endif %} · Evalua ERP{% endblock title %}
 {% block nav_comercial_active %}active{% endblock nav_comercial_active %}
 
 {% block breadcrumbs %}
 <li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
 <li class="breadcrumb-item"><a href="{{ request.url_for('nota_venta_lista') }}">Notas de venta</a></li>
+{% if is_edit %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('nota_venta_detalle', nota_id=nota.id) }}">{{ nota.numero }}</a></li>
+<li class="breadcrumb-item active" aria-current="page">Editar</li>
+{% else %}
 <li class="breadcrumb-item active" aria-current="page">Nueva venta</li>
+{% endif %}
 {% endblock breadcrumbs %}
 
-{% block page_title %}Nueva nota de venta{% endblock page_title %}
+{% block page_title %}{% if is_edit %}Editar nota {{ nota.numero }}{% else %}Nueva nota de venta{% endif %}{% endblock page_title %}
+{% block page_subtitle %}
+<p class="page-subtitle mb-0">
+  {% if is_edit %}
+  Al guardar se recalcula stock, caja o cuenta por cobrar, y contabilidad.
+  {% else %}
+  Elija el cliente, agregue productos y revise el total antes de emitir.
+  {% endif %}
+</p>
+{% endblock page_subtitle %}
+{% block page_actions %}
+<div class="d-flex flex-wrap gap-2">
+  {% if is_edit %}
+  <a href="{{ request.url_for('nota_venta_detalle', nota_id=nota.id) }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-eye"></i> Ver detalle
+  </a>
+  {% endif %}
+  <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-list-ul"></i> Ir al listado
+  </a>
+</div>
+{% endblock page_actions %}
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
-  <div>
-    <h2 class="h4 fw-semibold mb-1">Generación de nota de venta</h2>
-    <div class="text-muted small">
-      Registra una venta, agrega productos por escáner o manualmente y consolida el resumen comercial en tiempo real.
-    </div>
-  </div>
-
-  <div class="d-flex flex-wrap gap-2">
-    <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-outline-secondary btn-sm">
-      <i class="bi bi-list-ul"></i> Ir al listado
-    </a>
-  </div>
-</div>
-
-<form id="formVenta" method="post" action="{{ request.url_for('nota_venta_create') }}" novalidate>
+<form id="formVenta" method="post"
+      action="{% if is_edit %}{{ request.url_for('nota_venta_editar', nota_id=nota.id) }}{% else %}{{ request.url_for('nota_venta_create') }}{% endif %}"
+      novalidate>
   <div class="row g-3">
 
     <div class="col-lg-8">
@@ -43,21 +57,32 @@
                 Define cliente, fechas, condición de pago y régimen tributario de la operación.
               </div>
             </div>
-            <span class="badge rounded-pill bg-light text-dark border">Cabecera comercial</span>
+            <span class="badge rounded-pill bg-light text-dark border">
+              {% if is_edit %}{{ nota.numero }}{% else %}Cabecera comercial{% endif %}
+            </span>
           </div>
         </div>
 
         <div class="card-body pt-3">
           <div class="row g-3">
             <div class="col-md-5">
-              <label class="form-label small fw-semibold">Cliente <span class="text-danger">*</span></label>
-              <select name="cliente_id" class="form-select" required>
-                <option value="" selected disabled>— Selecciona cliente —</option>
-                {% for c in clientes %}
-                <option value="{{ c.id }}">{{ c.razon_social }} · {{ c.rut }}</option>
-                {% endfor %}
-              </select>
-              <div class="form-text">Obligatorio. La venta puede generar CxC según la condición de pago.</div>
+              <label class="form-label small fw-semibold" for="clienteLookupInput">Cliente <span class="text-danger">*</span></label>
+              <div class="evalua-lookup" data-lookup data-lookup-url="{{ request.url_for('clientes_sugerencias') }}">
+                <input
+                  id="clienteLookupInput"
+                  data-lookup-input
+                  type="search"
+                  class="form-control"
+                  placeholder="Escriba razón social o RUT"
+                  autocomplete="off"
+                  value="{% if is_edit and nota.cliente %}{{ nota.cliente.razon_social }} · {{ nota.cliente.rut }}{% endif %}"
+                  required
+                >
+                <input type="hidden" name="cliente_id" data-lookup-value value="{% if is_edit and nota.cliente %}{{ nota.cliente_id }}{% endif %}">
+                <div class="evalua-lookup-menu" data-lookup-menu hidden></div>
+                <div class="form-text" data-lookup-error></div>
+              </div>
+              <div class="form-text">Escriba al menos 2 caracteres y elija el cliente de la lista.</div>
             </div>
 
             <div class="col-md-3">
@@ -76,22 +101,24 @@
                      name="fecha_vencimiento"
                      id="fechaVencimiento"
                      class="form-control"
-                     value="{{ hoy }}">
+                     value="{{ fecha_vencimiento if fecha_vencimiento is defined else hoy }}">
             </div>
 
             <div class="col-md-2">
               <label class="form-label small fw-semibold">Tipo de pago</label>
+              {% set tipo_sel = (tipo_pago if tipo_pago is defined else 'CONTADO')|upper %}
               <select name="tipo_pago" id="tipoPago" class="form-select">
-                <option value="CONTADO">Contado</option>
-                <option value="CREDITO">Crédito</option>
+                <option value="CONTADO" {% if tipo_sel == 'CONTADO' %}selected{% endif %}>Contado</option>
+                <option value="CREDITO" {% if tipo_sel == 'CREDITO' %}selected{% endif %}>Crédito</option>
               </select>
             </div>
 
             <div class="col-md-2">
               <label class="form-label small fw-semibold">IVA</label>
+              {% set iva_sel = (afecta_iva if afecta_iva is defined else 'true')|lower %}
               <select name="afecta_iva" id="afectaIvaSelect" class="form-select">
-                <option value="true" selected>Afecta</option>
-                <option value="false">Exenta</option>
+                <option value="true" {% if iva_sel == 'true' %}selected{% endif %}>Afecta</option>
+                <option value="false" {% if iva_sel == 'false' %}selected{% endif %}>Exenta</option>
               </select>
             </div>
           </div>
@@ -240,8 +267,9 @@
     </div>
 
     <div class="col-lg-4">
+      <div class="evalua-sticky-panel">
 
-      <div class="card border-0 shadow-sm mb-4 position-sticky" style="top: 96px;">
+      <div class="card border-0 shadow-sm mb-4">
         <div class="card-header bg-white border-0 pb-0 pt-3">
           <div class="d-flex justify-content-between align-items-start">
             <div>
@@ -258,7 +286,9 @@
 
           <div class="p-3 rounded-4 border bg-light mb-3">
             <div class="small text-muted mb-1">Estado actual del documento</div>
-            <div class="fw-semibold">Borrador de venta</div>
+            <div class="fw-semibold">
+              {% if is_edit %}Editando {{ nota.numero }}{% else %}Borrador de venta{% endif %}
+            </div>
           </div>
 
           <dl class="row mb-2">
@@ -289,18 +319,26 @@
 
           <div class="d-grid gap-2">
             <button type="button" class="btn btn-primary" onclick="enviarVenta()">
-              <i class="bi bi-check2-circle"></i> Confirmar venta
+              <i class="bi bi-check2-circle"></i>
+              {% if is_edit %}Guardar cambios{% else %}Confirmar venta{% endif %}
             </button>
 
+            {% if is_edit %}
+            <a href="{{ request.url_for('nota_venta_detalle', nota_id=nota.id) }}" class="btn btn-light">
+              <i class="bi bi-x-circle"></i> Cancelar
+            </a>
+            {% else %}
             <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-light">
               <i class="bi bi-x-circle"></i> Cancelar
             </a>
+            {% endif %}
 
             <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-outline-secondary">
               <i class="bi bi-list-ul"></i> Ir al listado
             </a>
           </div>
         </div>
+      </div>
       </div>
 
     </div>
@@ -313,13 +351,21 @@
 {% endblock content %}
 
 {% block scripts %}
+<script type="application/json" id="items-iniciales-data">{{ items_iniciales_json | safe }}</script>
 <script>
 (function () {
   const formVenta = document.getElementById('formVenta');
   const ventaSubmitHelper = document.getElementById('ventaSubmitHelper');
   let allowVentaSubmit = false;
+  let ventaDirty = false;
 
   if (formVenta) {
+    formVenta.addEventListener('input', function () { ventaDirty = true; });
+    window.addEventListener('beforeunload', function (e) {
+      if (!ventaDirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
     formVenta.addEventListener('submit', function (e) {
       if (!allowVentaSubmit) {
         e.preventDefault();
@@ -354,6 +400,15 @@
   const fechaVenc = document.getElementById('fechaVencimiento');
 
   let items = [];
+  try {
+    const elInit = document.getElementById('items-iniciales-data');
+    if (elInit && elInit.textContent) {
+      const parsed = JSON.parse(elInit.textContent);
+      if (Array.isArray(parsed)) items = parsed;
+    }
+  } catch (_e) {
+    items = [];
+  }
   let scannerTimer = null;
   let scannerBusy = false;
   let ultimoCodigoProcesado = '';
@@ -406,38 +461,64 @@
     );
   }
 
-  function renderTabla() {
-    tablaBody.innerHTML = "";
+    function renderTabla() {
+    tablaBody.replaceChildren();
 
     if (items.length === 0) {
-      tablaBody.innerHTML = `
-        <tr id="filaVaciaItems">
-          <td colspan="5" class="text-center text-muted py-4">
-            Aún no hay ítems agregados. Escanea o selecciona un producto para comenzar.
-          </td>
-        </tr>
-      `;
+      const tr = document.createElement('tr');
+      tr.id = 'filaVaciaItems';
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.className = 'text-center text-muted py-4';
+      td.textContent = 'Aún no hay ítems agregados. Escanea o selecciona un producto para comenzar.';
+      tr.appendChild(td);
+      tablaBody.appendChild(tr);
       return;
     }
 
     items.forEach((it, idx) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td class="text-center">
-          <button type="button" class="btn btn-sm btn-outline-danger" data-idx="${idx}">
-            <i class="bi bi-x"></i>
-          </button>
-        </td>
-        <td>
-          <div class="fw-semibold">${it.nombre}</div>
-          <div class="small text-muted">
-            ${it.codigo || ''}${it.codigo_barra ? ' · ' + it.codigo_barra : ''}
-          </div>
-        </td>
-        <td class="text-end">${it.cantidad}</td>
-        <td class="text-end">${formatear(it.precio_unitario)}</td>
-        <td class="text-end fw-semibold">${formatear(it.cantidad * it.precio_unitario)}</td>
-      `;
+
+      const tdBtn = document.createElement('td');
+      tdBtn.className = 'text-center';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-sm btn-outline-danger';
+      btn.dataset.idx = String(idx);
+      const icon = document.createElement('i');
+      icon.className = 'bi bi-x';
+      btn.appendChild(icon);
+      tdBtn.appendChild(btn);
+
+      const tdNom = document.createElement('td');
+      const fw = document.createElement('div');
+      fw.className = 'fw-semibold';
+      fw.textContent = it.nombre || '';
+      const sm = document.createElement('div');
+      sm.className = 'small text-muted';
+      let extra = it.codigo || '';
+      if (it.codigo_barra) extra += (extra ? ' · ' : '') + it.codigo_barra;
+      sm.textContent = extra;
+      tdNom.appendChild(fw);
+      tdNom.appendChild(sm);
+
+      const tdCant = document.createElement('td');
+      tdCant.className = 'text-end';
+      tdCant.textContent = String(it.cantidad);
+
+      const tdPu = document.createElement('td');
+      tdPu.className = 'text-end';
+      tdPu.textContent = formatear(it.precio_unitario);
+
+      const tdTot = document.createElement('td');
+      tdTot.className = 'text-end fw-semibold';
+      tdTot.textContent = formatear(it.cantidad * it.precio_unitario);
+
+      tr.appendChild(tdBtn);
+      tr.appendChild(tdNom);
+      tr.appendChild(tdCant);
+      tr.appendChild(tdPu);
+      tr.appendChild(tdTot);
       tablaBody.appendChild(tr);
     });
 
@@ -445,6 +526,7 @@
       btn.addEventListener('click', () => {
         const idx = parseInt(btn.getAttribute('data-idx'));
         items.splice(idx, 1);
+        ventaDirty = true;
         renderTabla();
         recalcular();
         enfocarScanner();
@@ -490,6 +572,7 @@
 
     renderTabla();
     recalcular();
+    ventaDirty = true;
   }
 
   function obtenerProductoDesdeSelect() {
@@ -661,11 +744,17 @@
   window.enviarVenta = function () {
     allowVentaSubmit = false;
 
-    const clienteSel = document.querySelector('select[name="cliente_id"]');
+    const clienteSel = document.querySelector('input[name="cliente_id"]');
+    const clienteInput = document.getElementById('clienteLookupInput');
     if (!clienteSel || !clienteSel.value) {
-      alert('Debes seleccionar un cliente.');
+      if (clienteInput) {
+        clienteInput.focus();
+        clienteInput.setCustomValidity('Seleccione un cliente de la lista.');
+        clienteInput.reportValidity();
+      }
       return;
     }
+    if (clienteInput) clienteInput.setCustomValidity('');
 
     if (items.length === 0) {
       alert('Debes agregar al menos un producto.');
@@ -682,6 +771,7 @@
 
     recalcular();
     allowVentaSubmit = true;
+    ventaDirty = false;
 
     if (formVenta && ventaSubmitHelper && typeof formVenta.requestSubmit === 'function') {
       try {
@@ -705,6 +795,7 @@
     }
   });
 
+  renderTabla();
   recalcular();
   enfocarScanner();
   setEstadoScanner('Esperando escaneo', 'muted');

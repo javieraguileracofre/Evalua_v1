@@ -1,0 +1,110 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Tesorería · Evalua ERP{% endblock %}
+{% block page_title %}Tesorería{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">Facturas de compra y venta de {{ empresa.nombre }} · {{ empresa.rut }}</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item active" aria-current="page">Tesorería</li>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <form method="get" action="{{ request.url_for('tesoreria_home') }}" class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label" for="periodo">Período</label>
+        <select class="form-select" id="periodo" name="periodo" onchange="this.form.submit()">
+          {% for opcion in opciones %}
+          <option value="{{ opcion.valor }}" {% if opcion.valor == periodo %}selected{% endif %}>{{ opcion.etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-8">
+        {% if puede_actualizar %}
+        <button type="submit" form="form-sii" class="btn btn-primary" {% if conflicto_rut or actualizacion_activa or not esquema_listo or not credencial or not credencial.tiene_secreto %}disabled{% endif %}>
+          Actualizar compras y ventas
+        </button>
+        {% endif %}
+        <a class="btn btn-outline-secondary" href="{{ request.url_for('tesoreria_credenciales') }}">Clave SII</a>
+      </div>
+    </form>
+    <form id="form-sii" method="post" action="{{ request.url_for('tesoreria_actualizar') }}" class="d-none" onsubmit="this.querySelector('button') && (this.querySelector('button').disabled = true)">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_global', '') }}">
+      <input type="hidden" name="periodo" value="{{ periodo }}">
+    </form>
+    {% if conflicto_rut %}
+    <div class="alert alert-danger mt-3 mb-0">{{ conflicto_rut }}</div>
+    {% endif %}
+    {% if not esquema_listo %}
+    <p class="text-warning small mb-0 mt-3">Falta aplicar la migración de Tesorería en la base de esta empresa.</p>
+    {% elif not credencial or not credencial.tiene_secreto %}
+    <p class="text-muted small mb-0 mt-3">Configure la clave tributaria de {{ empresa.nombre }} antes de actualizar.</p>
+    {% elif actualizacion_activa %}
+    <p class="text-muted small mb-0 mt-3">Hay una actualización en curso. Espere a que termine para volver a ejecutarla.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h6">Facturas de compra</h2>
+        <p class="mb-1">Documentos: <strong>{{ libros.compras.documentos }}</strong></p>
+        <p class="mb-1">Neto: {{ libros.compras.neto }}</p>
+        <p class="mb-1">IVA: {{ libros.compras.iva }}</p>
+        <p class="mb-0">Total: <strong>{{ libros.compras.total }}</strong></p>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h6">Facturas de venta</h2>
+        <p class="mb-1">Documentos: <strong>{{ libros.ventas.documentos }}</strong></p>
+        <p class="mb-1">Neto: {{ libros.ventas.neto }}</p>
+        <p class="mb-1">IVA: {{ libros.ventas.iva }}</p>
+        <p class="mb-0">Total: <strong>{{ libros.ventas.total }}</strong></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    {% with titulo='Compras del período', filas=libros.compras.filas %}
+    {% include "tesoreria/_tabla.html" %}
+    {% endwith %}
+  </div>
+  <div class="col-lg-6">
+    {% with titulo='Ventas del período', filas=libros.ventas.filas %}
+    {% include "tesoreria/_tabla.html" %}
+    {% endwith %}
+  </div>
+</div>
+
+{% if recientes %}
+<div class="card shadow-sm mt-3">
+  <div class="card-body">
+    <h2 class="h6">Actualizaciones recientes</h2>
+    <ul class="mb-0">
+      {% for item in recientes %}
+      <li>
+        <a href="{{ request.url_for('tesoreria_ejecucion', ejecucion_id=item.id) }}">
+          {{ etiqueta_periodo(item.periodo_anio, item.periodo_mes) }}
+        </a>
+        · {{ item.estado }}
+        · compras {{ item.compras_importados }}
+        · ventas {{ item.ventas_importados }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import hmac
 import secrets
 from collections.abc import AsyncIterator
 from urllib.parse import parse_qs, urlparse
@@ -17,6 +18,18 @@ from core.config import settings
 
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 _CSRF_SESSION_KEY = "csrf_global"
+
+
+def tokens_match(expected: object, supplied: object) -> bool:
+    """Comparación en tiempo constante. Vacío o tipo distinto no coincide."""
+    exp = str(expected or "").strip()
+    sup = str(supplied or "").strip()
+    if not exp or not sup:
+        return False
+    try:
+        return hmac.compare_digest(exp.encode("utf-8"), sup.encode("utf-8"))
+    except (TypeError, ValueError):
+        return False
 
 
 def _request_origin(request: Request) -> str | None:
@@ -183,7 +196,7 @@ class CSRFMiddleware:
 
         if "application/json" in ctype or "application/merge-patch+json" in ctype:
             supplied = token_hdr
-            if not supplied or not expected or supplied != expected:
+            if not tokens_match(expected, supplied):
                 resp = JSONResponse(
                     {"detail": "CSRF validation failed: missing or invalid token."},
                     status_code=403,
@@ -201,7 +214,7 @@ class CSRFMiddleware:
                 token_form = await _csrf_token_from_multipart(headers, raw_body)
 
             supplied = token_hdr or token_form
-            if not supplied or not expected or supplied != expected:
+            if not tokens_match(expected, supplied):
                 resp = JSONResponse(
                     {"detail": "CSRF validation failed: missing or invalid token."},
                     status_code=403,
@@ -214,7 +227,7 @@ class CSRFMiddleware:
             return
 
         supplied = token_hdr
-        if not supplied or not expected or supplied != expected:
+        if not tokens_match(expected, supplied):
             resp = JSONResponse(
                 {"detail": "CSRF validation failed: missing or invalid token."},
                 status_code=403,

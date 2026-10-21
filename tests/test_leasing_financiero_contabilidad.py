@@ -51,7 +51,7 @@ def test_activacion_contable_reconoce_cartera_contractual_bruta(monkeypatch):
         captured.update(kwargs)
         return 987
 
-    monkeypatch.setattr(contab, "crear_asiento", fake_crear_asiento)
+    monkeypatch.setattr(contab.accounting_service, "post_entry", fake_crear_asiento)
     monkeypatch.setattr(contab, "obtener_configuracion_evento_modulo", lambda *args, **kwargs: [])
 
     asiento_id = contab.activar_contabilidad_leasing_financiero(_FakeDb(), cotizacion, usuario="tester")
@@ -84,7 +84,7 @@ def test_activacion_contable_sin_interes_no_crea_interes_diferido(monkeypatch):
         captured.update(kwargs)
         return 988
 
-    monkeypatch.setattr(contab, "crear_asiento", fake_crear_asiento)
+    monkeypatch.setattr(contab.accounting_service, "post_entry", fake_crear_asiento)
     monkeypatch.setattr(contab, "obtener_configuracion_evento_modulo", lambda *args, **kwargs: [])
 
     contab.activar_contabilidad_leasing_financiero(_FakeDb(), cotizacion, usuario="tester")

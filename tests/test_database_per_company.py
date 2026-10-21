@@ -522,3 +522,31 @@ def test_log_redacta_url_y_password() -> None:
     cleaned = redact_secrets(raw)
     assert "clave" not in cleaned
     assert "postgresql://***" in cleaned
+
+
+def test_alembic_de_la_libreria_no_usa_la_carpeta_de_migraciones() -> None:
+    from services.platform.alembic_support import load_alembic
+
+    command, config_cls = load_alembic()
+    assert callable(command.stamp)
+    assert callable(command.upgrade)
+    assert config_cls.__name__ == "Config"
+
+
+def test_alta_de_base_usa_el_servidor_administrativo(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from services.platform.provisioning import database_endpoint
+
+    monkeypatch.setattr(
+        "services.platform.provisioning.settings",
+        SimpleNamespace(
+            admin_postgres_url="postgresql+psycopg://postgres:secreto@127.0.0.1:5432/postgres"
+        ),
+    )
+    host, port = database_endpoint("localhost", 5432)
+    assert host == "127.0.0.1"
+    assert port == 5432
+    remote_host, remote_port = database_endpoint("db.interno.cl", 5433)
+    assert remote_host == "db.interno.cl"
+    assert remote_port == 5433

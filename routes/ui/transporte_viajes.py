@@ -11,13 +11,15 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
+from core.rbac import guard_transporte_consulta, guard_transporte_mutacion
+from core.security_log import security_event
 from crud import fondos_rendir as crud_fr
 from crud import transporte_viajes as crud_tv
 from crud.fondos_rendir import parse_fecha_formulario
@@ -93,6 +95,8 @@ def transporte_hub(
     msg: Optional[str] = Query(None),
     sev: str = Query("info"),
 ):
+    if (redir := guard_transporte_consulta(request)) is not None:
+        return redir
     stats = crud_tv.dashboard_stats(db, dias=120)
     fuel = crud_tv.indicadores_combustible(db, dias=120)
     choferes = crud_tv.comparativo_choferes(db, dias=120, top=14)
@@ -139,6 +143,8 @@ def transporte_viajes_lista(
     msg: Optional[str] = Query(None),
     sev: str = Query("info"),
 ):
+    if (redir := guard_transporte_consulta(request)) is not None:
+        return redir
     viajes = crud_tv.listar_viajes(db, estado=estado, empleado_id=empleado_id, limite=400)
     empleados = crud_fr.listar_empleados(db, solo_activos=True)
     return templates.TemplateResponse(
@@ -162,6 +168,8 @@ def transporte_viajes_lista(
 
 @router.get("/viajes/nuevo", response_class=HTMLResponse, name="transporte_viaje_nuevo")
 def transporte_viaje_nuevo(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_transporte_consulta(request)) is not None:
+        return redir
     empleados = crud_fr.listar_empleados(db, solo_activos=True)
     vehiculos = crud_fr.listar_vehiculos_transporte(db, solo_activos=True)
     clientes = _listar_clientes_activos(db)
@@ -185,6 +193,8 @@ def transporte_viaje_nuevo(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/viajes/nuevo", name="transporte_viaje_crear")
 async def transporte_viaje_crear(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_transporte_mutacion(request)) is not None:
+        return redir
     fd = _form_to_dict(await request.form())
     try:
         crud_tv.crear_viaje(
@@ -223,6 +233,8 @@ async def transporte_viaje_crear(request: Request, db: Session = Depends(get_db)
 
 @router.get("/viajes/{viaje_id}/editar", response_class=HTMLResponse, name="transporte_viaje_editar")
 def transporte_viaje_editar(request: Request, viaje_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_transporte_consulta(request)) is not None:
+        return redir
     v = crud_tv.obtener_viaje(db, viaje_id)
     if not v:
         return _redirect(request, "transporte_viajes_lista", msg="Viaje no encontrado.", sev="warning")
@@ -256,6 +268,8 @@ def transporte_viaje_editar(request: Request, viaje_id: int, db: Session = Depen
 
 @router.post("/viajes/{viaje_id}/editar", name="transporte_viaje_actualizar")
 async def transporte_viaje_actualizar(request: Request, viaje_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_transporte_mutacion(request)) is not None:
+        return redir
     v = crud_tv.obtener_viaje(db, viaje_id)
     if not v:
         return _redirect(request, "transporte_viajes_lista", msg="Viaje no encontrado.", sev="warning")
@@ -308,6 +322,8 @@ def transporte_viaje_detalle(
     msg: Optional[str] = Query(None),
     sev: str = Query("info"),
 ):
+    if (redir := guard_transporte_consulta(request)) is not None:
+        return redir
     v = crud_tv.obtener_viaje(db, viaje_id)
     if not v:
         return _redirect(request, "transporte_viajes_lista", msg="Viaje no encontrado.", sev="warning")
@@ -329,6 +345,8 @@ def transporte_viaje_detalle(
 
 @router.post("/viajes/{viaje_id}/iniciar", name="transporte_viaje_iniciar")
 async def transporte_viaje_iniciar(request: Request, viaje_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_transporte_mutacion(request)) is not None:
+        return redir
     v = crud_tv.obtener_viaje(db, viaje_id)
     if not v:
         return _redirect(request, "transporte_viajes_lista", msg="Viaje no encontrado.", sev="warning")
@@ -377,6 +395,8 @@ async def transporte_viaje_iniciar(request: Request, viaje_id: int, db: Session 
 
 @router.post("/viajes/{viaje_id}/cerrar", name="transporte_viaje_cerrar")
 async def transporte_viaje_cerrar(request: Request, viaje_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_transporte_mutacion(request)) is not None:
+        return redir
     v = crud_tv.obtener_viaje(db, viaje_id)
     if not v:
         return _redirect(request, "transporte_viajes_lista", msg="Viaje no encontrado.", sev="warning")
@@ -413,6 +433,7 @@ async def transporte_viaje_cerrar(request: Request, viaje_id: int, db: Session =
             observaciones_cierre=observaciones_cierre,
         )
         db.commit()
+        security_event("viaje_cerrar", auth=getattr(request.state, "auth_user", None), viaje_id=viaje_id)
     except ValueError as e:
         db.rollback()
         return _redirect(request, "transporte_viaje_detalle", viaje_id=viaje_id, msg=public_error_message(e), sev="danger")
@@ -436,6 +457,8 @@ async def transporte_viaje_cerrar(request: Request, viaje_id: int, db: Session =
 
 @router.post("/viajes/{viaje_id}/anular", name="transporte_viaje_anular")
 async def transporte_viaje_anular(request: Request, viaje_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_transporte_mutacion(request)) is not None:
+        return redir
     v = crud_tv.obtener_viaje(db, viaje_id)
     if not v:
         return _redirect(request, "transporte_viajes_lista", msg="Viaje no encontrado.", sev="warning")
@@ -452,6 +475,7 @@ async def transporte_viaje_anular(request: Request, viaje_id: int, db: Session =
     try:
         crud_tv.anular_viaje(db, v, motivo=motivo)
         db.commit()
+        security_event("viaje_anular", auth=getattr(request.state, "auth_user", None), viaje_id=viaje_id)
     except ValueError as e:
         db.rollback()
         return _redirect(request, "transporte_viaje_detalle", viaje_id=viaje_id, msg=public_error_message(e), sev="danger")
@@ -474,6 +498,8 @@ async def transporte_viaje_anular(request: Request, viaje_id: int, db: Session =
 
 @router.post("/viajes/{viaje_id}/eliminar", name="transporte_viaje_eliminar")
 async def transporte_viaje_eliminar(request: Request, viaje_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_transporte_mutacion(request)) is not None:
+        return redir
     v = crud_tv.obtener_viaje(db, viaje_id)
     if not v:
         return _redirect(request, "transporte_viajes_lista", msg="Viaje no encontrado.", sev="warning")

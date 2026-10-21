@@ -53,21 +53,38 @@
 {% endblock head %}
 
 {% block content %}
-<div class="container py-4">
+<link rel="stylesheet" href="/static/css/leasing_financiero.css" />
+<div class="container-fluid py-4 lf-page">
   <div class="d-flex flex-wrap justify-content-between align-items-start mb-3 gap-2">
     <div>
       <h1 class="h5 fw-semibold mb-1 eva-title">Hub operativo · Leasing financiero</h1>
       <p class="small text-muted mb-0">
-        Pipeline comercial y cartera · cotización → crédito → formalización → activación contable
+        Cotización → simulación → crédito → aprobación → documentación → operación → cobranza
       </p>
     </div>
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-sm btn-eva-primary" href="{{ request.url_for('lf_cotizacion_nueva_form') }}">
         <i class="bi bi-plus-lg me-1"></i>Nueva cotización
       </a>
-      <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('lf_credito_home') }}">Bandeja crédito</a>
       <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('lf_cotizaciones_list') }}">Todas las cotizaciones</a>
+      <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('lf_credito_home') }}">Bandeja crédito</a>
     </div>
+  </div>
+
+  <div class="eva-card p-3 mb-3">
+    <div class="small fw-semibold eva-title mb-2">¿En qué etapa está su operación?</div>
+    <div class="d-flex flex-wrap gap-2 small">
+      <span class="eva-badge">1. Cotización</span>
+      <span class="eva-badge">2. Simulación</span>
+      <span class="eva-badge">3. Crédito</span>
+      <span class="eva-badge">4. Aprobación</span>
+      <span class="eva-badge">5. Documentación</span>
+      <span class="eva-badge">6. Operación</span>
+      <span class="eva-badge eva-badge--gold">7. Cobranza / contabilidad</span>
+    </div>
+    <p class="small text-muted mb-0 mt-2">
+      Empiece por <strong>Nueva cotización</strong>. En cada ficha puede editar o eliminar cotizaciones aún no activadas ni vigentes.
+    </p>
   </div>
 
   {% if mercado %}
@@ -279,10 +296,11 @@
 
   <div class="card eva-card shadow-sm border-0">
     <div class="card-body">
-      <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
         <h2 class="h6 fw-semibold mb-0 eva-title">Últimas cotizaciones</h2>
         <a href="{{ request.url_for('lf_cotizaciones_list') }}" class="small eva-link">Ver todas →</a>
       </div>
+      {% if recientes_ui %}
       <div class="table-responsive">
         <table class="table table-hover table-sm mb-0 align-middle">
           <thead class="table-light">
@@ -293,11 +311,12 @@
               <th>Plazo</th>
               <th>Estado</th>
               <th>Fecha</th>
-              <th class="text-end">Acción</th>
+              <th class="text-end">Acciones</th>
             </tr>
           </thead>
           <tbody>
-          {% for c in recientes %}
+          {% for item in recientes_ui %}
+          {% set c = item.cot %}
           {% set base = c.monto_financiado or c.valor_neto or c.monto %}
           {% set est = (c.estado or 'BORRADOR')|upper %}
           <tr>
@@ -324,15 +343,32 @@
             </td>
             <td>{{ c.fecha_cotizacion or '—' }}</td>
             <td class="text-end">
-              <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}" class="eva-link small">Ver</a>
+              <div class="lf-actions">
+                <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}" class="btn btn-sm btn-outline-primary">Ver</a>
+                {% if item.puede_editar %}
+                <a href="{{ request.url_for('lf_cotizacion_editar_form', cotizacion_id=c.id) }}" class="btn btn-sm btn-outline-secondary">Editar</a>
+                {% endif %}
+                {% if item.puede_eliminar %}
+                <form method="post" action="{{ request.url_for('lf_cotizacion_eliminar', cotizacion_id=c.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar la cotización #{{ c.id }}? Esta acción no se puede deshacer.');">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                </form>
+                {% endif %}
+              </div>
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="7" class="text-center text-muted py-3">Aún no hay cotizaciones. Cree la primera operación.</td></tr>
           {% endfor %}
           </tbody>
         </table>
       </div>
+      {% else %}
+      <div class="lf-empty-cta">
+        <h3 class="h6 fw-semibold mb-2 eva-title">Aún no hay cotizaciones</h3>
+        <p class="small text-muted mb-3">Cree la primera cotización para iniciar el pipeline comercial.</p>
+        <a class="btn btn-sm btn-eva-primary" href="{{ request.url_for('lf_cotizacion_nueva_form') }}">
+          <i class="bi bi-plus-lg me-1"></i>Nueva cotización
+        </a>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>

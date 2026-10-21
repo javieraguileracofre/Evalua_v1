@@ -9,6 +9,8 @@ from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from core.domain_errors import StockInsuficienteError
+
 from models import CategoriaProducto, InventarioMovimiento, Producto, UnidadMedida
 from schemas.inventario.inventario import (
     CategoriaProductoCreate,
@@ -289,6 +291,21 @@ def buscar_producto_por_lector(db: Session, codigo: str) -> Producto | None:
     return None
 
 
+def _filtrar_productos(stmt, *, activos_solo: bool, q: str | None):
+    if activos_solo:
+        stmt = stmt.where(Producto.activo.is_(True))
+    if q and _norm_str(q):
+        pattern = f"%{_norm_str(q)}%"
+        stmt = stmt.where(
+            or_(
+                Producto.nombre.ilike(pattern),
+                Producto.codigo.ilike(pattern),
+                Producto.codigo_barra.ilike(pattern),
+            )
+        )
+    return stmt
+
+
 def listar_productos(
     db: Session,
     *,
@@ -304,31 +321,67 @@ def listar_productos(
     """
     lim = max(1, min(int(limit), 500))
     sk = max(0, int(skip))
-    stmt = (
-        select(Producto)
-        .options(
+    stmt = _filtrar_productos(
+        select(Producto).options(
             selectinload(Producto.categoria),
             selectinload(Producto.unidad_medida),
-        )
+        ),
+        activos_solo=activos_solo,
+        q=q,
     )
-
-    if activos_solo:
-        stmt = stmt.where(Producto.activo.is_(True))
-
-    if q and _norm_str(q):
-        pattern = f"%{_norm_str(q)}%"
-        stmt = stmt.where(
-            or_(
-                Producto.nombre.ilike(pattern),
-                Producto.codigo.ilike(pattern),
-                Producto.codigo_barra.ilike(pattern),
-            )
-        )
-
     stmt = stmt.order_by(Producto.nombre.asc()).offset(sk).limit(lim + 1)
     rows = list(db.scalars(stmt))
     hay_mas = len(rows) > lim
     return rows[:lim], hay_mas
+
+
+def resumen_listado_productos(
+    db: Session,
+    *,
+    activos_solo: bool = False,
+    q: str | None = None,
+) -> dict[str, int]:
+    """Totales del filtro completo, no de la página visible."""
+    total = int(
+        db.scalar(
+            _filtrar_productos(
+                select(func.count()).select_from(Producto),
+                activos_solo=activos_solo,
+                q=q,
+            )
+        )
+        or 0
+    )
+    if activos_solo:
+        activos = total
+        inactivos = 0
+    else:
+        activos = int(
+            db.scalar(
+                _filtrar_productos(
+                    select(func.count()).select_from(Producto),
+                    activos_solo=True,
+                    q=q,
+                )
+            )
+            or 0
+        )
+        inactivos = max(total - activos, 0)
+    agotados_stmt = _filtrar_productos(
+        select(func.count()).select_from(Producto),
+        activos_solo=True,
+        q=q,
+    ).where(
+        Producto.controla_stock.is_(True),
+        Producto.stock_actual <= 0,
+    )
+    agotados = int(db.scalar(agotados_stmt) or 0)
+    return {
+        "total": total,
+        "activos": activos,
+        "inactivos": inactivos,
+        "agotados": agotados,
+    }
 
 
 def crear_producto(db: Session, data: ProductoCreate) -> Producto:
@@ -402,12 +455,14 @@ def crear_producto(db: Session, data: ProductoCreate) -> Producto:
                 referencia_tipo="INVENTARIO_INICIAL",
                 referencia_id=producto.id,
                 observacion="Inventario inicial al crear producto",
+                do_commit=False,
             )
             contabilizar_ingreso_compra_sin_factura(
                 db,
                 movimiento_id=movimiento.id,
                 usuario=None,
             )
+            db.commit()
         return producto
 
     for _ in range(PRODUCTO_CODIGO_INTENTOS):
@@ -429,12 +484,14 @@ def crear_producto(db: Session, data: ProductoCreate) -> Producto:
                     referencia_tipo="INVENTARIO_INICIAL",
                     referencia_id=producto.id,
                     observacion="Inventario inicial al crear producto",
+                    do_commit=False,
                 )
                 contabilizar_ingreso_compra_sin_factura(
                     db,
                     movimiento_id=movimiento.id,
                     usuario=None,
                 )
+                db.commit()
             return producto
         except IntegrityError as e:
             db.rollback()
@@ -562,6 +619,15 @@ def eliminar_producto(db: Session, producto: Producto) -> None:
 # MOVIMIENTOS / AJUSTES / ENTRADAS
 # ============================================================
 
+def _bloquear_fila_producto(db: Session, producto_id: int) -> Producto:
+    """Lee el saldo con FOR UPDATE en PostgreSQL para serializar salidas concurrentes."""
+    stmt = select(Producto).where(Producto.id == producto_id)
+    bind = db.get_bind()
+    if bind is not None and getattr(bind.dialect, "name", "") == "postgresql":
+        stmt = stmt.with_for_update()
+    return db.scalars(stmt).one()
+
+
 def registrar_movimiento_inventario(
     db: Session,
     *,
@@ -572,7 +638,11 @@ def registrar_movimiento_inventario(
     referencia_tipo: str | None = None,
     referencia_id: int | None = None,
     observacion: str | None = None,
+    usuario: str | None = None,
+    do_commit: bool = True,
 ) -> InventarioMovimiento:
+    from services.inventario.costeo import aplicar_costo_promedio, salida_requiere_asiento
+
     tipo_movimiento = _norm_upper(tipo_movimiento)
 
     if tipo_movimiento not in TIPOS_AJUSTE_VALIDOS and tipo_movimiento not in {"ENTRADA", "SALIDA"}:
@@ -582,12 +652,30 @@ def registrar_movimiento_inventario(
     if cantidad <= 0:
         raise ValueError("La cantidad debe ser mayor a 0.")
 
-    if bool(getattr(producto, "controla_stock", True)):
-        stock_actual = _d(producto.stock_actual)
+    controla = bool(getattr(producto, "controla_stock", True))
+    if controla:
+        producto = _bloquear_fila_producto(db, int(producto.id))
 
+    promedio = _d(getattr(producto, "costo_promedio", 0))
+    if promedio <= 0 and getattr(producto, "id", None):
+        from crud.comercial.nota_venta import _resolver_costo_unitario_promedio
+
+        promedio = _resolver_costo_unitario_promedio(db, producto)
+
+    costo_mov, nuevo_promedio = aplicar_costo_promedio(
+        stock=_d(producto.stock_actual),
+        promedio=promedio,
+        precio_compra=_d(getattr(producto, "precio_compra", 0)),
+        tipo=tipo_movimiento,
+        cantidad=cantidad,
+        costo_entrada=_d(costo_unitario),
+    )
+
+    if controla:
+        stock_actual = _d(producto.stock_actual)
         if tipo_movimiento in {"SALIDA", "AJUSTE_NEGATIVO", "MERMA", "DEVOLUCION_PROVEEDOR"}:
             if stock_actual < cantidad:
-                raise ValueError(
+                raise StockInsuficienteError(
                     f"Stock insuficiente para '{producto.nombre}'. "
                     f"Disponible: {stock_actual}, requerido: {cantidad}."
                 )
@@ -595,19 +683,33 @@ def registrar_movimiento_inventario(
         else:
             producto.stock_actual = (stock_actual + cantidad).quantize(Decimal("0.01"))
 
+    producto.costo_promedio = nuevo_promedio
+
     movimiento = InventarioMovimiento(
         producto_id=producto.id,
         fecha=datetime.utcnow(),
         tipo_movimiento=tipo_movimiento,
         cantidad=cantidad.quantize(Decimal("0.01")),
-        costo_unitario=_d(costo_unitario).quantize(Decimal("0.0001")),
+        costo_unitario=costo_mov,
         referencia_tipo=referencia_tipo,
         referencia_id=referencia_id,
         observacion=_norm_str(observacion) or None,
     )
     db.add(movimiento)
-
     producto.fecha_actualizacion = datetime.utcnow()
+    db.flush()
+
+    if salida_requiere_asiento(tipo_movimiento, referencia_tipo) and costo_mov > 0:
+        from services.finanzas.integracion_inventario import contabilizar_salida_al_costo
+
+        contabilizar_salida_al_costo(
+            db,
+            movimiento_id=int(movimiento.id),
+            usuario=usuario,
+        )
+
+    if not do_commit:
+        return movimiento
 
     try:
         db.commit()
@@ -646,11 +748,14 @@ def registrar_ajuste_inventario(
         referencia_tipo="AJUSTE_MANUAL",
         referencia_id=producto.id,
         observacion=data.observacion,
+        usuario=usuario,
+        do_commit=False,
     )
 
     # Ajustes que incrementan inventario: si traen costo unitario, generar asiento.
     if tipo_ajuste in TIPOS_AJUSTE_CONTABILIZABLE_INGRESO:
         if costo_base <= 0:
+            db.rollback()
             raise ValueError(
                 "No se generó asiento contable: ingrese costo unitario o configure precio de compra del producto."
             )
@@ -660,6 +765,8 @@ def registrar_ajuste_inventario(
             usuario=usuario,
         )
 
+    db.commit()
+    db.refresh(movimiento)
     return movimiento
 
 
@@ -689,6 +796,8 @@ def ingresar_stock_producto(
         referencia_tipo="INGRESO_STOCK",
         referencia_id=producto.id,
         observacion=data.observacion or "Ingreso de stock por nueva partida de compra",
+        usuario=usuario,
+        do_commit=False,
     )
 
     # Camino dorado premium:
@@ -703,7 +812,8 @@ def ingresar_stock_producto(
         movimiento_id=movimiento.id,
         usuario=usuario,
     )
-
+    db.commit()
+    db.refresh(movimiento)
     return movimiento
 
 

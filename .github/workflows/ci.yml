@@ -1,4 +1,4 @@
-# CI: tests de arquitectura, schema, seguridad y humo HTTP (sin Postgres real).
+# CI: arquitectura y humo sin Postgres, más un job con PostgreSQL aislado.
 name: CI
 
 on:
@@ -14,6 +14,7 @@ jobs:
     env:
       APP_ENV: development
       AUTO_MIGRATE_ON_STARTUP: "false"
+      EVALUA_OUTBOX_SWEEP: "0"
       SECRET_KEY: "ci-secret-key-not-for-production-0123456789abcdef"
       ALLOWED_HOSTS: "testserver,localhost,127.0.0.1"
       TENANCY_MODE: legacy
@@ -34,10 +35,122 @@ jobs:
         run: >
           python -m pytest
           tests/test_schema_revision_alembic.py
+          tests/test_schema_migration_canonical.py
           tests/test_architecture_boundaries.py
+          tests/test_accounting_boundary_and_invariants.py
+          tests/test_accounting_concurrency.py
+          tests/test_finanzas_db_optional.py
+          tests/test_transaction_boundaries.py
+          tests/test_domain_event_outbox.py
+          tests/test_erp_process_matrix.py
           tests/test_security_startup_tenant_rbac.py
           tests/test_security_hardening.py
           tests/test_http_smoke.py
           tests/test_schema_upgrade.py
           tests/test_database_per_company.py
           tests/test_deploy_render.py
+          tests/test_leasing_financiero_contabilidad.py
+          tests/test_leasing_financiero_amortizacion.py
+          tests/test_leasing_financiero_workflow.py
+          tests/test_leasing_financiero_premium.py
+          tests/test_leasing_financiero_fase1_cotizacion.py
+          tests/test_leasing_financiero_fase1_aceptacion.py
+          tests/test_leasing_operativo_engine.py
+          tests/test_leasing_operativo_residual_engine.py
+          tests/test_leasing_operativo_deal_pricing.py
+          tests/test_leasing_operativo_market_benchmarks.py
+          tests/test_leasing_operativo_market_comps.py
+          tests/test_leasing_operativo_catalogo_mercado_cl.py
+          tests/test_leasing_operativo_tipos_activo.py
+          tests/test_leasing_operativo_cotizacion_flota.py
+          tests/test_leasing_operativo_workflow.py
+          tests/test_leasing_operativo_gestion.py
+          tests/test_leasing_operativo_politicas_ui.py
+          tests/test_leasing_operativo_contabilidad.py
+          tests/test_lop_cotizacion_crud_flags.py
+          tests/test_leasing_credito_documentos.py
+          tests/test_fondos_rendir_transporte_controls.py
+          tests/test_fondos_rendir_contabilidad.py
+          tests/test_fondos_rendir_domain.py
+          tests/test_password_reset.py
+          tests/test_mail_accounts.py
+          tests/test_module_access.py
+          tests/test_remuneraciones_rules.py
+          tests/test_remuneraciones_ux_outputs.py
+          tests/test_credito_riesgo_motor.py
+          tests/test_credito_cobranzas_module.py
+          tests/test_cobranza_plan_cxc.py
+          tests/test_plan_cuentas_normalizacion.py
+          tests/test_plan_cuentas_consistency.py
+          tests/test_consolidacion_abc.py
+          tests/test_consolidacion_d.py
+
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: evalua
+          POSTGRES_PASSWORD: evalua
+          POSTGRES_DB: evalua_fase3
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U evalua -d evalua_fase3"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: development
+      AUTO_MIGRATE_ON_STARTUP: "false"
+      EVALUA_OUTBOX_SWEEP: "0"
+      SECRET_KEY: "ci-secret-key-not-for-production-0123456789abcdef"
+      EVALUA_TEST_DATABASE_URL: "postgresql+psycopg://evalua:evalua@localhost:5432/evalua_fase3"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Validación PostgreSQL aislada
+        run: python tools/run_fase3_postgres_validation.py
+
+      - name: EXPLAIN de consultas candidatas
+        run: python tools/explain_candidate_queries.py
+
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Auditar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pip-audit
+          args=()
+          while IFS= read -r line || [ -n "$line" ]; do
+            line="${line%%$'\r'}"
+            case "$line" in
+              ''|\#*) continue ;;
+            esac
+            args+=(--ignore-vuln "$line")
+          done < security/pip-audit-exceptions.txt
+          if [ ${#args[@]} -eq 0 ]; then
+            python -m pip_audit -r requirements.txt
+          else
+            python -m pip_audit -r requirements.txt "${args[@]}"
+          fi

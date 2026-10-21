@@ -37,7 +37,21 @@ def public_error_message(
         if not s:
             return fallback
         if len(s) > 500:
-            return s[:497] + "..."
+            s = s[:497] + "..."
+        from core.domain_errors import DomainError
+
+        if isinstance(exc, DomainError):
+            hint = str(getattr(exc, "hint", "") or "").strip()
+            if hint and hint not in s:
+                s = f"{s} {hint}"
+            try:
+                from core.request_context import get_request_context
+
+                rid = get_request_context().get("request_id")
+            except Exception:
+                rid = None
+            if rid and str(rid) not in s:
+                s = f"{s} (ref {rid})"
         return s
     if settings.is_dev:
         s = f"{type(exc).__name__}: {exc}".strip()

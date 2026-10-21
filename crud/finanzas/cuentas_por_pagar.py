@@ -18,7 +18,6 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Mapping, Optional
 
 from sqlalchemy import delete, func, text
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from models import Proveedor, ProveedorBanco
@@ -34,8 +33,12 @@ from models.finanzas.compras_finanzas import (
 )
 from models.finanzas.plan_cuentas import PlanCuenta
 from schemas.finanzas.cuentas_por_pagar import DocumentoCreate, DocumentoUpdate, PagoCreate
-from crud.finanzas.contabilidad_asientos import crear_asiento, eliminar_asiento_contable
-from crud.finanzas.cxp_montos_sql import cxp_sql_saldo_desde_lineas, cxp_sql_total_desde_lineas
+from modules.contabilidad import accounting_service
+from crud.finanzas.cxp_montos_sql import (
+    cxp_agregados_joins,
+    cxp_sql_saldo_desde_lineas,
+    cxp_sql_total_desde_lineas,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -621,31 +624,6 @@ class CuentasPorPagarCRUD:
             raise ValueError("La cuenta bancaria seleccionada está inactiva.")
         return banco.id
 
-    def _sincronizar_cabecera_desde_lineas_si_seguro(self, db: Session, doc: APDocumento) -> None:
-        aplicado = _aplicado_a_documento(db, int(doc.id))
-        if aplicado > Z:
-            return
-        if getattr(doc, "asiento_id", None):
-            return
-        vt = vista_totales_orm(doc, aplicado=aplicado)
-        if not vt["cabecera_desincronizada"]:
-            return
-        doc.neto = vt["neto"]
-        doc.exento = vt["exento"]
-        doc.iva = vt["iva"]
-        doc.otros_impuestos = vt["otros_impuestos"]
-        doc.total = vt["total"]
-        doc.saldo_pendiente = vt["saldo_pendiente"]
-        doc.estado = self._estado_columna_por_saldo(
-            db, doc.saldo_pendiente, doc.fecha_vencimiento
-        )
-        try:
-            db.commit()
-            db.refresh(doc)
-        except SQLAlchemyError as exc:
-            logger.warning("CxP: no se pudo sincronizar cabecera doc=%s: %s", doc.id, exc)
-            db.rollback()
-
     # --- catálogos ---------------------------------------------------
     def get_catalogos(self, db: Session) -> dict[str, list[dict[str, Any]]]:
         proveedores = (
@@ -728,137 +706,59 @@ class CuentasPorPagarCRUD:
             }
         hoy = date.today()
         proximo_7 = hoy + timedelta(days=7)
-        # KPI desde líneas + impuestos + pagos aplicados (no desde cabecera duplicada en BD).
+        joins = cxp_agregados_joins("d")
+        total_expr = cxp_sql_total_desde_lineas("d")
+        saldo_expr = cxp_sql_saldo_desde_lineas("d")
         row = db.execute(
             text(
-                """
+                f"""
                 WITH doc AS (
                     SELECT
                         d.id,
                         d.fecha_vencimiento,
-                        (
-                            SELECT COALESCE(SUM(det.neto_linea + det.iva_linea), 0)::numeric
-                            FROM fin.ap_documento_detalle det
-                            WHERE det.documento_id = d.id
-                        ) + (
-                            SELECT COALESCE(SUM(imp.monto), 0)::numeric
-                            FROM fin.ap_documento_impuesto imp
-                            WHERE imp.documento_id = d.id
-                        ) AS t_lineas,
-                        (
-                            SELECT COALESCE(SUM(a.monto_aplicado), 0)::numeric
-                            FROM fin.ap_pago_aplicacion a
-                            WHERE a.documento_id = d.id
-                        ) AS t_aplicado
+                        {total_expr} AS t_lineas,
+                        COALESCE(ap.sum_app, 0::numeric) AS t_aplicado,
+                        {saldo_expr} AS saldo_coherente
                     FROM fin.ap_documento d
-                ),
-                doc2 AS (
-                    SELECT
-                        id,
-                        fecha_vencimiento,
-                        t_lineas,
-                        t_aplicado,
-                        GREATEST(t_lineas - t_aplicado, 0)::numeric AS saldo_coherente
-                    FROM doc
+                    {joins}
                 )
                 SELECT
                     COUNT(*)::bigint AS documentos,
                     COALESCE(SUM(t_lineas), 0) AS total_documentado,
                     COALESCE(SUM(saldo_coherente), 0) AS saldo_pendiente,
-                    COALESCE(
-                        SUM(
-                            CASE
-                                WHEN saldo_coherente > 0 AND fecha_vencimiento < CURRENT_DATE
-                                THEN saldo_coherente
-                                ELSE 0
-                            END
-                        ),
-                        0
-                    ) AS saldo_vencido,
-                    COALESCE(
-                        SUM(
-                            CASE
-                                WHEN saldo_coherente > 0
-                                 AND fecha_vencimiento >= CURRENT_DATE
-                                 AND fecha_vencimiento <= CAST(:proximo AS date)
-                                THEN saldo_coherente
-                                ELSE 0
-                            END
-                        ),
-                        0
-                    ) AS saldo_por_vencer,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN saldo_coherente > 0 AND fecha_vencimiento < CURRENT_DATE
+                            THEN saldo_coherente ELSE 0
+                        END
+                    ), 0) AS saldo_vencido,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN saldo_coherente > 0
+                             AND fecha_vencimiento >= CURRENT_DATE
+                             AND fecha_vencimiento <= CAST(:proximo AS date)
+                            THEN saldo_coherente ELSE 0
+                        END
+                    ), 0) AS saldo_por_vencer,
                     COALESCE(SUM(t_aplicado), 0) AS total_aplicado_hist,
-                    COALESCE(
-                        SUM(
-                            CASE
-                                WHEN saldo_coherente <= 0 THEN t_lineas
-                                ELSE 0
-                            END
-                        ),
-                        0
-                    ) AS facturacion_liquidada
-                FROM doc2
+                    COALESCE(SUM(
+                        CASE WHEN saldo_coherente <= 0 THEN t_lineas ELSE 0 END
+                    ), 0) AS facturacion_liquidada,
+                    COUNT(*) FILTER (
+                        WHERE saldo_coherente > 0 AND fecha_vencimiento < CURRENT_DATE
+                    )::bigint AS docs_vencidos,
+                    COUNT(*) FILTER (
+                        WHERE saldo_coherente > 0
+                          AND fecha_vencimiento >= CURRENT_DATE
+                          AND fecha_vencimiento <= CAST(:proximo AS date)
+                    )::bigint AS docs_por_vencer
+                FROM doc
                 """
             ),
             {"proximo": proximo_7},
         ).mappings().first()
-
-        docs_vencidos = (
-            db.execute(
-                text(
-                    """
-                    SELECT COUNT(*)::bigint
-                    FROM fin.ap_documento d
-                    WHERE d.fecha_vencimiento < CURRENT_DATE
-                      AND (
-                        (
-                            SELECT COALESCE(SUM(det.neto_linea + det.iva_linea), 0)::numeric
-                            FROM fin.ap_documento_detalle det
-                            WHERE det.documento_id = d.id
-                        ) + (
-                            SELECT COALESCE(SUM(imp.monto), 0)::numeric
-                            FROM fin.ap_documento_impuesto imp
-                            WHERE imp.documento_id = d.id
-                        ) - (
-                            SELECT COALESCE(SUM(a.monto_aplicado), 0)::numeric
-                            FROM fin.ap_pago_aplicacion a
-                            WHERE a.documento_id = d.id
-                        )
-                      ) > 0
-                    """
-                )
-            ).scalar()
-            or 0
-        )
-        docs_por_vencer = (
-            db.execute(
-                text(
-                    """
-                    SELECT COUNT(*)::bigint
-                    FROM fin.ap_documento d
-                    WHERE d.fecha_vencimiento >= CURRENT_DATE
-                      AND d.fecha_vencimiento <= CAST(:proximo AS date)
-                      AND (
-                        (
-                            SELECT COALESCE(SUM(det.neto_linea + det.iva_linea), 0)::numeric
-                            FROM fin.ap_documento_detalle det
-                            WHERE det.documento_id = d.id
-                        ) + (
-                            SELECT COALESCE(SUM(imp.monto), 0)::numeric
-                            FROM fin.ap_documento_impuesto imp
-                            WHERE imp.documento_id = d.id
-                        ) - (
-                            SELECT COALESCE(SUM(a.monto_aplicado), 0)::numeric
-                            FROM fin.ap_pago_aplicacion a
-                            WHERE a.documento_id = d.id
-                        )
-                      ) > 0
-                    """
-                ),
-                {"proximo": proximo_7},
-            ).scalar()
-            or 0
-        )
+        docs_vencidos = int(row["docs_vencidos"] if row else 0)
+        docs_por_vencer = int(row["docs_por_vencer"] if row else 0)
 
         return {
             "documentos": int(row["documentos"] if row else 0),
@@ -899,10 +799,7 @@ class CuentasPorPagarCRUD:
             params["cxp_est"] = str(estado).strip()
         if solo_abiertos:
             wheres.append(
-                "GREATEST("
-                "(ln.sum_tl + COALESCE(im.sum_imp, 0::numeric) - COALESCE(ap.sum_app, 0::numeric)),"
-                " 0::numeric"
-                ") > 0::numeric"
+                f"{cxp_sql_saldo_desde_lineas('d')} > 0::numeric"
             )
 
         where_sql = " AND ".join(wheres)
@@ -921,39 +818,22 @@ class CuentasPorPagarCRUD:
             p.id AS proveedor_id,
             p.rut AS rut,
             p.razon_social AS razon_social,
-            ln.sum_tl,
-            ln.sum_nl,
-            ln.sum_il,
+            COALESCE(ln.sum_tl, 0::numeric) AS sum_tl,
+            COALESCE(ln.sum_nl, 0::numeric) AS sum_nl,
+            COALESCE(ln.sum_il, 0::numeric) AS sum_il,
             COALESCE(im.sum_imp, 0::numeric) AS otros_impuestos,
             COALESCE(ap.sum_app, 0::numeric) AS aplicado,
-            (ln.sum_tl + COALESCE(im.sum_imp, 0::numeric)) AS total_calculado,
+            (COALESCE(ln.sum_tl, 0::numeric) + COALESCE(im.sum_imp, 0::numeric)) AS total_calculado,
             GREATEST(
-                (ln.sum_tl + COALESCE(im.sum_imp, 0::numeric) - COALESCE(ap.sum_app, 0::numeric)),
+                (COALESCE(ln.sum_tl, 0::numeric) + COALESCE(im.sum_imp, 0::numeric) - COALESCE(ap.sum_app, 0::numeric)),
                 0::numeric
             ) AS saldo_pendiente,
-            CASE WHEN ln.sum_il > 0 THEN ln.sum_nl ELSE 0::numeric END AS neto_calc,
-            CASE WHEN ln.sum_il > 0 THEN 0::numeric ELSE ln.sum_nl END AS exento_calc,
-            CASE WHEN ln.sum_il > 0 THEN ln.sum_il ELSE 0::numeric END AS iva_calc
+            CASE WHEN COALESCE(ln.sum_il, 0::numeric) > 0 THEN COALESCE(ln.sum_nl, 0::numeric) ELSE 0::numeric END AS neto_calc,
+            CASE WHEN COALESCE(ln.sum_il, 0::numeric) > 0 THEN 0::numeric ELSE COALESCE(ln.sum_nl, 0::numeric) END AS exento_calc,
+            CASE WHEN COALESCE(ln.sum_il, 0::numeric) > 0 THEN COALESCE(ln.sum_il, 0::numeric) ELSE 0::numeric END AS iva_calc
         FROM fin.ap_documento d
         INNER JOIN proveedor p ON p.id = d.proveedor_id
-        INNER JOIN LATERAL (
-            SELECT
-                COALESCE(SUM(det.neto_linea + det.iva_linea), 0)::numeric AS sum_tl,
-                COALESCE(SUM(det.neto_linea), 0)::numeric AS sum_nl,
-                COALESCE(SUM(det.iva_linea), 0)::numeric AS sum_il
-            FROM fin.ap_documento_detalle det
-            WHERE det.documento_id = d.id
-        ) ln ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT COALESCE(SUM(imp.monto), 0)::numeric AS sum_imp
-            FROM fin.ap_documento_impuesto imp
-            WHERE imp.documento_id = d.id
-        ) im ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT COALESCE(SUM(a.monto_aplicado), 0)::numeric AS sum_app
-            FROM fin.ap_pago_aplicacion a
-            WHERE a.documento_id = d.id
-        ) ap ON TRUE
+        {cxp_agregados_joins("d")}
         WHERE {where_sql}
         ORDER BY d.fecha_vencimiento ASC, d.id DESC
         """
@@ -1021,10 +901,6 @@ class CuentasPorPagarCRUD:
         )
 
     def get_documento_view(self, db: Session, documento_id: int) -> Optional[dict[str, Any]]:
-        doc = self.get_documento(db, documento_id)
-        if not doc:
-            return None
-        self._sincronizar_cabecera_desde_lineas_si_seguro(db, doc)
         doc = self.get_documento(db, documento_id)
         if not doc:
             return None
@@ -1151,7 +1027,7 @@ class CuentasPorPagarCRUD:
             if payload.generar_asiento_contable:
                 det_asiento = self._detalles_asiento_ap_desde_documento(db, documento, payload)
                 glosa = f"AP {documento.tipo} {documento.folio} proveedor {documento.proveedor_id}"
-                asiento_id = crear_asiento(
+                asiento_id = accounting_service.post_entry(
                     db,
                     fecha=documento.fecha_emision,
                     origen_tipo="AP_DOCUMENTO",
@@ -1163,7 +1039,31 @@ class CuentasPorPagarCRUD:
                     do_commit=False,
                 )
                 documento.asiento_id = asiento_id
+                from erp_platform.events import publish_in_transaction
+                from erp_platform.events import types as event_types
+
+                publish_in_transaction(
+                    db,
+                    event_name=event_types.DOCUMENTO_AP_REGISTRADO,
+                    payload={
+                        "documento_id": int(documento.id),
+                        "asiento_id": int(asiento_id),
+                        "folio": str(documento.folio or ""),
+                    },
+                    correlation_id=f"AP_DOCUMENTO:{int(documento.id)}",
+                )
+            from services.finanzas.documento_tributario import registrar_desde_documento_ap
+
+            registrar_desde_documento_ap(
+                db,
+                documento,
+                proveedor,
+                asiento_id=getattr(documento, "asiento_id", None),
+            )
             db.commit()
+            from erp_platform.events import flush_outbox_after_commit
+
+            flush_outbox_after_commit(db)
         except Exception:
             db.rollback()
             raise
@@ -1262,6 +1162,7 @@ class CuentasPorPagarCRUD:
         estado_pagado = self._estado_documento_pagado(db)
         tot = cxp_sql_total_desde_lineas("d")
         sal = cxp_sql_saldo_desde_lineas("d")
+        joins = cxp_agregados_joins("d")
         sql = f"""
         SELECT
             d.id,
@@ -1272,6 +1173,7 @@ class CuentasPorPagarCRUD:
             {tot} AS total_calc,
             {sal} AS saldo_calc
         FROM fin.ap_documento d
+        {joins}
         WHERE d.proveedor_id = :pid
           AND d.estado::text <> :est_pagado
           AND ({sal}) > 0::numeric
@@ -1415,7 +1317,7 @@ class CuentasPorPagarCRUD:
             cuenta_proveedores_codigo=cuenta_proveedores_codigo,
         )
         glosa = f"Pago proveedor {pago.proveedor_id} ref {pago.referencia or pago.id}"
-        crear_asiento(
+        asiento_pago_id = accounting_service.post_entry(
             db,
             fecha=pago.fecha_pago,
             origen_tipo="AP_PAGO",
@@ -1427,7 +1329,20 @@ class CuentasPorPagarCRUD:
             do_commit=False,
         )
 
+        from erp_platform.events import flush_outbox_after_commit, publish_in_transaction
+        from erp_platform.events import types as event_types
+
+        publish_in_transaction(
+            db,
+            event_name=event_types.PAGO_AP_REGISTRADO,
+            payload={
+                "pago_id": int(pago.id),
+                "asiento_id": int(asiento_pago_id) if asiento_pago_id else None,
+            },
+            correlation_id=f"AP_PAGO:{int(pago.id)}",
+        )
         db.commit()
+        flush_outbox_after_commit(db)
         db.refresh(pago)
         return pago
 
@@ -1467,7 +1382,15 @@ class CuentasPorPagarCRUD:
         self._validar_periodo_abierto(db, documento.fecha_emision)
         asiento_id = getattr(documento, "asiento_id", None)
         if asiento_id:
-            eliminar_asiento_contable(db, int(asiento_id))
+            accounting_service.reverse_business_entry(
+                db,
+                asiento_original_id=int(asiento_id),
+                origen_tipo="AP_DOCUMENTO_REVERSA",
+                origen_id=int(documento.id),
+                glosa=f"Reversión AP {documento.tipo} {documento.folio}",
+                usuario=user_email,
+                do_commit=False,
+            )
 
         self._log_evento(
             db,

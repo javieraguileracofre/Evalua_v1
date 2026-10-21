@@ -8,9 +8,9 @@ from typing import List, Dict, Optional
 
 from sqlalchemy.orm import Session
 
-from crud.finanzas.contabilidad_asientos import crear_asiento as crear_asiento_base
 from models.finanzas import MovimientoCaja
 from models.cobranza import CuentaPorCobrar
+from modules.contabilidad import accounting_service
 
 IVA_RATE = 0.19
 
@@ -37,13 +37,13 @@ def crear_asiento(
     creado_por: Optional[str] = None,
 ) -> int:
     """
-    Wrapper camino dorado para mantener compatibilidad con código legacy.
-    Delega en crud.finanzas.contabilidad_asientos.crear_asiento.
+    Wrapper legacy: delega en AccountingService (única frontera de escritura).
+    Preferir `modules.contabilidad.accounting_service.post_entry` en código nuevo.
     """
     if isinstance(fecha, date) and not isinstance(fecha, datetime):
         fecha = datetime.combine(fecha, datetime.min.time())
 
-    return crear_asiento_base(
+    return accounting_service.post_entry(
         db=db,
         fecha=fecha,
         origen_tipo=origen,

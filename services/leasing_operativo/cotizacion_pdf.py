@@ -93,6 +93,35 @@ def generar_cotizacion_pdf_bytes(
         )
     )
     story.append(t1)
+    lineas = result.get("lineas") or []
+    if lineas:
+        story.append(Spacer(1, 0.45 * cm))
+        story.append(Paragraph("<b>Unidades cotizadas</b>", styles["Heading3"]))
+        rows_u: list[list[str]] = [["Descripción", "Cant.", "Valor", "Residual", "Renta línea"]]
+        for ln in lineas:
+            rows_u.append(
+                [
+                    str(ln.get("descripcion") or ln.get("tipo_nombre") or "—")[:48],
+                    str(ln.get("cantidad") or 1),
+                    _fmt_num(ln.get("valor_bien_unitario")),
+                    _fmt_num(ln.get("residual_aceptado_unitario")),
+                    _fmt_num(ln.get("renta_linea")),
+                ]
+            )
+        tu = Table(rows_u, colWidths=[6.2 * cm, 1.6 * cm, 2.8 * cm, 2.8 * cm, 2.8 * cm])
+        tu.setStyle(
+            TableStyle(
+                [
+                    ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b1220")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                    ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+                ]
+            )
+        )
+        story.append(tu)
     story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph("<b>Flujo mensual (primeros 18 meses)</b>", styles["Heading3"]))
     rows: list[list[str]] = [["Mes", "Venta", "C. fondo", "Depr.", "Op.", "Riesgo", "Res. op."]]

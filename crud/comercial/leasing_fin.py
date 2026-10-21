@@ -17,6 +17,14 @@ from models.comercial.leasing_financiero_cotizacion import (
 )
 from schemas.comercial.leasing_cotizacion import ESTADOS_LF, LeasingCotizacionCreate, LeasingCotizacionUpdate, LeasingSimulacionInput
 from services.leasing_financiero import aplicar_parametros_financieros, normalizar_periodicidad, simular_cotizacion
+from services.leasing_financiero_estados import (
+    ESTADOS_NO_EDITABLES,
+    ESTADOS_NO_ELIMINABLES,
+    estado_canonico,
+    estados_equivalentes_db,
+    puede_comprar_activo,
+    puede_editar_cotizacion,
+)
 from services.leasing_financiero_contabilidad import (
     activar_contabilidad_leasing_financiero,
     regenerar_proyeccion_contable,
@@ -33,6 +41,7 @@ from crud.comercial.leasing_fin_operacion import (
 )
 from services.leasing_financiero_workflow import (
     checklist_bloqueantes_pendientes,
+    exigir_acuerdo_para_compra,
     merge_workflow,
     puede_transicionar,
     siguiente_etapa as _siguiente_etapa_svc,
@@ -46,8 +55,8 @@ _WORKFLOW_ETAPAS = [
     "ACTA_RECEPCION",
     "ACTIVACION_CONTABLE",
 ]
-_ESTADOS_EDITABLES = ESTADOS_LF - {"ACTIVADA", "VIGENTE"}
-_ESTADOS_NO_ELIMINABLES = {"ACTIVADA", "VIGENTE"}
+_ESTADOS_EDITABLES = ESTADOS_LF - ESTADOS_NO_EDITABLES
+_ESTADOS_NO_ELIMINABLES = set(ESTADOS_NO_ELIMINABLES)
 _ESTADOS_APROBACION_CREDITO = {"APROBADO", "APROBADA_CONDICIONES"}
 _CUENTAS_CONTABLES_REQUERIDAS = ("113701", "210701", "210702", "410701", "110201")
 
@@ -96,6 +105,7 @@ def _aplicar_metricas_persistidas(cotizacion: LeasingFinancieroCotizacion) -> No
         uf_valor=cotizacion.uf_valor,
         monto_financiado=cotizacion.monto_financiado,
         dolar_valor=cotizacion.dolar_valor,
+        tasa_tipo=getattr(cotizacion, "tasa_tipo", "ANUAL") or "ANUAL",
     )
     resumen = simular_cotizacion(payload)
     if resumen.tir_anual_pct is not None:
@@ -117,8 +127,14 @@ def cambiar_estado_cotizacion(
     estado_nuevo = str(estado_nuevo or "").strip().upper()
     if estado_nuevo not in ESTADOS_LF:
         raise ValueError("Estado de leasing financiero inválido.")
-    estado_actual = str(cotizacion.estado or "").upper()
-    if estado_actual in {"ACTIVADA", "VIGENTE"} and estado_nuevo not in {"ANULADA", "VIGENTE", "ACTIVADA"}:
+    estado_nuevo = estado_canonico(estado_nuevo)
+    estado_actual = estado_canonico(cotizacion.estado)
+    if estado_actual == "ACTIVO_ADQUIRIDO" and estado_nuevo not in {
+        "ANULADA",
+        "ACTIVO_ADQUIRIDO",
+        "ACTIVADA",
+        "VIGENTE",
+    }:
         raise ValueError("No se puede cambiar el estado de una operación activada excepto a ANULADA.")
     if not puede_transicionar(estado_actual, estado_nuevo):
         raise ValueError(f"Transición de estado no permitida: {estado_actual} → {estado_nuevo}.")
@@ -164,7 +180,7 @@ def get_cotizaciones(
         stmt = stmt.where(LeasingFinancieroCotizacion.cliente_id == cliente_id)
 
     if estado:
-        stmt = stmt.where(LeasingFinancieroCotizacion.estado == estado)
+        stmt = stmt.where(LeasingFinancieroCotizacion.estado.in_(estados_equivalentes_db(estado)))
     if ejecutivo:
         stmt = stmt.where(LeasingFinancieroCotizacion.ejecutivo.ilike(f"%{ejecutivo}%"))
     if moneda:
@@ -255,6 +271,20 @@ def _validar_moneda_y_tipo_cambio(*, moneda: str, uf_valor: object, dolar_valor:
 
 
 def _validar_parametros_cotizacion(data: dict, *, estricto: bool = False) -> None:
+    for campo, etiqueta in (
+        ("valor_neto", "El valor del activo"),
+        ("pago_inicial_valor", "El pie o cuota inicial"),
+        ("opcion_compra", "El valor residual"),
+        ("tasa", "La tasa de interés"),
+        ("gastos_administrativos", "Los gastos administrativos"),
+        ("comision_apertura", "La comisión"),
+        ("seguro_monto_uf", "El seguro"),
+        ("monto_financiado", "El monto a financiar"),
+    ):
+        val = data.get(campo)
+        if val is not None and Decimal(str(val)) < 0:
+            raise ValueError(f"{etiqueta} no puede ser negativo.")
+
     plazo = data.get("plazo")
     if plazo is not None and int(plazo) <= 0:
         raise ValueError("El plazo debe ser mayor a 0 meses.")
@@ -263,12 +293,33 @@ def _validar_parametros_cotizacion(data: dict, *, estricto: bool = False) -> Non
         raise ValueError("Los períodos de gracia no pueden ser negativos.")
     if plazo is not None and periodos_gracia is not None and int(plazo) <= int(periodos_gracia):
         raise ValueError("El plazo debe ser mayor a los períodos de gracia.")
+
+    valor_neto = data.get("valor_neto")
+    pie_tipo = str(data.get("pago_inicial_tipo") or "").strip().upper()
+    pie_valor = data.get("pago_inicial_valor")
+    if valor_neto is not None and pie_valor is not None and pie_tipo == "MONTO":
+        if Decimal(str(pie_valor)) > Decimal(str(valor_neto)):
+            raise ValueError("El pie no puede ser mayor al valor del activo.")
+    if valor_neto is not None and pie_valor is not None and pie_tipo == "PORCENTAJE":
+        pct = Decimal(str(pie_valor))
+        if pct > Decimal("100") or (pct > Decimal("1") and pct > Decimal("100")):
+            raise ValueError("El porcentaje de pie no puede superar 100% del valor del activo.")
+        if pct > Decimal("1") and pct <= Decimal("100"):
+            pass
+        elif pct > Decimal("1"):
+            raise ValueError("El porcentaje de pie no puede superar 100% del valor del activo.")
+
+    residual = data.get("opcion_compra")
+    monto_fin = data.get("monto_financiado")
+    base_residual = monto_fin or valor_neto
+    if residual is not None and base_residual is not None and Decimal(str(residual)) > 0:
+        if Decimal(str(residual)) >= Decimal(str(base_residual)):
+            raise ValueError("El valor residual debe ser menor al monto financiado.")
+
     if not estricto:
         return
-    monto_fin = data.get("monto_financiado")
-    valor_neto = data.get("valor_neto")
     if (monto_fin is None or monto_fin <= 0) and (valor_neto is None or valor_neto <= 0):
-        raise ValueError("Debe informar valor neto o monto financiado mayor a 0.")
+        raise ValueError("Debe informar valor del activo o monto a financiar mayor a 0.")
 
 
 def crear_cotizacion(db: Session, *, obj_in: LeasingCotizacionCreate) -> LeasingFinancieroCotizacion:
@@ -288,7 +339,10 @@ def crear_cotizacion(db: Session, *, obj_in: LeasingCotizacionCreate) -> Leasing
     if not data.get("estado"):
         data["estado"] = "BORRADOR"
     try:
+        tasa_tipo = data.pop("tasa_tipo", None)
         cot = LeasingFinancieroCotizacion(**data)
+        if tasa_tipo is not None:
+            cot.tasa_tipo = tasa_tipo
         db.add(cot)
         db.flush()
 
@@ -333,7 +387,7 @@ def actualizar_cotizacion(
     obj_in: LeasingCotizacionUpdate,
 ) -> LeasingFinancieroCotizacion:
     if str(cotizacion.estado or "").upper() not in _ESTADOS_EDITABLES:
-        raise ValueError("No se puede editar una operación activada o vigente.")
+        raise ValueError("No se puede editar una operación con activo adquirido o activada.")
     if bool(getattr(cotizacion, "condiciones_congeladas", False)):
         raise ValueError("Las condiciones financieras están congeladas. Cree una nueva versión de escenario.")
     estado_original = str(cotizacion.estado or "").upper()
@@ -384,6 +438,7 @@ def actualizar_cotizacion(
         ),
         "monto_financiado": update_data.get("monto_financiado", cotizacion.monto_financiado),
         "tasa": update_data.get("tasa", cotizacion.tasa),
+        "tasa_tipo": update_data.get("tasa_tipo", getattr(cotizacion, "tasa_tipo", "ANUAL")),
         "plazo": update_data.get("plazo", cotizacion.plazo),
         "periodos_gracia": update_data.get("periodos_gracia", cotizacion.periodos_gracia),
         "monto": update_data.get("monto", cotizacion.monto),
@@ -391,8 +446,8 @@ def actualizar_cotizacion(
     if "monto_financiado" not in update_data or update_data.get("monto_financiado") is None:
         merged["monto_financiado"] = None
     aplicar_parametros_financieros(merged)
-    if "tasa" in update_data:
-        update_data["tasa"] = merged["tasa"]
+    if "tasa_tipo" in update_data and update_data["tasa_tipo"] is not None:
+        update_data["tasa_tipo"] = merged.get("tasa_tipo") or update_data["tasa_tipo"]
     if merged.get("monto_financiado") is not None:
         update_data["monto_financiado"] = merged["monto_financiado"]
     if merged.get("monto") is not None and "monto" not in update_data:
@@ -431,8 +486,7 @@ def actualizar_cotizacion(
     )
     persistir_amortizacion_oficial(db, cotizacion)
     sincronizar_checklist_automatico(db, cotizacion)
-    db.commit()
-    db.refresh(cotizacion)
+    db.flush()
 
     cot = get_cotizacion(db, int(cotizacion.id)) or cotizacion
     regenerar_proyeccion_contable(db, cot)
@@ -484,6 +538,8 @@ def guardar_documento_proceso(
     modulo_norm = str(modulo or "").strip().lower()
     if modulo_norm not in {"orden_compra", "contrato", "acta_recepcion", "factura_proveedor", "pagare", "identidad"}:
         raise ValueError("Módulo de documento inválido.")
+    if modulo_norm in {"orden_compra", "factura_proveedor"}:
+        exigir_acuerdo_para_compra(cotizacion.estado)
     if modulo_norm in {"orden_compra", "contrato", "acta_recepcion", "factura_proveedor", "pagare", "identidad"}:
         _asegurar_analisis_aprobado(cotizacion)
 
@@ -541,17 +597,18 @@ def guardar_documento_proceso(
     cotizacion.workflow_json = workflow
     sincronizar_checklist_automatico(db, cotizacion, usuario=usuario)
     estado_origen = str(cotizacion.estado or "").upper()
-    if str(cotizacion.estado or "").upper() in {"COTIZADA", "EN_ANALISIS_CREDITO", "APROBADA", "APROBADA_CONDICIONES"}:
-        cotizacion.estado = "EN_FORMALIZACION"
-        if (
-            workflow["hitos"].get("orden_compra")
-            and workflow["hitos"].get("contrato_firmado")
-            and workflow["hitos"].get("acta_recepcion")
-            and workflow["hitos"].get("factura_compra")
-        ):
-            cotizacion.estado = "DOCUMENTACION_COMPLETA"
+    if modulo_norm == "contrato" and estado_canonico(estado_origen) in {"APROBADA", "ACUERDO_FIRMADO"}:
+        if estado_canonico(estado_origen) == "APROBADA":
+            cotizacion.estado = "ACUERDO_FIRMADO"
             if cotizacion.fecha_formalizacion is None:
                 cotizacion.fecha_formalizacion = date.today()
+    elif modulo_norm in {"orden_compra", "factura_proveedor"} and puede_comprar_activo(cotizacion.estado):
+        if estado_canonico(cotizacion.estado) == "ACUERDO_FIRMADO":
+            cotizacion.estado = "ACTIVO_PENDIENTE_COMPRA"
+        if modulo_norm == "factura_proveedor":
+            cotizacion.estado = "ACTIVO_ADQUIRIDO"
+            if cotizacion.activo:
+                cotizacion.activo.estado = "ADQUIRIDO"
     _registrar_historial(
         db,
         cotizacion=cotizacion,
@@ -669,6 +726,12 @@ def activar_flujo_contable(
     db.add(cotizacion)
     sincronizar_checklist_automatico(db, cotizacion, usuario=usuario)
     db.commit()
+    try:
+        from erp_platform.events import flush_outbox_after_commit
+
+        flush_outbox_after_commit(db)
+    except Exception:
+        pass
     return asiento_id
 
 
@@ -722,14 +785,17 @@ def get_hub_resumen(db: Session) -> dict[str, Any]:
     _estados_pipeline = {
         "BORRADOR",
         "COTIZADA",
+        "EN_EVALUACION",
         "EN_ANALISIS_COMERCIAL",
         "EN_ANALISIS_CREDITO",
         "APROBADA",
         "APROBADA_CONDICIONES",
+        "ACUERDO_FIRMADO",
+        "ACTIVO_PENDIENTE_COMPRA",
         "EN_FORMALIZACION",
         "DOCUMENTACION_COMPLETA",
     }
-    _estados_cartera = {"VIGENTE", "ACTIVADA"}
+    _estados_cartera = {"VIGENTE", "ACTIVADA", "ACTIVO_ADQUIRIDO"}
 
     for c in cotizaciones:
         est = str(c.estado or "").upper()
@@ -745,17 +811,23 @@ def get_hub_resumen(db: Session) -> dict[str, Any]:
 
         if est in {"BORRADOR", "COTIZADA", "EN_ANALISIS_COMERCIAL"}:
             kpis["abiertas"] += 1
-        if est == "EN_ANALISIS_CREDITO":
+        if est in {"EN_ANALISIS_CREDITO", "EN_EVALUACION"}:
             kpis["en_credito"] += 1
         if est in {"APROBADA", "APROBADA_CONDICIONES"}:
             kpis["aprobadas"] += 1
-        if est in {"EN_FORMALIZACION", "DOCUMENTACION_COMPLETA", "ACTIVADA"}:
+        if est in {
+            "EN_FORMALIZACION",
+            "DOCUMENTACION_COMPLETA",
+            "ACTIVADA",
+            "ACUERDO_FIRMADO",
+            "ACTIVO_PENDIENTE_COMPRA",
+        }:
             kpis["formalizacion"] += 1
         if est == "VIGENTE":
             kpis["vigentes"] += 1
         if est in {"RECHAZADA", "PERDIDA_CLIENTE", "ANULADA"}:
             kpis["rechazadas"] += 1
-        if est in {"ACTIVADA", "VIGENTE"}:
+        if est in {"ACTIVADA", "VIGENTE", "ACTIVO_ADQUIRIDO"}:
             kpis["activadas"] += 1
 
     cerradas = kpis["activadas"] + kpis["rechazadas"]
@@ -798,7 +870,11 @@ def get_hub_resumen(db: Session) -> dict[str, Any]:
         },
     ]
 
-    pendientes_credito = [c for c in cotizaciones if str(c.estado or "").upper() == "EN_ANALISIS_CREDITO"][:10]
+    pendientes_credito = [
+        c
+        for c in cotizaciones
+        if str(c.estado or "").upper() in {"EN_ANALISIS_CREDITO", "EN_EVALUACION"}
+    ][:10]
     pendientes_docs = [
         c
         for c in cotizaciones
@@ -806,10 +882,19 @@ def get_hub_resumen(db: Session) -> dict[str, Any]:
     ][:10]
     pendientes_activacion = [c for c in cotizaciones if str(c.estado or "").upper() == "DOCUMENTACION_COMPLETA"][:10]
     recientes = cotizaciones[:8]
+    recientes_ui = [
+        {
+            "cot": c,
+            "puede_editar": puede_editar_cotizacion(c.estado),
+            "puede_eliminar": puede_eliminar_cotizacion(c),
+        }
+        for c in recientes
+    ]
 
     return {
         "kpis": kpis,
         "recientes": recientes,
+        "recientes_ui": recientes_ui,
         "pendientes_credito": pendientes_credito,
         "pendientes_documentacion": pendientes_docs,
         "pendientes_activacion": pendientes_activacion,
@@ -824,9 +909,9 @@ def puede_eliminar_cotizacion(cotizacion: LeasingFinancieroCotizacion) -> bool:
     est = str(cotizacion.estado or "").upper()
     if est in _ESTADOS_NO_ELIMINABLES:
         return False
-    if bool(cotizacion.contrato_activo):
+    if bool(getattr(cotizacion, "contrato_activo", False)):
         return False
-    if cotizacion.asiento_id is not None:
+    if getattr(cotizacion, "asiento_id", None) is not None:
         return False
     return True
 
@@ -919,9 +1004,17 @@ def enviar_a_analisis_credito(
 ) -> LeasingFinancieroCotizacion:
     """Marca la cotización como lista y la envía a análisis de crédito."""
     estado_actual = str(cotizacion.estado or "BORRADOR").upper()
-    if estado_actual in {"ANULADA", "ACTIVADA", "VIGENTE", "RECHAZADA"}:
-        raise ValueError(f"No se puede enviar a crédito desde estado {estado_actual}.")
-    if estado_actual == "EN_ANALISIS_CREDITO":
+    if estado_actual in {
+        "ANULADA",
+        "ACTIVADA",
+        "VIGENTE",
+        "RECHAZADA",
+        "ACTIVO_ADQUIRIDO",
+        "ACUERDO_FIRMADO",
+        "ACTIVO_PENDIENTE_COMPRA",
+    }:
+        raise ValueError(f"No se puede enviar a evaluación desde estado {estado_actual}.")
+    if estado_actual in {"EN_ANALISIS_CREDITO", "EN_EVALUACION"}:
         return cotizacion
     if not cotizacion.cliente_id:
         raise ValueError("La cotización requiere cliente antes de enviar a crédito.")
@@ -930,24 +1023,27 @@ def enviar_a_analisis_credito(
     if not cotizacion.plazo or int(cotizacion.plazo) <= 0:
         raise ValueError("Complete el plazo antes de enviar a crédito.")
 
-    destino = "EN_ANALISIS_CREDITO"
+    destino = "EN_EVALUACION"
     if estado_actual == "BORRADOR":
         # BORRADOR solo permite COTIZADA; primero pasar a COTIZADA
         cambiar_estado_cotizacion(
             db,
             cotizacion=cotizacion,
             estado_nuevo="COTIZADA",
-            comentario="Cotización formal lista para análisis de crédito",
+            comentario="Cotización formal lista para evaluación",
             usuario=usuario,
         )
         cotizacion = get_cotizacion(db, int(cotizacion.id)) or cotizacion
         estado_actual = str(cotizacion.estado or "").upper()
 
+    if estado_actual == "EN_EVALUACION":
+        return cotizacion
+
     return cambiar_estado_cotizacion(
         db,
         cotizacion=cotizacion,
         estado_nuevo=destino,
-        comentario=comentario or "Enviada a análisis de crédito",
+        comentario=comentario or "Enviada a evaluación",
         usuario=usuario,
     )
 
@@ -1000,20 +1096,20 @@ def aceptar_condiciones_cliente(
     hitos = dict(workflow.get("hitos") or {})
     hitos["aceptacion_cliente"] = True
     workflow["hitos"] = hitos
-    workflow["etapa_actual"] = "ORDEN_COMPRA"
+    workflow["etapa_actual"] = "CONTRATO_FIRMADO"
     cotizacion.workflow_json = workflow
 
     estado_desde = estado
-    cotizacion.estado = "EN_FORMALIZACION"
-    if cotizacion.fecha_formalizacion is None:
-        cotizacion.fecha_formalizacion = date.today()
+    # La aceptación de condiciones de crédito NO habilita la compra del activo.
+    if estado_canonico(estado) == "APROBADA":
+        cotizacion.estado = "APROBADA"
 
     _registrar_historial(
         db,
         cotizacion=cotizacion,
         tipo_evento="ACEPTACION_CLIENTE",
         estado_desde=estado_desde,
-        estado_hasta="EN_FORMALIZACION",
+        estado_hasta=str(cotizacion.estado or "").upper(),
         comentario=f"Cliente aceptó condiciones del crédito. Destino email: {email_destino or 'N/D'}",
         usuario=usuario,
         metadata_json={
@@ -1041,3 +1137,67 @@ def marcar_email_aceptacion_enviado(
     cotizacion.email_aceptacion_destino = (destino or "").strip() or cotizacion.email_aceptacion_destino
     db.add(cotizacion)
     db.commit()
+
+
+def marcar_acuerdo_firmado(
+    db: Session,
+    *,
+    cotizacion: LeasingFinancieroCotizacion,
+    usuario: str = "sistema",
+    comentario: str | None = None,
+) -> LeasingFinancieroCotizacion:
+    return cambiar_estado_cotizacion(
+        db,
+        cotizacion=cotizacion,
+        estado_nuevo="ACUERDO_FIRMADO",
+        comentario=comentario or "Acuerdo de leasing firmado. El activo queda pendiente de compra.",
+        usuario=usuario,
+    )
+
+
+def habilitar_compra_activo(
+    db: Session,
+    *,
+    cotizacion: LeasingFinancieroCotizacion,
+    usuario: str = "sistema",
+) -> LeasingFinancieroCotizacion:
+    exigir_acuerdo_para_compra(cotizacion.estado)
+    if cotizacion.activo:
+        cotizacion.activo.estado = "PENDIENTE_COMPRA"
+    destino = "ACTIVO_PENDIENTE_COMPRA"
+    if str(cotizacion.estado or "").upper() == destino:
+        db.add(cotizacion)
+        db.commit()
+        db.refresh(cotizacion)
+        return get_cotizacion(db, int(cotizacion.id)) or cotizacion
+    return cambiar_estado_cotizacion(
+        db,
+        cotizacion=cotizacion,
+        estado_nuevo=destino,
+        comentario="Activo habilitado para compra/adquisición posterior al acuerdo firmado.",
+        usuario=usuario,
+    )
+
+
+def marcar_activo_adquirido(
+    db: Session,
+    *,
+    cotizacion: LeasingFinancieroCotizacion,
+    usuario: str = "sistema",
+) -> LeasingFinancieroCotizacion:
+    exigir_acuerdo_para_compra(cotizacion.estado)
+    if cotizacion.activo:
+        cotizacion.activo.estado = "ADQUIRIDO"
+    destino = "ACTIVO_ADQUIRIDO"
+    if str(cotizacion.estado or "").upper() in {destino, "ACTIVADA", "VIGENTE"}:
+        db.add(cotizacion)
+        db.commit()
+        db.refresh(cotizacion)
+        return get_cotizacion(db, int(cotizacion.id)) or cotizacion
+    return cambiar_estado_cotizacion(
+        db,
+        cotizacion=cotizacion,
+        estado_nuevo=destino,
+        comentario="Activo adquirido / comprado al proveedor.",
+        usuario=usuario,
+    )

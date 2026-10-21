@@ -35,12 +35,13 @@ Define las cuentas oficiales del ERP con una estructura ordenada para soportar a
 {% endblock %}
 
 {% block content %}
+<div data-live-list>
 <div class="card mb-4">
   <div class="card-body">
-    <form method="get" class="row g-3">
+    <form method="get" class="row g-3" data-live-form action="{{ request.url_for('contabilidad_plan_cuentas') }}">
       <div class="col-md-4">
         <label class="form-label">Buscar</label>
-        <input type="text" name="q" class="form-control" value="{{ q or '' }}" placeholder="Código, nombre o clasificación">
+        <input type="search" name="q" class="form-control" value="{{ q or '' }}" placeholder="Código, nombre o clasificación" autocomplete="off">
       </div>
       <div class="col-md-2">
         <label class="form-label">Tipo</label>
@@ -67,15 +68,19 @@ Define las cuentas oficiales del ERP con una estructura ordenada para soportar a
           <option value="false" {% if solo_movimiento == false or solo_movimiento == 'false' %}selected{% endif %}>No</option>
         </select>
       </div>
-      <div class="col-md-2 d-flex align-items-end">
-        <button class="btn btn-outline-primary w-100">
+      <div class="col-md-2 d-flex align-items-end gap-2">
+        <button class="btn btn-outline-primary w-100" type="submit">
           <i class="bi bi-funnel"></i> Filtrar
         </button>
+        <a href="{{ request.url_for('contabilidad_plan_cuentas') }}" class="btn btn-light" data-live-reset title="Limpiar">
+          <i class="bi bi-x-circle"></i>
+        </a>
       </div>
     </form>
   </div>
 </div>
 
+<div data-live-results>
 <div class="card">
   <div class="card-header bg-white border-0 pb-0 pt-3">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -88,7 +93,7 @@ Define las cuentas oficiales del ERP con una estructura ordenada para soportar a
   </div>
 
   <div class="card-body pt-3">
-    <div class="table-responsive">
+    <div class="evalua-table-wrap">
       <table class="table table-hover align-middle mb-0">
         <thead class="table-light">
           <tr>
@@ -106,7 +111,7 @@ Define las cuentas oficiales del ERP con una estructura ordenada para soportar a
         </thead>
         <tbody>
           {% for c in cuentas %}
-          <tr>
+          <tr data-row-href="{{ request.url_for('contabilidad_plan_cuenta_editar', cuenta_id=c.id) }}">
             <td class="fw-semibold">{{ c.codigo }}</td>
             <td>
               <div class="fw-medium">{{ c.nombre }}</div>
@@ -159,5 +164,7 @@ Define las cuentas oficiales del ERP con una estructura ordenada para soportar a
       </table>
     </div>
   </div>
+</div>
+</div>
 </div>
 {% endblock %}

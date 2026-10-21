@@ -2,33 +2,356 @@
 {% block title %}Políticas globales LOP{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="/static/css/leasing_operativo.css" />
-<div class="container py-4 lo-page">
-  <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="container-fluid py-4 lo-page lo-politicas">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
     <div>
       <a href="{{ request.url_for('leasing_operativo_hub') }}" class="small text-decoration-none">← Hub</a>
       <h1 class="h5 fw-semibold mt-1 mb-0">Políticas globales · Leasing operativo</h1>
-      <p class="text-secondary small mb-0">Escenarios, motor de decisión, costo de fondo, riesgo, mora, terminación y remarketing.</p>
+      <p class="text-secondary small mb-0">
+        Lea el impacto, compare con fábrica y decida: <strong>mantener</strong>, <strong>modificar</strong>,
+        <strong>restaurar</strong> o <strong>desactivar</strong>. Sin editar JSON a ciegas.
+      </p>
     </div>
-    <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_parametros') }}">Parámetros por tipo</a>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-sm btn-outline-dark" href="{{ request.url_for('leasing_operativo_tipos_activo') }}">Tipos de activo</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_parametros') }}">Parámetros comerciales</a>
+    </div>
   </div>
 
-  {% for p in politicas %}
-  <form method="post" action="{{ request.url_for('leasing_operativo_politicas_save', clave=p.clave) }}" class="card border-0 shadow-sm mb-4">
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-      <span class="fw-semibold font-monospace">{{ p.clave }}</span>
-      {% if p.descripcion %}<span class="small text-muted">{{ p.descripcion }}</span>{% endif %}
+  {% if msg %}
+  <div class="alert alert-{{ sev or 'info' }} py-2 small">{{ msg }}</div>
+  {% endif %}
+
+  {# --- Resumen ejecutivo para decidir de un vistazo --- #}
+  <div class="lo-pol-summary mb-3">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <span class="lo-market-badge"><i class="bi bi-eye"></i> Lectura rápida</span>
+      <span class="small text-muted">Valores activos que hoy usa el motor · clic en un KPI salta a su política</span>
     </div>
-    <div class="card-body">
-      <label class="form-label small">valor_json</label>
-      <textarea name="valor_json" class="form-control font-monospace small" rows="10">{{ p.valor_json | tojson(indent=2) }}</textarea>
-      <input type="hidden" name="descripcion" value="{{ p.descripcion or '' }}" />
+    <div class="lo-pol-kpi-grid">
+      {% for k in summary %}
+      <a class="lo-pol-kpi" href="#pol-{{ k.clave }}">
+        <span class="lo-pol-kpi-label">{{ k.label }}</span>
+        <strong class="lo-pol-kpi-value">{{ k.value }}</strong>
+        <span class="lo-pol-kpi-hint">{{ k.hint }}</span>
+      </a>
+      {% else %}
+      <div class="text-muted small">Sin políticas activas para resumir.</div>
+      {% endfor %}
     </div>
-    <div class="card-footer bg-white text-end">
-      <button type="submit" class="btn btn-primary btn-sm">Guardar {{ p.clave }}</button>
-    </div>
-  </form>
-  {% else %}
+  </div>
+
+  {# --- Índice de navegación --- #}
+  <nav class="lo-pol-nav mb-3" aria-label="Políticas">
+    {% for c in cards %}
+    <a class="lo-pol-nav-item {% if not c.activo and c.existe %}is-off{% endif %}" href="#pol-{{ c.clave }}">
+      <i class="bi {{ c.icono }}"></i>
+      <span>{{ c.titulo }}</span>
+      {% if not c.existe %}
+      <em class="lo-pol-nav-tag">sin DB</em>
+      {% elif not c.activo %}
+      <em class="lo-pol-nav-tag">off</em>
+      {% elif not c.alineado_default %}
+      <em class="lo-pol-nav-tag lo-pol-nav-tag--mod">mod</em>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </nav>
+
+  {% if not cards %}
   <div class="alert alert-warning">No hay políticas cargadas. Ejecute parche SQL 102/109.</div>
+  {% endif %}
+
+  {% for c in cards %}
+  <section class="lo-pol-card {% if not c.activo and c.existe %}is-inactive{% endif %}" id="pol-{{ c.clave }}" data-clave="{{ c.clave }}">
+    <header class="lo-pol-card-head">
+      <div class="d-flex flex-wrap align-items-start gap-2">
+        <div class="lo-pol-icon"><i class="bi {{ c.icono }}"></i></div>
+        <div class="flex-grow-1">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h2 class="h6 fw-semibold mb-0">{{ c.titulo }}</h2>
+            <span class="badge text-bg-{{ c.impacto_tone }}-subtle border lo-pol-impacto">{{ c.impacto }}</span>
+            <span class="badge text-bg-light border">{{ c.grupo }}</span>
+            {% if not c.existe %}
+            <span class="badge text-bg-warning">Sin registro · se creará al guardar</span>
+            {% elif not c.activo %}
+            <span class="badge text-bg-secondary">Desactivada</span>
+            {% elif c.alineado_default %}
+            <span class="badge text-bg-success-subtle border">Igual a fábrica</span>
+            {% else %}
+            <span class="badge text-bg-warning-subtle border">Modificada vs fábrica</span>
+            {% endif %}
+          </div>
+          <p class="small text-muted mb-0 mt-1">{{ c.resumen }}</p>
+          <div class="small text-muted font-monospace mt-1">{{ c.clave }}{% if c.updated_at %} · actualizada {{ c.updated_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}</div>
+        </div>
+      </div>
+    </header>
+
+    <div class="lo-decision-hint mb-3"><strong>Para decidir:</strong> {{ c.decision_hint }}</div>
+
+    <form
+      method="post"
+      action="{{ request.url_for('leasing_operativo_politicas_save', clave=c.clave) }}"
+      class="lo-pol-form"
+      data-clave="{{ c.clave }}"
+      data-dirty="0"
+      id="form-{{ c.clave }}"
+    >
+      <input type="hidden" name="descripcion" value="{{ c.descripcion or '' }}" />
+      <input type="hidden" name="edit_mode" value="fields" class="lo-edit-mode" />
+
+      {% if c.layout == 'escenarios' %}
+      <div class="table-responsive lo-pol-fields">
+        <table class="table table-sm align-middle mb-0 lo-pol-esc-table">
+          <thead>
+            <tr>
+              <th>Escenario</th>
+              {% for mk in c.escenario_mult_keys %}
+              <th class="text-end">{{ c.escenario_mult_labels.get(mk, mk) }}</th>
+              {% endfor %}
+              <th class="text-muted small">Lectura</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for esc in c.escenario_keys %}
+            {% set row = c.valor.get(esc) or {} %}
+            {% set base = (c.defaults.get(esc) or {}) %}
+            <tr>
+              <td>
+                <span class="fw-semibold">{{ esc }}</span>
+                {% if esc == 'BASE' %}<div class="small text-muted">Referencia (= 1,0)</div>{% endif %}
+                {% if esc == 'ESTRES' %}<div class="small text-muted">Stress-test comité</div>{% endif %}
+              </td>
+              {% for mk in c.escenario_mult_keys %}
+              <td class="text-end">
+                <div class="lo-pol-field lo-pol-field--num">
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="esc_{{ esc }}_{{ mk }}"
+                    class="form-control form-control-sm text-end font-monospace"
+                    value="{{ row.get(mk, base.get(mk, 1)) }}"
+                  />
+                  {% if base.get(mk) is not none and row.get(mk) is not none and (row.get(mk)|float) != (base.get(mk)|float) %}
+                  <button type="button" class="lo-sug-chip lo-adopt-default" data-target-name="esc_{{ esc }}_{{ mk }}" data-value="{{ base.get(mk) }}" title="Cargar valor de fábrica">Fábrica {{ base.get(mk) }}</button>
+                  {% elif base.get(mk) is not none %}
+                  <span class="lo-sug-chip lo-sug-chip--ok">= fábrica</span>
+                  {% endif %}
+                </div>
+              </td>
+              {% endfor %}
+              <td class="small text-muted">
+                {% if esc == 'CONSERVADOR' %}Más prudente{% elif esc == 'OPTIMISTA' %}Más agresivo{% elif esc == 'ESTRES' %}Peor caso{% else %}Neutro{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% elif c.layout == 'fields' %}
+      <div class="lo-pol-fields row g-3">
+        {% for f in c.fields %}
+        <div class="col-md-6 col-xl-4">
+          <label class="form-label small fw-semibold mb-1" for="{{ c.clave }}_{{ f.key }}">{{ f.label }}</label>
+          <div class="input-group input-group-sm">
+            {% if f.tipo == 'select' %}
+            <select class="form-select" name="{{ f.key }}" id="{{ c.clave }}_{{ f.key }}">
+              {% for opt in f.opciones %}
+              <option value="{{ opt.value }}" {% if (c.valor.get(f.key) or '')|string == opt.value %}selected{% endif %}>{{ opt.label }}</option>
+              {% endfor %}
+            </select>
+            {% elif f.tipo == 'bool' %}
+            <select class="form-select" name="{{ f.key }}" id="{{ c.clave }}_{{ f.key }}">
+              <option value="1" {% if c.valor.get(f.key) %}selected{% endif %}>Sí</option>
+              <option value="0" {% if not c.valor.get(f.key) %}selected{% endif %}>No</option>
+            </select>
+            {% else %}
+            <input
+              type="number"
+              step="{{ f.step or 'any' }}"
+              class="form-control font-monospace"
+              name="{{ f.key }}"
+              id="{{ c.clave }}_{{ f.key }}"
+              value="{{ c.valor.get(f.key, '') }}"
+            />
+            {% endif %}
+            {% if f.unidad %}
+            <span class="input-group-text">{{ f.unidad }}</span>
+            {% endif %}
+          </div>
+          {% if f.ayuda %}
+          <div class="form-text">{{ f.ayuda }}</div>
+          {% endif %}
+          {% set defv = c.defaults.get(f.key) %}
+          {% set curv = c.valor.get(f.key) %}
+          {% if defv is not none %}
+            {% if f.tipo == 'bool' %}
+              {% if curv != defv %}
+              <button type="button" class="lo-sug-chip lo-adopt-default" data-target-name="{{ f.key }}" data-value="{% if defv %}1{% else %}0{% endif %}" title="Cargar valor de fábrica">Fábrica {% if defv %}Sí{% else %}No{% endif %}</button>
+              {% else %}
+              <span class="lo-sug-chip lo-sug-chip--ok">= fábrica</span>
+              {% endif %}
+            {% elif (curv|string) != (defv|string) %}
+              <button type="button" class="lo-sug-chip lo-adopt-default" data-target-name="{{ f.key }}" data-value="{{ defv }}" title="Cargar valor de fábrica">Fábrica {{ defv }}</button>
+              {% else %}
+              <span class="lo-sug-chip lo-sug-chip--ok">= fábrica</span>
+            {% endif %}
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="alert alert-light border small mb-0">Esta clave no tiene formulario tipado. Use JSON avanzado.</div>
+      {% endif %}
+
+      <details class="lo-pol-advanced mt-3">
+        <summary class="small">JSON avanzado <span class="text-muted">(solo si sabe cómo lo consume el motor)</span></summary>
+        <div class="mt-2">
+          <textarea name="valor_json" class="form-control font-monospace small lo-json-area" rows="8">{{ c.valor | tojson(indent=2) }}</textarea>
+          <div class="form-check mt-2">
+            <input class="form-check-input lo-use-json" type="checkbox" value="1" id="usejson-{{ c.clave }}">
+            <label class="form-check-label small" for="usejson-{{ c.clave }}">Guardar desde este JSON (ignora los campos de arriba)</label>
+          </div>
+        </div>
+      </details>
+
+      <footer class="lo-pol-actions">
+        <div class="lo-pol-actions-left">
+          <button type="button" class="btn btn-sm btn-outline-secondary lo-pol-cancel" hidden>Descartar cambios</button>
+          <span class="small text-warning lo-pol-dirty-msg" hidden>Hay cambios sin guardar</span>
+        </div>
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+          {% if c.existe and c.defaults %}
+          <button
+            form="reset-{{ c.clave }}"
+            type="submit"
+            class="btn btn-sm btn-outline-dark lo-extra"
+            onclick="return confirm('¿Restaurar «{{ c.titulo }}» a valores de fábrica? Se perderán los ajustes actuales.');"
+          >Restaurar fábrica</button>
+          {% endif %}
+          {% if c.existe and c.activo %}
+          <button
+            form="toggle-{{ c.clave }}"
+            type="submit"
+            class="btn btn-sm btn-outline-warning lo-extra"
+            onclick="return confirm('¿Desactivar «{{ c.titulo }}»? El motor usará defaults internos hasta que la reactive.');"
+          >Desactivar</button>
+          {% elif c.existe and not c.activo %}
+          <button form="toggle-{{ c.clave }}" type="submit" class="btn btn-sm btn-outline-success lo-extra">Reactivar</button>
+          {% endif %}
+          <button type="submit" class="btn btn-sm btn-primary lo-pol-save">Guardar {{ c.titulo }}</button>
+        </div>
+      </footer>
+    </form>
+
+    {% if c.existe and c.defaults %}
+    <form id="reset-{{ c.clave }}" method="post" action="{{ request.url_for('leasing_operativo_politicas_reset', clave=c.clave) }}" class="d-none"></form>
+    {% endif %}
+    {% if c.existe %}
+    <form id="toggle-{{ c.clave }}" method="post" action="{{ request.url_for('leasing_operativo_politicas_toggle', clave=c.clave) }}" class="d-none">
+      <input type="hidden" name="activo" value="{% if c.activo %}0{% else %}1{% endif %}" />
+    </form>
+    {% endif %}
+  </section>
   {% endfor %}
+
+  <p class="small text-muted mt-3 mb-0">
+    Desactivar no borra el registro: deja de aplicarse al motor. Restaurar fábrica vuelve a los valores del seed SQL (102/109).
+    Los cambios afectan simulaciones y gestión de cartera nuevas; no reescriben operaciones ya cerradas.
+  </p>
 </div>
+
+<script>
+(function () {
+  "use strict";
+
+  function snapshot(form) {
+    var data = {};
+    form.querySelectorAll("input, select, textarea").forEach(function (el) {
+      if (!el.name || el.type === "submit" || el.type === "button" || el.type === "checkbox" && el.classList.contains("lo-use-json")) return;
+      if (el.name === "edit_mode") return;
+      data[el.name] = el.value;
+    });
+    return data;
+  }
+
+  function isDirty(form) {
+    var orig = form._orig || {};
+    var now = snapshot(form);
+    return Object.keys(now).some(function (k) {
+      return String(now[k] ?? "") !== String(orig[k] ?? "");
+    });
+  }
+
+  function syncDirty(form) {
+    var dirty = isDirty(form);
+    form.dataset.dirty = dirty ? "1" : "0";
+    var card = form.closest(".lo-pol-card");
+    if (card) card.classList.toggle("is-dirty", dirty);
+    var cancel = form.querySelector(".lo-pol-cancel");
+    var msg = form.querySelector(".lo-pol-dirty-msg");
+    var extras = form.querySelectorAll(".lo-extra");
+    if (cancel) cancel.hidden = !dirty;
+    if (msg) msg.hidden = !dirty;
+    extras.forEach(function (el) { el.hidden = dirty; });
+  }
+
+  document.querySelectorAll(".lo-pol-form").forEach(function (form) {
+    form._orig = snapshot(form);
+
+    form.addEventListener("input", function () { syncDirty(form); });
+    form.addEventListener("change", function () { syncDirty(form); });
+
+    form.querySelectorAll(".lo-adopt-default").forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        var name = btn.getAttribute("data-target-name");
+        var value = btn.getAttribute("data-value");
+        var el = form.querySelector('[name="' + name + '"]');
+        if (!el) return;
+        el.value = value;
+        syncDirty(form);
+        btn.classList.add("lo-sug-chip--adopted");
+      });
+    });
+
+    var cancel = form.querySelector(".lo-pol-cancel");
+    if (cancel) {
+      cancel.addEventListener("click", function () {
+        Object.keys(form._orig || {}).forEach(function (name) {
+          var el = form.querySelector('[name="' + name + '"]');
+          if (el) el.value = form._orig[name];
+        });
+        form.querySelectorAll(".lo-sug-chip--adopted").forEach(function (el) {
+          el.classList.remove("lo-sug-chip--adopted");
+        });
+        var useJson = form.querySelector(".lo-use-json");
+        if (useJson) useJson.checked = false;
+        var mode = form.querySelector(".lo-edit-mode");
+        if (mode) mode.value = "fields";
+        syncDirty(form);
+      });
+    }
+
+    form.addEventListener("submit", function () {
+      var useJson = form.querySelector(".lo-use-json");
+      var mode = form.querySelector(".lo-edit-mode");
+      if (mode) mode.value = useJson && useJson.checked ? "json" : "fields";
+    });
+  });
+
+  document.querySelectorAll(".lo-pol-kpi").forEach(function (a) {
+    a.addEventListener("click", function (ev) {
+      var href = a.getAttribute("href") || "";
+      var target = href ? document.querySelector(href) : null;
+      if (!target) return;
+      ev.preventDefault();
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      target.classList.add("lo-pol-flash");
+      setTimeout(function () { target.classList.remove("lo-pol-flash"); }, 1200);
+    });
+  });
+})();
+</script>
 {% endblock %}

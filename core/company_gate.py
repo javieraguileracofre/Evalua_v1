@@ -105,6 +105,12 @@ def _bind(company: Company, membership, user: IdentityUser, choices: list[dict])
             email=company.email or "",
         )
     )
+    try:
+        from core.request_context import set_request_context
+
+        set_request_context(company_id=int(company.id))
+    except Exception:
+        pass
     roles = [str(item) for item in (membership.role_codes or [])]
     modules = [str(item) for item in (membership.module_keys or [])]
     return {
@@ -141,7 +147,9 @@ async def dispatch_company_mode(request: Request, call_next) -> Response:
         loc = "/login"
         if path != "/":
             loc = f"/login?next={quote(path, safe='')}"
-        return RedirectResponse(url=loc, status_code=302)
+        from core.auth_paths import respuesta_sin_sesion
+
+        return respuesta_sin_sesion(path, loc)
 
     identity = get_identity_sessionmaker()()
     try:
@@ -152,7 +160,9 @@ async def dispatch_company_mode(request: Request, call_next) -> Response:
         if user is None or not user.activo:
             if sess is not None:
                 sess.pop("auth", None)
-            return RedirectResponse(url="/login?msg=Sesion+expirada&sev=warning", status_code=302)
+            from core.auth_paths import respuesta_sin_sesion
+
+            return respuesta_sin_sesion(path, "/login?msg=Sesion+expirada&sev=warning")
         try:
             cookie_sv = int(auth.get("sv") or 0)
         except (TypeError, ValueError):
@@ -160,7 +170,9 @@ async def dispatch_company_mode(request: Request, call_next) -> Response:
         if cookie_sv != int(user.session_version or 1):
             if sess is not None:
                 sess.pop("auth", None)
-            return RedirectResponse(url="/login?msg=Sesion+expirada&sev=warning", status_code=302)
+            from core.auth_paths import respuesta_sin_sesion
+
+            return respuesta_sin_sesion(path, "/login?msg=Sesion+expirada&sev=warning")
 
         choices = _choices(identity, int(user.id))
         if path in _OPEN_WITHOUT_COMPANY or path.startswith("/plataforma"):

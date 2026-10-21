@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, File, Form, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
@@ -44,8 +44,23 @@ def _guard(request: Request) -> RedirectResponse | None:
     return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
 
-def _identity_ready() -> bool:
-    return bool((settings.identity_database_url or "").strip())
+def _tenancy_block_reason() -> str | None:
+    missing: list[str] = []
+    if not settings.database_per_company:
+        missing.append("TENANCY_MODE=database_per_company")
+    if not (settings.identity_database_url or "").strip():
+        missing.append("IDENTITY_DATABASE_URL")
+    if not (settings.admin_postgres_url or "").strip():
+        missing.append("ADMIN_POSTGRES_URL")
+    if not (settings.db_credentials_key or "").strip():
+        missing.append("DB_CREDENTIALS_KEY")
+    if not missing:
+        return None
+    return (
+        "Esta instalación todavía no puede crear una base por cliente. Falta "
+        + ", ".join(missing)
+        + ". Prepare el entorno con python tools/enable_database_per_company.py y vuelva a iniciar sesión."
+    )
 
 
 def _render(request: Request, template: str, context: dict):
@@ -101,24 +116,19 @@ def _public_company(company: Company, users: int, *, probe_runtime: bool = False
     }
 
 
-_IDENTITY_MISSING = (
-    "La pantalla ya está disponible, pero esta instalación sigue en la base actual. "
-    "Para crear compañías defina TENANCY_MODE=database_per_company, IDENTITY_DATABASE_URL, "
-    "ADMIN_POSTGRES_URL y DB_CREDENTIALS_KEY, y vuelva a iniciar sesión."
-)
-
-
 @router.get("/empresas", response_class=HTMLResponse, name="plataforma_empresas")
 def empresas_lista(request: Request):
     if (redir := _guard(request)) is not None:
         return redir
-    if not _identity_ready():
+    blocked = _tenancy_block_reason()
+    if blocked:
         return _render(
             request,
             "plataforma/empresas_lista.html",
             {
                 "empresas": [],
-                "error": request.session.pop("empresa_error", None) or _IDENTITY_MISSING,
+                "puede_crear": False,
+                "error": request.session.pop("empresa_error", None) or blocked,
             },
         )
     db = get_identity_sessionmaker()()
@@ -144,14 +154,16 @@ def empresa_nueva(request: Request):
     if (redir := _guard(request)) is not None:
         return redir
     error = request.session.pop("empresa_error", None)
-    if not _identity_ready() and not error:
-        error = _IDENTITY_MISSING
+    blocked = _tenancy_block_reason()
+    if blocked and not error:
+        error = blocked
     return _render(
         request,
         "plataforma/empresa_form.html",
         {
             "modo": "nueva",
             "empresa": {},
+            "puede_crear": blocked is None,
             "error": error,
         },
     )
@@ -180,8 +192,9 @@ def empresa_crear(
 ):
     if (redir := _guard(request)) is not None:
         return redir
-    if not _identity_ready():
-        request.session["empresa_error"] = _IDENTITY_MISSING
+    blocked = _tenancy_block_reason()
+    if blocked:
+        request.session["empresa_error"] = blocked
         return RedirectResponse(url="/plataforma/empresas/nueva", status_code=status.HTTP_303_SEE_OTHER)
     draft = CompanyDraft(
         code=code,
@@ -238,6 +251,10 @@ def registrar_base(
 ):
     if (redir := _guard(request)) is not None:
         return redir
+    blocked = _tenancy_block_reason()
+    if blocked:
+        request.session["empresa_error"] = blocked
+        return RedirectResponse(url="/plataforma/empresas/nueva", status_code=status.HTTP_303_SEE_OTHER)
     draft = CompanyDraft(
         code=code,
         legal_name=legal_name,

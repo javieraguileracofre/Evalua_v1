@@ -19,11 +19,19 @@ from tools import upgrade_company_schema as cli
 
 
 def test_upgrade_database_url_aplica_alembic_y_sella() -> None:
-    engine = MagicMock()
+    lock_engine = MagicMock()
+    lock_engine.dialect.name = "postgresql"
+    lock_conn = MagicMock()
+    lock_conn.execute.return_value.scalar.return_value = True
+    lock_engine.connect.return_value = lock_conn
+    stamp_engine = MagicMock()
     with (
         patch("services.platform.schema_upgrade._alembic_upgrade") as up,
         patch("services.platform.schema_upgrade._alembic_stamp_head") as stamp_al,
-        patch("services.platform.schema_upgrade.create_engine", return_value=engine),
+        patch(
+            "services.platform.schema_upgrade.create_engine",
+            side_effect=[lock_engine, stamp_engine],
+        ),
         patch(
             "services.platform.schema_upgrade.stamp_schema_revision",
             return_value=ERP_SCHEMA_REVISION,
@@ -38,7 +46,9 @@ def test_upgrade_database_url_aplica_alembic_y_sella() -> None:
     up.assert_called_once()
     stamp_md.assert_called_once()
     stamp_al.assert_called_once()
-    engine.dispose.assert_called_once()
+    stamp_engine.dispose.assert_called_once()
+    lock_engine.dispose.assert_called_once()
+    lock_conn.close.assert_called_once()
 
 
 def test_inspect_company_schema_outdated_without_runtime() -> None:

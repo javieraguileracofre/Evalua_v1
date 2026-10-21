@@ -60,6 +60,8 @@ def usuario_puede_ver_modulo_nav(auth: dict[str, Any] | None, module_key: str) -
     visible = modulos_visibles_en_sesion(auth)
     if key in visible:
         return True
+    if key == "TESORERIA" and "FINANZAS" in visible:
+        return True
     # Sección visible si solo hay hijos asignados (usuarios legacy con CREDITO_RIESGO / COBRANZA).
     if key == "CREDITO_COBRANZAS":
         return bool(visible & frozenset(NAV_CREDITO_COBRANZAS_SUBMODULE_KEYS))

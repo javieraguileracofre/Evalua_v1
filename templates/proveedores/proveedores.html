@@ -68,17 +68,20 @@
   </div>
 </div>
 
+<div data-live-list>
 <div class="card shadow-sm border-0 mb-4">
   <div class="card-body">
-    <form method="get" class="row g-3 align-items-end">
+    <form method="get" class="row g-3 align-items-end" data-live-form action="{{ request.url_for('proveedor_lista') }}">
       <div class="col-lg-8">
-        <label class="form-label">Buscar</label>
+        <label class="form-label" for="qProveedores">Buscar</label>
         <input
-          type="text"
+          id="qProveedores"
+          type="search"
           name="q"
           class="form-control"
           placeholder="RUT, razón social, nombre fantasía, email"
           value="{{ filtros.q }}"
+          autocomplete="off"
         >
       </div>
       <div class="col-lg-2">
@@ -87,18 +90,25 @@
           <label class="form-check-label" for="solo_activos">Solo activos</label>
         </div>
       </div>
-      <div class="col-lg-2 d-grid">
-        <button class="btn btn-outline-primary">
+      <div class="col-lg-2 d-flex gap-2">
+        <button class="btn btn-outline-primary w-100" type="submit">
           <i class="bi bi-search me-1"></i> Filtrar
         </button>
+        <a href="{{ request.url_for('proveedor_lista') }}" class="btn btn-light" data-live-reset title="Limpiar">
+          <i class="bi bi-x-circle"></i>
+        </a>
       </div>
     </form>
   </div>
 </div>
 
+<div data-live-results>
 <div class="card shadow-sm border-0">
   <div class="card-body">
-    <div class="table-responsive">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <span class="small text-muted">{{ proveedores|length }} proveedor{{ '' if proveedores|length == 1 else 'es' }} en esta consulta</span>
+    </div>
+    <div class="evalua-table-wrap">
       <table class="table table-hover align-middle">
         <thead class="table-light">
           <tr>
@@ -115,7 +125,7 @@
         </thead>
         <tbody>
           {% for p in proveedores %}
-          <tr>
+          <tr data-row-href="{{ request.url_for('proveedor_editar', proveedor_id=p.id) }}">
             <td>
               <div class="fw-semibold">{{ p.razon_social }}</div>
               {% if p.nombre_fantasia %}
@@ -177,6 +187,8 @@
       </table>
     </div>
   </div>
+</div>
+</div>
 </div>
 
 {% endblock content %}

@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
 
 from core.paths import PROJECT_ROOT
@@ -42,22 +42,23 @@ class UpgradeResult:
     detail: str = ""
 
 
-def _alembic_upgrade(url: str) -> None:
-    from alembic import command
-    from alembic.config import Config
+def _alembic_config(url: str):
+    from services.platform.alembic_support import load_alembic
 
-    cfg = Config(str(PROJECT_ROOT / "alembic.ini"))
+    command, config_cls = load_alembic()
+    cfg = config_cls(str(PROJECT_ROOT / "alembic.ini"))
     # ConfigParser interpreta '%'; escapar sin loguear la URL.
     cfg.set_main_option("sqlalchemy.url", (url or "").replace("%", "%%"))
+    return command, cfg
+
+
+def _alembic_upgrade(url: str) -> None:
+    command, cfg = _alembic_config(url)
     command.upgrade(cfg, "head")
 
 
 def _alembic_stamp_head(url: str) -> None:
-    from alembic import command
-    from alembic.config import Config
-
-    cfg = Config(str(PROJECT_ROOT / "alembic.ini"))
-    cfg.set_main_option("sqlalchemy.url", (url or "").replace("%", "%%"))
+    command, cfg = _alembic_config(url)
     command.stamp(cfg, "head")
 
 
@@ -65,31 +66,59 @@ def upgrade_database_url(url: str, *, stamp_alembic: bool = True) -> str:
     """Aplica Alembic head, sella app_metadata y opcionalmente alembic_version."""
     if not (url or "").strip():
         raise ProvisioningError("No hay URL de base para migrar.")
-    try:
-        _alembic_upgrade(url)
-    except Exception as exc:
-        logger.error("alembic upgrade failed error=%s", type(exc).__name__)
-        raise ProvisioningError(MSG_PROVISION_REVIEW) from exc
 
-    engine = create_engine(url, future=True, pool_pre_ping=True)
+    lock_engine = create_engine(url, future=True, pool_pre_ping=True)
+    lock_conn = None
     try:
-        stamp_schema_revision(engine, ERP_SCHEMA_REVISION)
-        runtime = runtime_schema_version(engine)
-        if not schema_is_current(runtime):
-            raise ProvisioningError(
-                f"Tras migrar, app_metadata quedó en '{runtime or '—'}' "
-                f"(esperado {ERP_SCHEMA_REVISION})."
-            )
-    finally:
-        engine.dispose()
+        if lock_engine.dialect.name == "postgresql":
+            lock_conn = lock_engine.connect()
+            locked = lock_conn.execute(
+                text("SELECT pg_try_advisory_lock(hashtext('evalua_schema_upgrade'))")
+            ).scalar()
+            if not locked:
+                raise ProvisioningError(
+                    "Hay otra migración en curso sobre esta base. Reintente más tarde."
+                )
 
-    if stamp_alembic:
         try:
-            _alembic_stamp_head(url)
+            _alembic_upgrade(url)
         except Exception as exc:
-            # upgrade ya aplicó revisiones; stamp es redundante si alembic_version quedó bien.
-            logger.warning("alembic stamp head: %s", type(exc).__name__)
-    return ERP_SCHEMA_REVISION
+            logger.error("alembic upgrade failed error=%s", type(exc).__name__)
+            raise ProvisioningError(MSG_PROVISION_REVIEW) from exc
+
+        stamp_engine = create_engine(url, future=True, pool_pre_ping=True)
+        try:
+            stamp_schema_revision(stamp_engine, ERP_SCHEMA_REVISION)
+            runtime = runtime_schema_version(stamp_engine)
+            if not schema_is_current(runtime):
+                raise ProvisioningError(
+                    f"Tras migrar, app_metadata quedó en '{runtime or '—'}' "
+                    f"(esperado {ERP_SCHEMA_REVISION})."
+                )
+        finally:
+            stamp_engine.dispose()
+
+        if stamp_alembic:
+            try:
+                _alembic_stamp_head(url)
+            except Exception as exc:
+                logger.warning("alembic stamp head: %s", type(exc).__name__)
+        return ERP_SCHEMA_REVISION
+    except ProvisioningError:
+        raise
+    except Exception as exc:
+        logger.error("schema upgrade failed error=%s", type(exc).__name__)
+        raise ProvisioningError(MSG_PROVISION_REVIEW) from exc
+    finally:
+        if lock_conn is not None:
+            try:
+                lock_conn.execute(
+                    text("SELECT pg_advisory_unlock(hashtext('evalua_schema_upgrade'))")
+                )
+                lock_conn.close()
+            except Exception:
+                logger.warning("No se pudo liberar advisory lock de migración")
+        lock_engine.dispose()
 
 
 def company_database_url(record: CompanyDatabase) -> str:

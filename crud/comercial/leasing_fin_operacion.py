@@ -28,6 +28,7 @@ from services.leasing_financiero_compra import (
 )
 from services.leasing_financiero_workflow import (
     CHECKLIST_DEFINICION,
+    exigir_acuerdo_para_compra,
     marcar_checklist_item,
 )
 
@@ -160,6 +161,18 @@ def upsert_activo(
         "valor_total": total or neto,
         "estado": data.get("estado") or "COTIZADO",
     }
+    if str(payload["estado"]).upper() in {"ADQUIRIDO", "COMPRADO", "FACTURADO", "ACTIVADO"}:
+        # Nunca marcar el activo como comprado al cotizar.
+        if str(getattr(cotizacion, "estado", "") or "").upper() not in {
+            "ACUERDO_FIRMADO",
+            "ACTIVO_PENDIENTE_COMPRA",
+            "ACTIVO_ADQUIRIDO",
+            "EN_FORMALIZACION",
+            "DOCUMENTACION_COMPLETA",
+            "ACTIVADA",
+            "VIGENTE",
+        }:
+            payload["estado"] = "COTIZADO"
     if activo:
         for k, v in payload.items():
             if v is not None:
@@ -191,9 +204,12 @@ def persistir_amortizacion_oficial(
             db.delete(line)
     iva_tasa = Decimal(str(cotizacion.iva_tasa or 0)) if cotizacion.iva_aplica else Decimal("0")
     for row in tabla:
-        iva_cuota = None
-        if iva_tasa > 0 and not row.es_gracia:
-            iva_cuota = (row.cuota * iva_tasa).quantize(Decimal("0.01"))
+        iva_cuota = getattr(row, "iva", None)
+        if iva_cuota is None:
+            iva_cuota = None
+            if iva_tasa > 0 and not row.es_gracia:
+                tasa_iva = iva_tasa / Decimal("100") if iva_tasa > Decimal("1") else iva_tasa
+                iva_cuota = (row.cuota * tasa_iva).quantize(Decimal("0.01"))
         db.add(
             LeasingFinancieroAmortizacionLinea(
                 cotizacion_id=int(cotizacion.id),
@@ -226,6 +242,7 @@ def registrar_orden_compra(
     data: dict[str, Any],
     usuario: str,
 ) -> LeasingFinancieroOrdenCompra:
+    exigir_acuerdo_para_compra(cotizacion.estado)
     proveedor_id = resolver_proveedor_id(
         db,
         proveedor_id=data.get("proveedor_id") or cotizacion.proveedor_id,
@@ -266,6 +283,7 @@ def registrar_factura_compra(
     data: dict[str, Any],
     usuario: str,
 ) -> LeasingFinancieroFacturaCompra:
+    exigir_acuerdo_para_compra(cotizacion.estado)
     proveedor_id = resolver_proveedor_id(
         db,
         proveedor_id=data.get("proveedor_id") or cotizacion.proveedor_id,

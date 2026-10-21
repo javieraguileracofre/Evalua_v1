@@ -5,7 +5,7 @@ Crea un asiento de apertura (MANUAL_APERTURA) para fijar saldos iniciales en dem
 
 Uso rápido (ejemplo):
   python tools/seed_opening_balance.py ^
-    --tenant athletic ^
+    --company company_test ^
     --date 2026-04-01 ^
     --glosa "Apertura inicial demo" ^
     --contra 310101 ^
@@ -38,8 +38,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from crud.finanzas.contabilidad_asientos import crear_asiento
 from db.session import get_session_local
+from modules.contabilidad import accounting_service
 
 
 def _to_decimal(raw: str) -> Decimal:
@@ -165,7 +165,7 @@ def main() -> int:
                     "Use --origen-id distinto o --force."
                 )
 
-        asiento_id = crear_asiento(
+        asiento_id = accounting_service.post_entry(
             db,
             fecha=fecha,
             origen_tipo="MANUAL_APERTURA",
@@ -175,6 +175,7 @@ def main() -> int:
             usuario="seed_opening_balance",
             moneda="CLP",
             do_commit=True,
+            idempotent=True,
         )
         print(f"OK: asiento apertura creado id={asiento_id}")
         return 0

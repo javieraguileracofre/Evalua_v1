@@ -56,7 +56,7 @@
 {% set com_tipo = (c.comision_apertura_tipo or '')|upper if c else '' %}
 {% set estado_sel = (c.estado or 'BORRADOR')|upper if c else 'BORRADOR' %}
 
-<div class="container py-4">
+<div class="container-fluid py-4 lf-page">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
       <h1 class="h5 fw-semibold mb-1 eva-title">{% if is_edit %}Editar cotización #{{ cotizacion.id }}{% else %}Nueva cotización{% endif %}</h1>
@@ -266,7 +266,7 @@
           <div class="eva-section mb-2">Estructura financiera</div>
           <div class="row g-3 mb-3">
             <div class="col-md-4">
-              <label class="form-label small">Valor neto operación *</label>
+              <label class="form-label small">Valor del activo *</label>
               <input type="text" id="valor_neto" name="valor_neto" class="form-control js-money js-sim"
                      value="{{ c.valor_neto or '' if c else '' }}"
 >
@@ -307,11 +307,19 @@
  required>
             </div>
             <div class="col-md-4">
-              <label class="form-label small">Tasa nominal anual</label>
+              <label class="form-label small">Tasa de interés</label>
               <input type="text" name="tasa" id="tasa" class="form-control js-rate js-sim" placeholder="Ej: 12 o 0,12"
                      value="{{ c.tasa or '' if c else '' }}"
 >
-              <div class="hint">Acepta decimal (0,12) o porcentaje (12 = 12% anual).</div>
+              <div class="hint">Acepta decimal (0,12) o porcentaje (12). No admite valores negativos.</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Tipo de tasa</label>
+              {% set tasa_tipo_sel = (c.tasa_tipo if c and c.tasa_tipo else 'ANUAL')|upper %}
+              <select name="tasa_tipo" id="tasa_tipo" class="form-select js-sim">
+                <option value="ANUAL" {% if tasa_tipo_sel == 'ANUAL' %}selected{% endif %}>Anual (se convierte a efectiva del periodo)</option>
+                <option value="MENSUAL" {% if tasa_tipo_sel == 'MENSUAL' %}selected{% endif %}>Mensual</option>
+              </select>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Costo de fondo (anual)</label>
@@ -452,7 +460,7 @@
             <div class="col-md-6">
               <label class="form-label small">Estado</label>
               <select class="form-select" name="estado">
-                {% for e in ['BORRADOR','COTIZADA','EN_ANALISIS_COMERCIAL','EN_ANALISIS_CREDITO','APROBADA_CONDICIONES','APROBADA','RECHAZADA','EN_FORMALIZACION','DOCUMENTACION_COMPLETA','ACTIVADA','VIGENTE','ANULADA','PERDIDA_CLIENTE'] %}
+                {% for e in ['BORRADOR','COTIZADA','EN_EVALUACION','APROBADA','ACUERDO_FIRMADO','ACTIVO_PENDIENTE_COMPRA','ACTIVO_ADQUIRIDO','RECHAZADA','ANULADA'] %}
                 <option value="{{ e }}" {% if estado_sel == e %}selected{% endif %}>{{ e }}</option>
                 {% endfor %}
               </select>
@@ -551,8 +559,8 @@
         </div>
         <div id="pv_warn" class="preview-warn d-none mb-2"></div>
         <div class="small text-muted">
-          Renta calculada con método francés (cuota fija), tasa nominal anual / 12.
-          Incluye opción de compra al cierre. No constituye CAE regulado CMF.
+          Renta calculada con método francés (cuota fija). La tasa anual se convierte
+          a tasa periódica efectiva: i = (1 + r)^(1/n) − 1. El activo no se adquiere al cotizar.
         </div>
       </div>
     </div>

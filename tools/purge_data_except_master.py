@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from core.config import settings
 from db.session import get_engine
 
 
@@ -87,6 +88,11 @@ def main() -> int:
     if not schemas:
         raise SystemExit("No hay schemas válidos.")
 
+    if settings.database_per_company:
+        raise SystemExit(
+            "En database_per_company este script no abre DATABASE_URL. "
+            "Indique la base de la compañía de forma explícita fuera de este modo."
+        )
     engine = get_engine(args.tenant)
     with engine.connect() as conn:
         rows = conn.execute(

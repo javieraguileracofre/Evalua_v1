@@ -10,14 +10,28 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from crud.finanzas.cxp_montos_sql import cxp_sql_saldo_desde_lineas, cxp_sql_total_desde_lineas
+from crud.finanzas.cxp_montos_sql import (
+    cxp_agregados_joins,
+    cxp_sql_saldo_desde_lineas,
+    cxp_sql_total_desde_lineas,
+)
 
 logger = logging.getLogger("evalua.fin.dashboard")
 
 _CXP_TOT = cxp_sql_total_desde_lineas("d")
 _CXP_SAL = cxp_sql_saldo_desde_lineas("d")
+_CXP_JOINS = cxp_agregados_joins("d")
+_Q2 = Decimal("0.01")
 
 _RATIO_TOL = Decimal("0.01")
+
+
+def _money(value: Any) -> Decimal:
+    """Monto de pantalla con 2 decimales. Evita el redondeo binario de float."""
+    try:
+        return Decimal(str(value if value is not None else 0)).quantize(_Q2)
+    except Exception:
+        return Decimal("0.00")
 
 
 def _dec_ratio(x: Any) -> Decimal:
@@ -66,7 +80,7 @@ def get_kpis(db: Session) -> dict[str, Any]:
         logger.exception("Dashboard KPI: get_resumen CxP falló")
         return _zeros_kpi()
 
-    pagado_mes = 0.0
+    pagado_mes = Decimal("0.00")
     try:
         row_p = db.execute(
             text(
@@ -79,17 +93,17 @@ def get_kpis(db: Session) -> dict[str, Any]:
             )
         ).mappings().first()
         if row_p and row_p.get("pagado_mes") is not None:
-            pagado_mes = float(row_p["pagado_mes"])
+            pagado_mes = _money(row_p["pagado_mes"])
     except Exception:
         logger.exception("Dashboard KPI: lectura pagado_mes desde ap_pago")
 
     return {
         "docs_total": int(r.get("documentos") or 0),
-        "monto_total": float(r.get("total_documentado") or 0),
-        "saldo_pendiente": float(r.get("saldo_pendiente") or 0),
-        "saldo_vencido": float(r.get("saldo_vencido") or 0),
+        "monto_total": _money(r.get("total_documentado")),
+        "saldo_pendiente": _money(r.get("saldo_pendiente")),
+        "saldo_vencido": _money(r.get("saldo_vencido")),
         "pagado_mes": pagado_mes,
-        "gasto_mes": 0.0,
+        "gasto_mes": Decimal("0.00"),
     }
 
 
@@ -109,6 +123,7 @@ def get_aging(db: Session, limit: int = 80) -> list[dict[str, Any]]:
                     ({_CXP_SAL}) AS saldo_pendiente,
                     GREATEST(0, CURRENT_DATE - d.fecha_vencimiento)::int AS dias_mora
                 FROM fin.ap_documento d
+                {_CXP_JOINS}
                 LEFT JOIN public.proveedor p ON p.id = d.proveedor_id
                 WHERE ({_CXP_SAL}) > 0
                   AND d.fecha_vencimiento IS NOT NULL
@@ -142,6 +157,7 @@ def get_docs_recientes(db: Session, limit: int = 20) -> list[dict[str, Any]]:
                     ({_CXP_TOT}) AS total,
                     ({_CXP_SAL}) AS saldo_pendiente
                 FROM fin.ap_documento d
+                {_CXP_JOINS}
                 LEFT JOIN public.proveedor p ON p.id = d.proveedor_id
                 ORDER BY d.created_at DESC, d.id DESC
                 LIMIT :limit
@@ -166,6 +182,7 @@ def get_resumen_por_estado(db: Session) -> list[dict[str, Any]]:
                     COALESCE(SUM(({_CXP_TOT})), 0) AS monto_total,
                     COALESCE(SUM(({_CXP_SAL})), 0) AS saldo_total
                 FROM fin.ap_documento d
+                {_CXP_JOINS}
                 GROUP BY COALESCE(d.estado::text, 'SIN_ESTADO')
                 ORDER BY cantidad DESC, monto_total DESC
                 """
@@ -188,6 +205,7 @@ def get_top_proveedores_saldo(db: Session, limit: int = 10) -> list[dict[str, An
                     COUNT(d.id)::bigint AS documentos,
                     COALESCE(SUM(({_CXP_SAL})), 0) AS saldo_total
                 FROM fin.ap_documento d
+                {_CXP_JOINS}
                 JOIN public.proveedor p
                   ON p.id = d.proveedor_id
                 WHERE ({_CXP_SAL}) > 0
@@ -265,7 +283,7 @@ def get_flujo_caja_efectivo(db: Session) -> dict[str, Any]:
         if row_pagos:
             rp = dict(row_pagos)
             for k in ("egreso_hoy", "egreso_mes", "egreso_30d", "egreso_ytd"):
-                out[k] = float(rp.get(k) or 0)
+                out[k] = _money(rp.get(k))
             for k in ("n_pagos_hoy", "n_pagos_mes", "n_pagos_30d"):
                 out[k] = int(rp.get(k) or 0)
     except Exception:
@@ -297,13 +315,14 @@ def get_flujo_caja_efectivo(db: Session) -> dict[str, Any]:
                         WHEN ({sal}) > 0::numeric AND d.fecha_vencimiento IS NULL
                         THEN ({sal}) ELSE 0::numeric END), 0)::numeric(18, 2) AS exigible_sin_fecha
                 FROM fin.ap_documento d
+                {_CXP_JOINS}
                 WHERE COALESCE(d.estado::text, '') <> 'ANULADO'
                 """
             )
         ).mappings().first()
         if row_comp:
             for k, v in dict(row_comp).items():
-                out[k] = float(v or 0)
+                out[k] = _money(v)
     except Exception:
         logger.exception("Flujo caja: error leyendo compromisos por vencimiento (ap_documento)")
 
@@ -320,7 +339,7 @@ def get_tesoreria_cajas(db: Session) -> dict[str, Any]:
         rows = list(
             db.scalars(select(Caja).where(Caja.activa.is_(True)).order_by(Caja.nombre.asc())).all()
         )
-        total = sum(float(c.saldo_actual or 0) for c in rows)
+        total = sum((_money(c.saldo_actual) for c in rows), Decimal("0.00"))
         return {
             "disponible": True,
             "total_saldo": total,
@@ -329,7 +348,7 @@ def get_tesoreria_cajas(db: Session) -> dict[str, Any]:
                 {
                     "id": int(c.id),
                     "nombre": str(c.nombre or ""),
-                    "saldo": float(c.saldo_actual or 0),
+                    "saldo": _money(c.saldo_actual),
                     "estado": str(c.estado or ""),
                 }
                 for c in rows
@@ -385,11 +404,11 @@ def get_tesoreria_efectivo_bancos_contable(db: Session, *, fecha_hasta: str | No
             {
                 "codigo": str(r["codigo"] or ""),
                 "nombre": str(r["nombre"] or ""),
-                "saldo": float(r["saldo"] or 0),
+                "saldo": _money(r["saldo"]),
             }
             for r in rows
         ]
-        total = sum(c["saldo"] for c in cuentas)
+        total = sum((c["saldo"] for c in cuentas), Decimal("0.00"))
         return {
             "disponible": True,
             "total_saldo": total,
@@ -472,8 +491,8 @@ def get_tesoreria_banco_cartola(db: Session, *, limite_movs: int = 10) -> dict[s
         return {
             "disponible": True,
             "tabla_existe": True,
-            "flujo_neto_30d": float(row30["n"] or 0) if row30 else 0.0,
-            "flujo_neto_hoy": float(row_hoy["n"] or 0) if row_hoy else 0.0,
+            "flujo_neto_30d": _money(row30["n"]) if row30 else Decimal("0.00"),
+            "flujo_neto_hoy": _money(row_hoy["n"]) if row_hoy else Decimal("0.00"),
             "ultimos": [dict(r) for r in rows],
             "mensaje": "",
         }

@@ -67,6 +67,10 @@ def main() -> None:
     if not path.is_file():
         raise SystemExit(f"No existe el archivo: {path.resolve()}")
 
+    if settings.database_per_company and not (args.database_url and str(args.database_url).strip()):
+        raise SystemExit(
+            "En database_per_company indique --database-url. DATABASE_URL no selecciona una compañía."
+        )
     if args.database_url and str(args.database_url).strip():
         url = str(args.database_url).strip()
         print(f"Aplicando {path} con URL explícita (usuario privilegiado) …")
@@ -74,7 +78,7 @@ def main() -> None:
         tenant = (args.tenant_code or settings.default_tenant_code or "").strip()
         if not tenant:
             raise SystemExit(
-                "Defina --tenant-code / DEFAULT_TENANT_CODE, o bien --database-url con un superusuario."
+                "Defina --database-url con un superusuario, o --tenant-code de una base ya registrada."
             )
         url = get_database_url_for_tenant(tenant)
         print(f"Aplicando {path} en tenant {tenant!r} (URL del tenant) …")

@@ -9,7 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from crud.finanzas.config_contable import obtener_configuracion_evento_modulo
-from crud.finanzas.contabilidad_asientos import crear_asiento
+from modules.contabilidad import accounting_service
 from models.cobranza.cuentas_por_cobrar import CuentaPorCobrar, PagoCliente
 from models.finanzas.caja import Caja, MovimientoCaja
 
@@ -161,7 +161,7 @@ def contabilizar_pago_cliente(
             monto=monto,
         )
 
-        crear_asiento(
+        accounting_service.post_entry(
             db=db,
             fecha=pago.fecha_pago,
             origen_tipo="PAGO_CLIENTE",
@@ -170,9 +170,36 @@ def contabilizar_pago_cliente(
             detalles=detalles_asiento,
             usuario=usuario,
             moneda="CLP",
+            do_commit=False,
+        )
+
+        from erp_platform.events import flush_outbox_after_commit, publish_in_transaction
+        from erp_platform.events import types as event_types
+
+        # Outbox en la misma TX: si falla el commit, el evento no queda huérfano.
+        publish_in_transaction(
+            db,
+            event_name=event_types.PAGO_REALIZADO,
+            payload={
+                "pago_id": int(pago.id),
+                "cuenta_cobrar_id": int(cxc.id),
+                "monto": str(monto),
+            },
+            correlation_id=f"PAGO_CLIENTE:{int(pago.id)}",
+        )
+        from services.audit.financial import audit_financial_fact
+
+        audit_financial_fact(
+            db,
+            action="PAGO_CLIENTE",
+            module="cobranza",
+            entity="pago",
+            entity_id=int(pago.id),
+            detail={"cuenta_cobrar_id": int(cxc.id), "monto": str(monto)},
         )
 
         db.commit()
+        flush_outbox_after_commit(db)
 
     except SQLAlchemyError:
         db.rollback()

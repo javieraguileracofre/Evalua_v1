@@ -7,7 +7,7 @@ from typing import Any, Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session, joinedload
 
-from crud.finanzas.cxp_montos_sql import cxp_sql_suma_saldo_por_proveedor
+from crud.finanzas.cxp_montos_sql import cxp_saldo_proveedor_join
 from models.maestros.proveedor import (
     Proveedor,
     ProveedorBanco,
@@ -378,8 +378,9 @@ class ProveedorCRUD:
                         WHERE d.proveedor_id = p.id
                           AND COALESCE(d.activo, true) = true
                     ), 0) AS direcciones_activas,
-                    {cxp_sql_suma_saldo_por_proveedor("p.id")} AS saldo_cxp
+                    COALESCE(cxp_prov.saldo_cxp, 0) AS saldo_cxp
                 FROM public.proveedor p
+                {cxp_saldo_proveedor_join("p")}
                 WHERE {" AND ".join(filtros)}
                 ORDER BY p.razon_social ASC, p.id DESC
                 """

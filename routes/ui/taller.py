@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,9 @@ from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
 from core.rbac import guard_operacion_consulta, guard_operacion_mutacion
 from crud.comercial import taller as crud_taller
+from modules.taller import actualizar_orden_servicio, crear_orden_servicio
 from db.session import get_db
+from core.company_context import document_header_text
 from models import Cliente
 
 router = APIRouter(prefix="/taller", tags=["Taller"])
@@ -279,7 +281,7 @@ async def taller_orden_crear(request: Request, db: Session = Depends(get_db)):
         return _redirect(request, "taller_orden_nueva", msg=public_error_message(e), sev="danger")
 
     try:
-        orden = crud_taller.crear_orden_servicio(
+        orden = crear_orden_servicio(
             db,
             cliente_id=cliente_id,
             vehiculo_id=vehiculo_id,
@@ -441,7 +443,7 @@ async def taller_orden_actualizar(
         )
 
     try:
-        orden = crud_taller.actualizar_orden_servicio(
+        orden = actualizar_orden_servicio(
             db,
             orden_id,
             fecha_recepcion=fr,
@@ -520,7 +522,7 @@ def taller_orden_imprimir(
         {
             "request": request,
             "orden": orden,
-            "empresa_nombre": "Evalua ERP — Taller",
+            "empresa_nombre": document_header_text() or "Taller",
             "checks": checks,
             "needle_angle": needle,
             "totales_cot": tot,

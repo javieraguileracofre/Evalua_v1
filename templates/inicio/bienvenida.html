@@ -284,6 +284,58 @@
   </div>
 </section>
 
+{% if puesta_en_marcha %}
+<section class="mb-4" aria-labelledby="puesta-titulo">
+  <div class="home-section-title" id="puesta-titulo">Puesta en marcha</div>
+  <div class="row g-3">
+    {% for paso in puesta_en_marcha %}
+    <div class="col-md-4">
+      <a class="work-card" href="{{ paso.href }}" data-recent="1" data-recent-label="{{ paso.titulo }}" data-recent-kind="inicio" data-recent-icon="bi-flag">
+        <div class="small text-uppercase fw-bold text-muted mb-1">Paso {{ paso.paso }}</div>
+        <div class="fw-bold mb-1">{{ paso.titulo }}</div>
+        <div class="small text-muted">{{ paso.detalle }}</div>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="mb-4" aria-labelledby="bandeja-titulo">
+  <div class="d-flex justify-content-between align-items-end flex-wrap gap-2">
+    <div class="home-section-title mb-2" id="bandeja-titulo">Tu trabajo de hoy</div>
+    <button type="button" class="btn btn-sm btn-outline-secondary mb-2" data-command-open>
+      <i class="bi bi-search"></i> Buscar un RUT o una nota
+    </button>
+  </div>
+  {% if bandeja %}
+  <div class="row g-3">
+    {% for item in bandeja %}
+    <div class="col-md-6 col-xl-4">
+      <a class="work-card" href="{{ item.href }}" data-recent="1" data-recent-label="{{ item.titulo }}" data-recent-kind="{{ item.kind }}" data-recent-icon="{{ item.icono }}">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+          <span class="home-kpi-icon mb-0"><i class="bi {{ item.icono }}"></i></span>
+          <span class="badge {% if item.nivel == 'ALTA' %}text-bg-danger{% elif item.nivel == 'INFO' %}text-bg-light border{% else %}text-bg-warning{% endif %}">{{ item.nivel }}</span>
+        </div>
+        <div class="fw-bold">{{ item.titulo }}</div>
+        <div class="small text-muted mt-1">{{ item.detalle }}</div>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="work-card">
+    <div class="fw-bold">No hay pendientes en sus módulos</div>
+    <div class="small text-muted">Use Ctrl+K para abrir un cliente, una nota o una acción directa.</div>
+  </div>
+  {% endif %}
+</section>
+
+<section id="homeRecents" class="mb-4" hidden>
+  <div class="home-section-title">Recientes</div>
+  <div class="d-flex flex-wrap gap-2" data-recent-list></div>
+</section>
+
 <div class="row g-3 mb-4">
   <div class="col-lg-8">
     <div class="exec-panel p-3 h-100">
@@ -304,6 +356,7 @@
         {% endfor %}
       </div>
       <hr>
+      {% if kpis_financieros_visibles %}
       <div class="small text-uppercase fw-bold text-muted mb-2">Proyección comercial</div>
       <div class="d-flex flex-wrap gap-3">
         <div>
@@ -319,6 +372,9 @@
           <div class="fw-bold">{{ clp(proyeccion_90) }}</div>
         </div>
       </div>
+      {% else %}
+      <div class="small text-muted">Las cifras financieras de portada están restringidas a Finanzas o Administrador.</div>
+      {% endif %}
     </div>
   </div>
   <div class="col-lg-4">
@@ -349,8 +405,13 @@
       <div class="card-body py-3 px-3 position-relative">
         <div class="home-kpi-icon"><i class="bi bi-bag-check"></i></div>
         <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Ventas</div>
+        {% if kpis_financieros_visibles %}
         <div class="fs-5 fw-bold home-kpi text-primary">{{ clp(resumen_ventas_mes.total_ventas if resumen_ventas_mes is defined else 0) }}</div>
         <div class="small text-muted mt-1">{{ resumen_ventas_mes.documentos if resumen_ventas_mes is defined else 0 }} doc.</div>
+        {% else %}
+        <div class="fs-6 text-muted">Restringido</div>
+        <div class="small text-muted mt-1">Finanzas / Admin</div>
+        {% endif %}
         <a href="{{ request.url_for('nota_venta_lista') }}" class="stretched-link" aria-label="Ir a notas de venta"></a>
       </div>
     </div>
@@ -361,9 +422,13 @@
       <div class="card-body py-3 px-3 position-relative">
         <div class="home-kpi-icon" style="color:#0d7a3e;"><i class="bi bi-cash-coin"></i></div>
         <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Cobranza</div>
+        {% if kpis_financieros_visibles %}
         <div class="fs-5 fw-bold home-kpi text-success">{{ clp(resumen_cobranza_mes.total_cobrado if resumen_cobranza_mes is defined else 0) }}</div>
         <div class="small text-muted mt-1">{{ resumen_cobranza_mes.documentos if resumen_cobranza_mes is defined else 0 }} pagos</div>
         <div class="small text-muted">Tasa: {{ "%.1f"|format(tasa_cobranza_mes or 0) }}%</div>
+        {% else %}
+        <div class="fs-6 text-muted">Restringido</div>
+        {% endif %}
         <a href="{{ request.url_for('cobranza_resumen') }}" class="stretched-link" aria-label="Ir a cobranza"></a>
       </div>
     </div>
@@ -374,8 +439,12 @@
       <div class="card-body py-3 px-3 position-relative">
         <div class="home-kpi-icon" style="color:#c41e1e;"><i class="bi bi-hourglass-split"></i></div>
         <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Por cobrar</div>
+        {% if kpis_financieros_visibles %}
         <div class="fs-5 fw-bold home-kpi text-danger">{{ clp(resumen_cobranza_global.total_saldo if resumen_cobranza_global is defined else 0) }}</div>
         <div class="small text-muted mt-1">{{ resumen_cobranza_global.total_documentos if resumen_cobranza_global is defined else 0 }} doc. con saldo</div>
+        {% else %}
+        <div class="fs-6 text-muted">Restringido</div>
+        {% endif %}
         <a href="{{ request.url_for('cobranza_dashboard') }}" class="stretched-link" aria-label="Ir a dashboard cobranza"></a>
       </div>
     </div>
@@ -386,12 +455,16 @@
       <div class="card-body py-3 px-3 position-relative">
         <div class="home-kpi-icon" style="color:#b45309;"><i class="bi bi-wallet2"></i></div>
         <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Por pagar (AP)</div>
+        {% if kpis_financieros_visibles %}
         {% if cxp_schema_ok is defined and cxp_schema_ok %}
         <div class="fs-5 fw-bold home-kpi text-warning">{{ clp(resumen_cxp.saldo_pendiente if resumen_cxp is defined else 0) }}</div>
         <div class="small text-muted mt-1">{{ resumen_cxp.documentos if resumen_cxp is defined else 0 }} doc. · Venc. {{ clp(resumen_cxp.saldo_vencido if resumen_cxp is defined else 0) }}</div>
         {% else %}
         <div class="fs-6 text-muted">Esquema pendiente</div>
         <div class="small text-muted mt-1">Tablas <code class="small">fin.ap_*</code></div>
+        {% endif %}
+        {% else %}
+        <div class="fs-6 text-muted">Restringido</div>
         {% endif %}
         <a href="{{ request.url_for('cxp_lista') }}" class="stretched-link" aria-label="Ir a cuentas por pagar"></a>
       </div>
@@ -403,8 +476,12 @@
       <div class="card-body py-3 px-3">
         <div class="home-kpi-icon"><i class="bi bi-graph-up"></i></div>
         <div class="small text-muted text-uppercase fw-semibold mb-1" style="font-size:0.68rem;letter-spacing:.04em;">Ventas año</div>
+        {% if kpis_financieros_visibles %}
         <div class="fs-6 fw-bold home-kpi">{{ clp(resumen_ventas_anual.total_ventas if resumen_ventas_anual is defined else 0) }}</div>
         <div class="small text-muted mt-1">{{ resumen_ventas_anual.documentos if resumen_ventas_anual is defined else 0 }} doc. acum.</div>
+        {% else %}
+        <div class="fs-6 text-muted">Restringido</div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -614,11 +691,12 @@
     <div class="card home-mod-card border-0 shadow-sm" style="--mod-a:#15803d;--mod-b:#4ade80;">
       <div class="card-body d-flex flex-column">
         <div class="home-mod-icon" style="background:linear-gradient(135deg,#15803d,#22c55e);"><i class="bi bi-currency-dollar"></i></div>
-        <h3 class="h6 fw-bold mb-1">Cobranza</h3>
-        <p class="small text-muted mb-3 flex-grow-1">Cuentas por cobrar.</p>
+        <h3 class="h6 fw-bold mb-1">Crédito y cobranzas</h3>
+        <p class="small text-muted mb-3 flex-grow-1">Riesgo crediticio y cuentas por cobrar.</p>
         <div class="d-flex flex-wrap gap-2">
-          <a href="{{ request.url_for('cobranza_resumen') }}" class="btn btn-outline-secondary btn-sm">Resumen</a>
-          <a href="{{ request.url_for('cobranza_dashboard') }}" class="btn btn-outline-success btn-sm">Dashboard</a>
+          <a href="{{ request.url_for('credito_cobranzas_hub') }}" class="btn btn-outline-success btn-sm">Hub</a>
+          <a href="{{ request.url_for('cobranza_resumen') }}" class="btn btn-outline-secondary btn-sm">Cobranza</a>
+          <a href="{{ request.url_for('credito_riesgo_dashboard') }}" class="btn btn-outline-secondary btn-sm">Crédito</a>
         </div>
       </div>
     </div>

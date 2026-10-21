@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
@@ -884,15 +884,15 @@ def contabilidad_asiento_manual_crear(
                 }
             )
         ap_flag = (es_apertura or "").strip().lower() in {"1", "on", "true", "yes"}
-        origen_tipo = "MANUAL_APERTURA" if ap_flag else "MANUAL_AJUSTE"
-        crud_asientos.crear_asiento(
+        from modules.contabilidad import registrar_asiento_manual
+
+        registrar_asiento_manual(
             db,
             fecha=fecha,
-            origen_tipo=origen_tipo,
-            origen_id=0,
             glosa=(glosa or "").strip()[:255],
             detalles=detalles,
             usuario=(usuario or "").strip() or None,
+            es_apertura=ap_flag,
         )
     except Exception as exc:
         return _redirect(
@@ -959,7 +959,9 @@ def contabilidad_revertir_asiento(
     if (redir := guard_finanzas_mutacion(request)) is not None:
         return redir
     try:
-        nuevo_id = crud_asientos.crear_reversion_asiento_manual(
+        from modules.contabilidad import revertir_asiento_manual
+
+        nuevo_id = revertir_asiento_manual(
             db,
             asiento_original_id=asiento_id,
             glosa=glosa_reversion,

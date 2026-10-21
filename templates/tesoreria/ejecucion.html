@@ -1,0 +1,114 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Actualización SII · Tesorería{% endblock %}
+{% block page_title %}Actualización desde el SII{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">{{ vista.empresa }} · RUT {{ vista.rut }} · {{ vista.periodo }}</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('tesoreria_home') }}">Tesorería</a></li>
+<li class="breadcrumb-item active" aria-current="page">Actualización</li>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm mb-3" id="panel-sii" data-estado-url="{{ request.url_for('tesoreria_ejecucion_estado', ejecucion_id=vista.id) }}">
+  <div class="card-body">
+    <p class="mb-2" id="sii-estado">{{ vista.estado_label }}</p>
+    <ul class="list-unstyled mb-3" id="sii-pasos">
+      {% for paso in vista.pasos %}
+      <li data-codigo="{{ paso.codigo }}">
+        {% if paso.estado == 'ok' %}✓{% elif paso.estado == 'actual' %}⏳{% elif paso.estado == 'error' %}!{% else %}·{% endif %}
+        {{ paso.etiqueta }}
+      </li>
+      {% endfor %}
+    </ul>
+    <div id="sii-mensaje" style="white-space: pre-line;">{{ vista.mensaje }}</div>
+    {% if vista.puede_continuar %}
+    <form method="post" action="{{ request.url_for('tesoreria_continuar', ejecucion_id=vista.id) }}" class="mt-3" id="form-continuar">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_global', '') }}">
+      <button class="btn btn-primary" type="submit">Continuar</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm" id="sii-resumen" {% if not vista.terminal %}hidden{% endif %}>
+  <div class="card-body">
+    <h2 class="h6">Resultado</h2>
+    <p class="mb-1">Empresa: <strong id="res-empresa">{{ vista.empresa }}</strong></p>
+    <p class="mb-1">RUT enviado al SII: <strong>{{ vista.rut }}</strong></p>
+    <p class="mb-3">Período: <strong id="res-periodo">{{ vista.periodo }}</strong></p>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <h3 class="h6">Compras</h3>
+        <p class="mb-1">Documentos encontrados: <span id="c-enc">{{ vista.compras.encontrados }}</span></p>
+        <p class="mb-1">Importados: <span id="c-imp">{{ vista.compras.importados }}</span></p>
+        <p class="mb-1">Ya existentes: <span id="c-omi">{{ vista.compras.omitidos }}</span></p>
+        <p class="mb-0">Errores: <span id="c-err">{{ vista.compras.errores }}</span></p>
+      </div>
+      <div class="col-md-6">
+        <h3 class="h6">Ventas</h3>
+        <p class="mb-1">Documentos encontrados: <span id="v-enc">{{ vista.ventas.encontrados }}</span></p>
+        <p class="mb-1">Importados: <span id="v-imp">{{ vista.ventas.importados }}</span></p>
+        <p class="mb-1">Ya existentes: <span id="v-omi">{{ vista.ventas.omitidos }}</span></p>
+        <p class="mb-0">Errores: <span id="v-err">{{ vista.ventas.errores }}</span></p>
+      </div>
+    </div>
+    <p class="text-muted small mt-3 mb-0">Fecha de actualización: <span id="res-fin">{{ vista.fin or vista.inicio }}</span></p>
+    <a class="btn btn-outline-secondary btn-sm mt-3" href="{{ request.url_for('tesoreria_home') }}">Volver al resumen</a>
+  </div>
+</div>
+
+<script>
+(function () {
+  var panel = document.getElementById("panel-sii");
+  if (!panel) return;
+  var url = panel.getAttribute("data-estado-url");
+  var marcas = { ok: "✓", actual: "⏳", error: "!", pendiente: "·" };
+  function pintar(data) {
+    var estado = document.getElementById("sii-estado");
+    if (estado) estado.textContent = data.estado_label || "";
+    var mensaje = document.getElementById("sii-mensaje");
+    if (mensaje) mensaje.textContent = data.mensaje || "";
+    (data.pasos || []).forEach(function (paso) {
+      var li = panel.querySelector('[data-codigo="' + paso.codigo + '"]');
+      if (!li) return;
+      li.textContent = (marcas[paso.estado] || "·") + " " + paso.etiqueta;
+    });
+    if (!data.terminal && data.estado !== "REQUIERE_INTERVENCION_USUARIO") {
+      window.setTimeout(consultar, 2000);
+      return;
+    }
+    if (data.estado === "REQUIERE_INTERVENCION_USUARIO" && !data.terminal) {
+      window.setTimeout(consultar, 2000);
+    }
+    var resumen = document.getElementById("sii-resumen");
+    if (data.terminal && resumen) {
+      resumen.hidden = false;
+      document.getElementById("c-enc").textContent = data.compras.encontrados;
+      document.getElementById("c-imp").textContent = data.compras.importados;
+      document.getElementById("c-omi").textContent = data.compras.omitidos;
+      document.getElementById("c-err").textContent = data.compras.errores;
+      document.getElementById("v-enc").textContent = data.ventas.encontrados;
+      document.getElementById("v-imp").textContent = data.ventas.importados;
+      document.getElementById("v-omi").textContent = data.ventas.omitidos;
+      document.getElementById("v-err").textContent = data.ventas.errores;
+      document.getElementById("res-fin").textContent = data.fin || data.inicio || "";
+    }
+    if (data.puede_continuar && !document.getElementById("form-continuar")) {
+      window.location.reload();
+    }
+  }
+  function consultar() {
+    fetch(url, { headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(pintar)
+      .catch(function () { window.setTimeout(consultar, 4000); });
+  }
+  consultar();
+})();
+</script>
+{% endblock %}

@@ -237,6 +237,16 @@ def guard_finanzas_mutacion(
     return _redir_deny(request, msg)
 
 
+def usuario_puede_ver_tesoreria(auth: dict[str, Any] | None) -> bool:
+    """Consulta de libros de compra y venta."""
+    return usuario_puede_consultar_modulos_finanzas(auth) and usuario_tiene_modulo_asignado(auth, "TESORERIA")
+
+
+def usuario_puede_actualizar_sii(auth: dict[str, Any] | None) -> bool:
+    """Disparar la descarga SII o guardar la clave tributaria."""
+    return usuario_puede_mutar_modulos_finanzas(auth) and usuario_puede_ver_tesoreria(auth)
+
+
 def guard_operacion_consulta(
     request: Request,
     *,

@@ -10,7 +10,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy import case, extract, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -25,6 +25,7 @@ from db.session import get_session_local
 from models import Cliente, NotaVenta, PagoCliente, Producto, Proveedor
 from models.finanzas.compras_finanzas import Periodo
 from routes.ui.auth import render_login_form
+from services.ux.workspace import armar_bandeja
 
 router = APIRouter(tags=["Inicio"])
 
@@ -331,6 +332,25 @@ def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
         {"modulo": "Riesgo crédito", "estado": "VERDE" if kpis_financieros_visibles else "—"},
     ]
 
+    try:
+        bandeja = armar_bandeja(
+            request,
+            db,
+            auth=auth if isinstance(auth, dict) else None,
+            resumen_cxp=resumen_cxp if isinstance(resumen_cxp, dict) else None,
+            cxp_schema_ok=bool(cxp_schema_ok),
+            periodo_mes_estado=periodo_mes_estado,
+            n_clientes_activos=n_clientes_activos,
+            n_productos_alerta_stock=n_productos_alerta_stock,
+            anio=anio,
+            mes=mes,
+        )
+    except Exception:
+        logger.exception("Inicio: no se pudo armar la bandeja de trabajo.")
+        bandeja = {"items": [], "puesta_en_marcha": []}
+    bandeja_items = bandeja["items"]
+    puesta_en_marcha = bandeja["puesta_en_marcha"]
+
     return templates.TemplateResponse(
         "inicio/bienvenida.html",
         {
@@ -373,6 +393,8 @@ def _menu_principal_impl(request: Request, db: Session) -> HTMLResponse:
             "acciones_sugeridas": acciones_sugeridas,
             "salud_modulos": salud_modulos,
             "kpis_financieros_visibles": kpis_financieros_visibles,
+            "bandeja": bandeja_items,
+            "puesta_en_marcha": puesta_en_marcha,
         },
     )
 

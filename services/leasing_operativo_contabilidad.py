@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from crud.finanzas.config_contable import obtener_configuracion_evento_modulo
-from crud.finanzas.contabilidad_asientos import crear_asiento
+from modules.contabilidad import accounting_service
 from models.cobranza.cuentas_por_cobrar import CuentaPorCobrar
 from models.leasing_operativo.models import LeasingOpContrato, LeasingOpCuota, LeasingOpGestionEvento, LeasingOpSimulacion
 
@@ -108,7 +108,7 @@ def crear_asiento_desde_config_evento(
         )
     if not detalles:
         return None
-    return crear_asiento(
+    return accounting_service.post_entry(
         db,
         fecha=fecha or datetime.now(timezone.utc).date(),
         origen_tipo=origen_tipo,
@@ -133,7 +133,7 @@ def registrar_asiento_activacion(
     total = Decimal(str(factura_compra.get("total") or 0))
     iva = Decimal(str(factura_compra.get("iva") or 0))
     base = total - iva if total > iva else total
-    return crear_asiento_desde_config_evento(
+    asiento_id = crear_asiento_desde_config_evento(
         db,
         modulo="LEASING_OP",
         submodulo="ACTIVACION",
@@ -147,6 +147,22 @@ def registrar_asiento_activacion(
         glosa=f"Activación contable leasing operativo contrato {contrato_id}",
         usuario=usuario,
     )
+    if asiento_id:
+        from erp_platform.events import publish_in_transaction
+        from erp_platform.events import types as event_types
+
+        publish_in_transaction(
+            db,
+            event_name=event_types.CONTRATO_LEASING_ACTIVADO,
+            payload={
+                "producto": "LOP",
+                "contrato_id": int(contrato_id),
+                "simulacion_id": int(getattr(sim, "id", 0) or 0),
+                "asiento_id": int(asiento_id),
+            },
+            correlation_id=f"LOP_ACTIVACION:{int(contrato_id)}",
+        )
+    return asiento_id
 
 
 def _ref_cxc_cuota(contrato_id: int, nro_cuota: int) -> str:
@@ -244,6 +260,8 @@ def marcar_cuota_pagada_por_cxc(db: Session, cxc_id: int, *, usuario: str = "cob
     ).first()
     if not cuota:
         return 0
+    if str(cuota.estado or "").upper() == "PAGADA":
+        return 0
     cuota.estado = "PAGADA"
     db.add(cuota)
 
@@ -256,6 +274,21 @@ def marcar_cuota_pagada_por_cxc(db: Session, cxc_id: int, *, usuario: str = "cob
             payload_json={"cxc_id": int(cxc_id), "cuota_nro": nro},
             usuario=usuario,
         )
+    )
+
+    from erp_platform.events import publish_in_transaction
+    from erp_platform.events import types as event_types
+
+    publish_in_transaction(
+        db,
+        event_name=event_types.CUOTA_PAGADA,
+        payload={
+            "contrato_id": int(contrato_id),
+            "cuota_id": int(cuota.id),
+            "cuota_nro": int(nro),
+            "cuenta_cobrar_id": int(cxc_id),
+        },
+        correlation_id=f"CUOTA_PAGADA:{int(cuota.id)}",
     )
 
     contrato = db.get(LeasingOpContrato, contrato_id)

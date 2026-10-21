@@ -22,7 +22,7 @@
     <div class="col-12"><hr><p class="small text-muted mb-0">La base se crea sola. Puede ajustar el nombre y el usuario. La clave la genera el servidor y no se muestra.</p></div>
     <div class="col-md-6"><label class="form-label">Nombre de la base</label><input class="form-control" name="database_name" placeholder="Se propone desde el código"></div>
     <div class="col-md-6"><label class="form-label">Usuario de la base</label><input class="form-control" name="database_user" placeholder="Se propone desde el código"></div>
-    <div class="col-12"><button class="btn btn-primary" type="submit">Crear empresa</button></div>
+    <div class="col-12"><button class="btn btn-primary" type="submit" {% if puede_crear is defined and not puede_crear %}disabled{% endif %}>Crear empresa</button></div>
   </div>
 </form>
 <form method="post" action="{{ request.url_for('plataforma_registrar_base') }}" class="card border-0 shadow-sm mt-3">
@@ -34,7 +34,7 @@
     <div class="col-md-4"><input class="form-control" name="database_name" required placeholder="Nombre de la base"></div>
     <div class="col-md-4"><input class="form-control" name="database_user" required placeholder="Usuario"></div>
     <div class="col-md-4"><input class="form-control" type="password" name="database_password" required placeholder="Clave, solo esta vez" autocomplete="new-password"></div>
-    <div class="col-12"><button class="btn btn-outline-primary" type="submit">Registrar base existente</button></div>
+    <div class="col-12"><button class="btn btn-outline-primary" type="submit" {% if puede_crear is defined and not puede_crear %}disabled{% endif %}>Registrar base existente</button></div>
   </div>
 </form>
 {% endblock %}

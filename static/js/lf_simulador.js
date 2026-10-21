@@ -151,6 +151,7 @@
         pago_inicial_valor: parseNum(document.getElementById("pago_inicial_valor") && document.getElementById("pago_inicial_valor").value),
         monto_financiado: montoFinManual ? parseNum(montoFinInput && montoFinInput.value) : null,
         tasa: parseNum(document.getElementById("tasa") && document.getElementById("tasa").value),
+        tasa_tipo: (form.querySelector("[name=tasa_tipo]") && form.querySelector("[name=tasa_tipo]").value) || "ANUAL",
         plazo: parseNum(document.getElementById("plazo") && document.getElementById("plazo").value),
         opcion_compra: parseNum(document.getElementById("opcion_compra") && document.getElementById("opcion_compra").value),
         periodos_gracia: parseNum(document.getElementById("periodos_gracia") && document.getElementById("periodos_gracia").value) || 0,
@@ -358,6 +359,31 @@
           return;
         }
         unformatFormNumbers();
+        const neto = parseNum(document.getElementById("valor_neto") && document.getElementById("valor_neto").value);
+        const pieTipo = (document.getElementById("pago_inicial_tipo") && document.getElementById("pago_inicial_tipo").value) || "";
+        const pieVal = parseNum(document.getElementById("pago_inicial_valor") && document.getElementById("pago_inicial_valor").value);
+        const plazo = parseNum(document.getElementById("plazo") && document.getElementById("plazo").value);
+        const tasa = parseNum(document.getElementById("tasa") && document.getElementById("tasa").value);
+        const residual = parseNum(document.getElementById("opcion_compra") && document.getElementById("opcion_compra").value);
+        const warnBox = document.getElementById("pv_warn");
+        function showErr(msg) {
+          e.preventDefault();
+          if (warnBox) {
+            warnBox.textContent = msg;
+            warnBox.classList.remove("d-none");
+          }
+        }
+        if (neto != null && neto < 0) return showErr("El valor del activo no puede ser negativo.");
+        if (pieVal != null && pieVal < 0) return showErr("El pie no puede ser negativo.");
+        if (pieTipo === "MONTO" && neto != null && pieVal != null && pieVal > neto) {
+          return showErr("El pie no puede ser mayor al valor del activo.");
+        }
+        if (plazo != null && plazo <= 0) return showErr("El plazo debe ser mayor a 0 meses.");
+        if (tasa != null && tasa < 0) return showErr("La tasa de interés no puede ser negativa.");
+        if (residual != null && residual < 0) return showErr("El valor residual no puede ser negativo.");
+        if (residual != null && neto != null && residual >= neto) {
+          return showErr("El valor residual debe ser menor al valor del activo.");
+        }
       });
     }
 

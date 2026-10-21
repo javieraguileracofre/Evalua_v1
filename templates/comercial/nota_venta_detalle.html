@@ -30,6 +30,20 @@
 {% set cliente_rut = nota.cliente.rut if nota.cliente else '—' %}
 {% set estado_nota = nota.estado or '—' %}
 
+{% if siguiente_paso is defined %}
+<section class="evalua-next-step mb-4" aria-label="Siguiente paso">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <div class="fw-bold">{{ siguiente_paso.titulo }}</div>
+      <div class="small text-muted mt-1">{{ siguiente_paso.detalle }}</div>
+    </div>
+    {% if siguiente_href and siguiente_label %}
+    <a class="btn btn-primary" href="{{ siguiente_href }}">{{ siguiente_label }}</a>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
   <div>
     <h2 class="h4 fw-semibold mb-1">Documento comercial {{ nota.numero }}</h2>
@@ -39,6 +53,16 @@
   </div>
 
   <div class="d-flex flex-wrap gap-2">
+    <a href="{{ request.url_for('nota_venta_ticket', nota_id=nota.id) }}?auto_print=false"
+       class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-printer"></i> Ticket
+    </a>
+    {% if puede_editar is defined and puede_editar %}
+    <a href="{{ request.url_for('nota_venta_editar_form', nota_id=nota.id) }}"
+       class="btn btn-primary btn-sm">
+      <i class="bi bi-pencil"></i> Editar
+    </a>
+    {% endif %}
     <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-arrow-left"></i> Volver a notas
     </a>
@@ -303,23 +327,37 @@
       </a>
 
       <div class="d-flex flex-wrap gap-2">
-        {% if nota.estado != 'ANULADA' %}
+        <a href="{{ request.url_for('nota_venta_ticket', nota_id=nota.id) }}?auto_print=false"
+           class="btn btn-outline-secondary">
+          <i class="bi bi-printer"></i> Imprimir ticket
+        </a>
+
+        {% if puede_editar is defined and puede_editar %}
+        <a href="{{ request.url_for('nota_venta_editar_form', nota_id=nota.id) }}"
+           class="btn btn-outline-primary">
+          <i class="bi bi-pencil"></i> Editar
+        </a>
+        {% endif %}
+
+        {% if puede_anular is defined and puede_anular %}
         <form method="post"
               action="{{ request.url_for('nota_venta_anular', nota_id=nota.id) }}"
-              onsubmit="return confirm('¿Anular esta nota de venta? Esta acción no modificará movimientos de caja ni CxC.');">
+              onsubmit="return confirm('¿Anular esta nota de venta? Se devolverá el stock y se revertirán caja/CxC asociadas.');">
           <button type="submit" class="btn btn-outline-warning">
             <i class="bi bi-slash-circle"></i> Anular
           </button>
         </form>
         {% endif %}
 
+        {% if puede_eliminar is not defined or puede_eliminar %}
         <form method="post"
               action="{{ request.url_for('nota_venta_eliminar', nota_id=nota.id) }}"
-              onsubmit="return confirm('¿Eliminar definitivamente esta nota de venta? Se revertirá el stock y se eliminarán los registros asociados. Esta acción NO se puede deshacer.');">
+              onsubmit="return confirm('¿Eliminar definitivamente esta nota de venta? Se revertirá el stock (si aún no está anulada) y se eliminarán los registros asociados. Esta acción NO se puede deshacer.');">
           <button type="submit" class="btn btn-outline-danger">
             <i class="bi bi-trash"></i> Eliminar
           </button>
         </form>
+        {% endif %}
       </div>
     </div>
   </div>

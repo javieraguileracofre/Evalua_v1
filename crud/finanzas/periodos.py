@@ -8,6 +8,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from core.domain_errors import PeriodoCerradoError
+
 
 def assert_periodo_abierto_para_fecha(db: Session, fecha: datetime | date) -> None:
     """
@@ -73,7 +75,7 @@ def assert_periodo_abierto_para_fecha(db: Session, fecha: datetime | date) -> No
         )
 
     if str(row.get("estado", "")).upper() == "CERRADO":
-        raise ValueError(
+        raise PeriodoCerradoError(
             f"El período contable {y}-{m:02d} está cerrado. "
             "Ábralo desde Cierre mensual o elija otra fecha para el asiento."
         )
@@ -205,6 +207,18 @@ def cerrar_periodo(
                 """
             ),
             params,
+        )
+        from services.audit.financial import audit_financial_fact
+        from services.finanzas.diferencia_cambio import revaluar_saldos_periodo
+
+        revaluar_saldos_periodo(db, anio=int(anio), mes=int(mes), usuario=user_email)
+        audit_financial_fact(
+            db,
+            action="PERIODO_CERRADO",
+            module="contabilidad",
+            entity="periodo",
+            entity_id=f"{int(anio):04d}-{int(mes):02d}",
+            detail={"usuario": user_email},
         )
         db.commit()
     except Exception:

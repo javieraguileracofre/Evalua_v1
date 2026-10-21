@@ -1,0 +1,180 @@
+{% extends "layout/base.html" %}
+{% block title %}Respaldos · Administración{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><span>Administración</span></li>
+<li class="breadcrumb-item active" aria-current="page">Respaldos</li>
+{% endblock %}
+{% block page_title %}Respaldos de base de datos{% endblock %}
+{% block page_subtitle %}Copia de seguridad de la empresa activa. La restauración no está disponible desde esta pantalla.{% endblock %}
+
+{% block content %}
+{% if not status.toolAvailable %}
+<div class="alert alert-warning border-0 shadow-sm">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  No se detectó la herramienta <strong>pg_dump</strong> en el servidor.
+  El botón «Crear respaldo» permanecerá deshabilitado hasta instalar PostgreSQL client tools.
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase">Motor</div>
+        <div class="fw-semibold">{{ status.engine }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase">Base</div>
+        <div class="fw-semibold text-truncate" title="{{ status.databaseName }}">{{ status.databaseName or '—' }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase">Tamaño aprox.</div>
+        <div class="fw-semibold">
+          {% if status.approxSizeBytes %}{{ (status.approxSizeBytes / 1048576)|round(1) }} MB{% else %}—{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase">Disponibles</div>
+        <div class="fw-semibold">{{ status.availableCount }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+  <form method="post" action="{{ request.url_for('admin_backups_crear') }}" class="js-busy-form">
+    <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_global', '') }}">
+    <button type="submit" class="btn btn-primary" {% if not status.createEnabled %}disabled{% endif %}
+            data-busy-label="Respaldo en proceso...">
+      <i class="bi bi-plus-lg me-1"></i>
+      {% if status.running %}Respaldo en proceso...{% else %}Crear respaldo ahora{% endif %}
+    </button>
+  </form>
+  <a class="btn btn-outline-secondary" href="{{ request.url_for('admin_backups_informe') }}?format=md">
+    <i class="bi bi-file-earmark-text me-1"></i>Exportar informe de migración
+  </a>
+  <span class="small text-muted">Destino: almacenamiento de la aplicación</span>
+</div>
+
+{% if status.lastSuccess %}
+<p class="small text-muted mb-3">
+  Último respaldo exitoso:
+  <strong>{{ status.lastSuccess.finishedAt or status.lastSuccess.createdAt }}</strong>
+  · {{ status.lastSuccess.fileName }}
+  · estado {{ status.lastSuccess.status }}
+</p>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white fw-semibold">Historial</div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Fecha</th>
+          <th>Usuario</th>
+          <th>Archivo</th>
+          <th>Tamaño</th>
+          <th>Tipo</th>
+          <th>Estado</th>
+          <th>Checksum</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in backups %}
+        <tr>
+          <td class="small">{{ b.created_at }}</td>
+          <td class="small">{{ b.created_by_id or '—' }}</td>
+          <td class="small text-truncate" style="max-width:12rem;">{{ b.file_name or '—' }}</td>
+          <td class="small">{% if b.size_bytes %}{{ (b.size_bytes / 1048576)|round(2) }} MB{% else %}—{% endif %}</td>
+          <td class="small">{{ b.backup_type }}</td>
+          <td>
+            {% if b.status == 'success' %}<span class="badge text-bg-success">success</span>
+            {% elif b.status in ('pending','running') %}<span class="badge text-bg-warning">En proceso</span>
+            {% else %}<span class="badge text-bg-danger">{{ b.status }}</span>{% endif %}
+          </td>
+          <td class="small font-monospace">{{ (b.checksum_sha256 or '')[:12] or '—' }}</td>
+          <td class="text-end">
+            {% if b.status == 'success' %}
+            <div class="btn-group btn-group-sm">
+              <a class="btn btn-outline-primary" href="{{ request.url_for('admin_backups_descargar', backup_id=b.id) }}">Descargar</a>
+              <form method="post" action="{{ request.url_for('admin_backups_verificar', backup_id=b.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_global', '') }}">
+                <button class="btn btn-outline-secondary" type="submit">Verificar</button>
+              </form>
+              <button type="button" class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText('{{ b.checksum_sha256 or '' }}')">SHA-256</button>
+              <form method="post" action="{{ request.url_for('admin_backups_eliminar', backup_id=b.id) }}" class="d-inline"
+                    onsubmit="return confirm('¿Eliminar este respaldo?');">
+                <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_global', '') }}">
+                <button class="btn btn-outline-danger" type="submit">Eliminar</button>
+              </form>
+            </div>
+            {% elif b.status in ('pending','running') %}
+            <span class="text-muted small">En proceso</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center text-muted py-4">
+            <div class="mb-2">Aún no hay respaldos registrados.</div>
+            <div class="small">Cuando cree el primero, aparecerá aquí con checksum SHA-256.</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white fw-semibold">
+    Preparación de migración
+    <span class="badge {% if readiness.overallStatus == 'ready' %}text-bg-success{% else %}text-bg-warning{% endif %} ms-1">
+      {{ readiness.overallStatus }}
+    </span>
+  </div>
+  <ul class="list-group list-group-flush">
+    {% for key, ok in readiness.checks.items() %}
+    <li class="list-group-item d-flex justify-content-between">
+      <span>{{ key }}</span>
+      {% if ok %}<i class="bi bi-check-circle-fill text-success"></i>{% else %}<i class="bi bi-x-circle text-danger"></i>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if status.running %}
+<script>
+(function(){
+  var tries = 0;
+  var t = setInterval(function(){
+    tries++;
+    fetch("{{ request.url_for('admin_backups_estado_json') }}", {credentials:"same-origin"})
+      .then(function(r){ return r.json(); })
+      .then(function(st){
+        if (!st.running || tries > 120) {
+          clearInterval(t);
+          if (!st.running) location.reload();
+        }
+      }).catch(function(){});
+  }, 3000);
+})();
+</script>
+{% endif %}
+{% endblock %}

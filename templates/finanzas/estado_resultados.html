@@ -23,6 +23,7 @@
     <i class="bi bi-printer"></i> Imprimir
   </button>
   <a
+    id="er-excel"
     href="{{ request.url_for('contabilidad_estado_resultados_excel') }}{% if fecha_desde or fecha_hasta %}?{% if fecha_desde %}fecha_desde={{ fecha_desde }}{% endif %}{% if fecha_desde and fecha_hasta %}&amp;{% endif %}{% if fecha_hasta %}fecha_hasta={{ fecha_hasta }}{% endif %}{% endif %}"
     class="btn btn-success btn-sm d-print-none"
     title="Descargar estado de resultados en Excel"
@@ -61,9 +62,10 @@ Los importes provienen del libro diario filtrado por fechas de asiento. Sin fech
   </div>
 </div>
 
+<div data-live-list>
 <div class="card shadow-sm mb-4 border-0 d-print-none">
   <div class="card-body">
-    <form method="get" class="row g-3 align-items-end" id="form-er-fechas">
+    <form method="get" class="row g-3 align-items-end" id="form-er-fechas" data-live-form action="{{ request.url_for('contabilidad_estado_resultados') }}">
       <div class="col-md-4 col-lg-3">
         <label class="form-label fw-semibold" for="fecha_desde">Fecha desde</label>
         <input type="date" name="fecha_desde" id="fecha_desde" class="form-control" value="{{ fecha_desde or '' }}" aria-describedby="er-fecha-help">
@@ -76,25 +78,27 @@ Los importes provienen del libro diario filtrado por fechas de asiento. Sin fech
         <button type="submit" class="btn btn-primary">
           <i class="bi bi-calendar-range"></i> Aplicar período
         </button>
-        <a href="{{ request.url_for('contabilidad_estado_resultados') }}?fecha_desde={{ er_mes_desde }}&amp;fecha_hasta={{ er_mes_hasta }}" class="btn btn-outline-primary">Mes en curso</a>
-        <a href="{{ request.url_for('contabilidad_estado_resultados') }}?fecha_hasta={{ fecha_hoy }}" class="btn btn-outline-primary">Hasta hoy</a>
-        <a href="{{ request.url_for('contabilidad_estado_resultados') }}" class="btn btn-outline-secondary">Quitar filtros</a>
+        <a href="{{ request.url_for('contabilidad_estado_resultados') }}?fecha_desde={{ er_mes_desde }}&amp;fecha_hasta={{ er_mes_hasta }}" class="btn btn-outline-primary" data-live-link>Mes en curso</a>
+        <a href="{{ request.url_for('contabilidad_estado_resultados') }}?fecha_hasta={{ fecha_hoy }}" class="btn btn-outline-primary" data-live-link>Hasta hoy</a>
+        <a href="{{ request.url_for('contabilidad_estado_resultados') }}" class="btn btn-outline-secondary" data-live-reset>Quitar filtros</a>
       </div>
     </form>
     <div id="er-fecha-help" class="form-text mt-2 mb-0">
       Las fechas filtran por <strong>fecha de asiento</strong>. Vacías = acumulado completo.
     </div>
-    <div class="mt-3 pt-3 border-top small text-muted d-flex flex-wrap gap-2 align-items-center">
-      {% if fecha_desde or fecha_hasta %}
-      {% if fecha_desde %}<span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Desde {{ fecha_desde }}</span>{% endif %}
-      {% if fecha_hasta %}<span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Hasta {{ fecha_hasta }}</span>{% endif %}
-      {% else %}
-      <span class="badge bg-secondary-subtle text-secondary-emphasis border">Período: histórico completo</span>
-      {% endif %}
-    </div>
   </div>
 </div>
 
+<div data-live-results>
+<span hidden data-live-export-for="er-excel" data-href="{{ request.url_for('contabilidad_estado_resultados_excel') }}{% if fecha_desde or fecha_hasta %}?{% if fecha_desde %}fecha_desde={{ fecha_desde }}{% endif %}{% if fecha_desde and fecha_hasta %}&amp;{% endif %}{% if fecha_hasta %}fecha_hasta={{ fecha_hasta }}{% endif %}{% endif %}"></span>
+<div class="mb-3 small text-muted d-flex flex-wrap gap-2 align-items-center d-print-none">
+  {% if fecha_desde or fecha_hasta %}
+  {% if fecha_desde %}<span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Desde {{ fecha_desde }}</span>{% endif %}
+  {% if fecha_hasta %}<span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Hasta {{ fecha_hasta }}</span>{% endif %}
+  {% else %}
+  <span class="badge bg-secondary-subtle text-secondary-emphasis border">Período: histórico completo</span>
+  {% endif %}
+</div>
 <p class="small text-muted d-none d-print-block mb-2">
   Estado de resultados ·
   {% if fecha_desde or fecha_hasta %}
@@ -364,6 +368,8 @@ Los importes provienen del libro diario filtrado por fechas de asiento. Sin fech
       </div>
     </div>
   </div>
+</div>
+</div>
 </div>
 {% endblock %}
 

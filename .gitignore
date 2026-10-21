@@ -37,6 +37,8 @@ static_root_backup/
 # Uploads crédito leasing y respaldos operativos (nunca versionar dumps)
 storage/leasing_credito/
 storage/backups/*
+storage/sii/
+storage/companies/**/sii/
 !storage/backups/.gitkeep
 *.dump
 *.sql.gz

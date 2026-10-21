@@ -23,6 +23,7 @@
     <i class="bi bi-printer"></i> Imprimir
   </button>
   <a
+    id="bg-excel-8"
     href="{{ request.url_for('contabilidad_balance_8_columnas_excel') }}?fecha_desde={{ bg_fecha_desde_default }}&amp;fecha_hasta={{ bg_fecha_hasta_default }}"
     class="btn btn-success btn-sm d-print-none"
     title="Descargar Balance de 8 columnas en Excel"
@@ -60,9 +61,10 @@ El corte por fecha limita los movimientos contables considerados; sin fecha se u
   </div>
 </div>
 
+<div data-live-list>
 <div class="card shadow-sm mb-4 border-0 d-print-none">
   <div class="card-body">
-    <form method="get" class="row g-3 align-items-end" id="form-bg-fecha">
+    <form method="get" class="row g-3 align-items-end" id="form-bg-fecha" data-live-form action="{{ request.url_for('contabilidad_balance_general') }}">
       <div class="col-md-5 col-lg-4">
         <label class="form-label fw-semibold" for="fecha_hasta">Fecha de corte</label>
         <input type="date" name="fecha_hasta" id="fecha_hasta" class="form-control" value="{{ fecha_hasta or '' }}" aria-describedby="bg-fecha-help">
@@ -74,20 +76,10 @@ El corte por fecha limita los movimientos contables considerados; sin fecha se u
         <button type="submit" class="btn btn-primary">
           <i class="bi bi-calendar-check"></i> Aplicar corte
         </button>
-        <a href="{{ request.url_for('contabilidad_balance_general') }}?fecha_hasta={{ fecha_hoy }}" class="btn btn-outline-primary">Hoy</a>
-        <a href="{{ request.url_for('contabilidad_balance_general') }}" class="btn btn-outline-secondary">Quitar filtro</a>
+        <a href="{{ request.url_for('contabilidad_balance_general') }}?fecha_hasta={{ fecha_hoy }}" class="btn btn-outline-primary" data-live-link>Hoy</a>
+        <a href="{{ request.url_for('contabilidad_balance_general') }}" class="btn btn-outline-secondary" data-live-reset>Quitar filtro</a>
       </div>
     </form>
-    <div class="mt-3 pt-3 border-top small text-muted d-flex flex-wrap gap-3 align-items-center">
-      <span>
-        {% if fecha_hasta %}
-        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Corte: {{ fecha_hasta }}</span>
-        {% else %}
-        <span class="badge bg-secondary-subtle text-secondary-emphasis border">Corte: histórico completo</span>
-        {% endif %}
-      </span>
-      <span><i class="bi bi-info-circle"></i> Moneda de visualización según asientos (habitualmente CLP).</span>
-    </div>
   </div>
 </div>
 
@@ -172,6 +164,15 @@ El corte por fecha limita los movimientos contables considerados; sin fecha se u
   </div>
 </div>
 
+<div data-live-results>
+<span hidden data-live-export-for="bg-excel-8" data-href="{{ request.url_for('contabilidad_balance_8_columnas_excel') }}?fecha_desde={{ bg_fecha_desde_default }}&amp;fecha_hasta={{ bg_fecha_hasta_default }}"></span>
+<div class="mb-3 small text-muted d-print-none">
+  {% if fecha_hasta %}
+  <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Corte: {{ fecha_hasta }}</span>
+  {% else %}
+  <span class="badge bg-secondary-subtle text-secondary-emphasis border">Corte: histórico completo</span>
+  {% endif %}
+</div>
 <p class="small text-muted d-none d-print-block mb-2">
   Balance general · {% if fecha_hasta %}Corte {{ fecha_hasta }}{% else %}Histórico completo{% endif %}
 </p>
@@ -410,6 +411,8 @@ El corte por fecha limita los movimientos contables considerados; sin fecha se u
     </div>
   </div>
   {% endif %}
+</div>
+</div>
 </div>
 {% endblock %}
 

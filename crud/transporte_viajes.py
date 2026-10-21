@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from models.fondos_rendir.fondo_rendir import FondoRendir
@@ -126,6 +126,12 @@ def metricas_viaje_dict(v: TransporteViaje) -> dict[str, Any]:
 def siguiente_folio_viaje(db: Session) -> str:
     y = datetime.utcnow().year
     pref = f"HR-{y}-"
+    bind = db.get_bind()
+    if bind is not None and getattr(bind.dialect, "name", "") == "postgresql":
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"transporte_folio_viaje_{y}"},
+        )
     folios = list(
         db.scalars(
             select(TransporteViaje.folio).where(TransporteViaje.folio.startswith(pref))

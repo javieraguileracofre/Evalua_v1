@@ -6,7 +6,7 @@ import secrets
 
 from fastapi import APIRouter, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 
 from core.paths import TEMPLATES_DIR
 from core.security_log import security_event

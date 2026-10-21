@@ -117,9 +117,10 @@ Priorice vencimientos, reduzca mora y liquide documentos con filtros por proveed
   </div>
 </div>
 
+<div data-live-list>
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-body">
-    <form method="get" class="row g-3 align-items-end">
+    <form method="get" class="row g-3 align-items-end" data-live-form action="{{ request.url_for('cxp_lista') }}">
       <div class="col-md-4 col-lg-3">
         <label class="form-label fw-semibold" for="cxp-q">Buscar</label>
         <input type="search" name="q" id="cxp-q" class="form-control" value="{{ filtros.q }}" placeholder="Proveedor, folio o referencia" autocomplete="off">
@@ -152,12 +153,13 @@ Priorice vencimientos, reduzca mora y liquide documentos con filtros por proveed
         <button type="submit" class="btn btn-primary flex-grow-1">
           <i class="bi bi-funnel"></i> Filtrar
         </button>
-        <a href="{{ request.url_for('cxp_lista') }}" class="btn btn-outline-secondary" title="Limpiar filtros">Limpiar</a>
+        <a href="{{ request.url_for('cxp_lista') }}" class="btn btn-outline-secondary" data-live-reset title="Limpiar filtros">Limpiar</a>
       </div>
     </form>
   </div>
 </div>
 
+<div data-live-results>
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-white border-0 pt-3 pb-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>
@@ -186,7 +188,7 @@ Priorice vencimientos, reduzca mora y liquide documentos con filtros por proveed
       <tbody>
         {% for d in documentos %}
         {% set saldo = (d.saldo_pendiente or 0)|float %}
-        <tr>
+        <tr data-row-href="{{ request.url_for('cxp_detalle', documento_id=d.id) }}">
           <td class="fw-semibold text-nowrap">#{{ d.id }}</td>
           <td>
             <div class="fw-semibold">{{ d.razon_social }}</div>
@@ -265,5 +267,7 @@ Priorice vencimientos, reduzca mora y liquide documentos con filtros por proveed
       </tbody>
     </table>
   </div>
+</div>
+</div>
 </div>
 {% endblock %}

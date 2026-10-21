@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 MAX_PLAZO_MESES = 1200
 
 PERIODICIDADES_LF = frozenset({"MENSUAL", "TRIMESTRAL", "SEMESTRAL", "ANUAL"})
+TASA_TIPOS_LF = frozenset({"ANUAL", "MENSUAL"})
 PERIODICIDAD_MESES = {
     "MENSUAL": 1,
     "TRIMESTRAL": 3,
@@ -35,6 +36,13 @@ def normalizar_periodicidad(valor: str | None) -> str:
     if p not in PERIODICIDADES_LF:
         raise ValueError("Periodicidad inválida. Use MENSUAL, TRIMESTRAL, SEMESTRAL o ANUAL.")
     return p
+
+
+def normalizar_tasa_tipo(valor: str | None) -> str:
+    t = (valor or "ANUAL").strip().upper()
+    if t not in TASA_TIPOS_LF:
+        raise ValueError("Tipo de tasa inválido. Use ANUAL o MENSUAL.")
+    return t
 
 
 def _meses_por_periodo(periodicidad: str) -> int:
@@ -116,15 +124,57 @@ def _q4(v: Decimal | float | int) -> Decimal:
 
 
 def normalizar_tasa_anual(tasa: Decimal | float | int | None) -> Decimal | None:
-    """Acepta tasa decimal (0,12) o porcentaje (12)."""
+    """Acepta tasa decimal (0,12) o porcentaje (12). No admite negativas."""
     if tasa is None:
         return None
     t = Decimal(str(tasa))
     if t > Decimal("1"):
         t = t / Decimal("100")
-    if t < Decimal("-0.99"):
-        raise ValueError("La tasa nominal anual no puede ser inferior a -99%.")
+    if t < 0:
+        raise ValueError("La tasa de interés no puede ser negativa.")
+    if t > Decimal("2"):
+        raise ValueError("La tasa de interés supera el máximo razonable (200%).")
     return _q4(t)
+
+
+def _pow_decimal(base: Decimal, exp: Decimal) -> Decimal:
+    """Potencia Decimal vía float (exponentes fraccionarios de tasas)."""
+    if exp == 0:
+        return Decimal("1")
+    if base < 0:
+        raise ValueError("No se puede elevar una base negativa a un exponente fraccionario.")
+    return Decimal(str(float(base) ** float(exp)))
+
+
+def tasa_efectiva_periodo(
+    tasa: Decimal | float | int | None,
+    *,
+    tasa_tipo: str | None = "ANUAL",
+    periodicidad: str | None = "MENSUAL",
+) -> Decimal:
+    """
+    Convierte la tasa informada a tasa efectiva del periodo de pago.
+
+    Fórmulas:
+    - tipo ANUAL: i = (1 + r)^(1/n) − 1   (tasa periódica efectiva, no r/n)
+      donde n = periodos por año (12 mensual, 4 trimestral, 2 semestral, 1 anual).
+    - tipo MENSUAL: la tasa ya es mensual; si la periodicidad no es mensual,
+      i = (1 + r_m)^m − 1  (m = meses del periodo).
+    """
+    r = normalizar_tasa_anual(tasa)
+    if r is None or r == 0:
+        return Decimal("0")
+    tipo = normalizar_tasa_tipo(tasa_tipo)
+    per = normalizar_periodicidad(periodicidad)
+    n = Decimal(_periodos_anuales(per))
+    meses = Decimal(_meses_por_periodo(per))
+    if tipo == "MENSUAL":
+        if per == "MENSUAL":
+            return _q4(r)
+        return _q4(_pow_decimal(Decimal("1") + r, meses) - Decimal("1"))
+    if n == 1:
+        return _q4(r)
+    return _q4(_pow_decimal(Decimal("1") + r, Decimal("1") / n) - Decimal("1"))
 
 
 def calcular_comision_apertura(
@@ -152,6 +202,8 @@ def calcular_pago_inicial(
     valor: Decimal | None,
 ) -> Decimal:
     if not valor_neto or valor_neto <= 0 or not tipo or not valor or valor <= 0:
+        if valor is not None and valor < 0:
+            raise ValueError("El pie o cuota inicial no puede ser negativo.")
         return Decimal("0.00")
     tipo_norm = str(tipo).strip().upper()
     if tipo_norm == "PORCENTAJE":
@@ -238,6 +290,8 @@ def calcular_monto_financiado(
     Retorna (monto_financiado, pago_inicial, seguro_financiado, otros_montos, gps_financiado, gastos_admin_financiados).
     """
     pago_inicial = calcular_pago_inicial(valor_neto, pago_inicial_tipo, pago_inicial_valor)
+    if valor_neto is not None and valor_neto < 0:
+        raise ValueError("El valor del activo no puede ser negativo.")
     base = _q((valor_neto or Decimal("0")) - pago_inicial)
     if base < 0:
         raise ValueError("El pago inicial supera el valor neto de la operación.")
@@ -325,26 +379,36 @@ def _cotizacion_desde_simulacion(data: LeasingSimulacionInput) -> "LeasingFinanc
         valor_neto=data.valor_neto,
         monto=None,
         tasa=tasa,
+        tasa_tipo=getattr(data, "tasa_tipo", "ANUAL") or "ANUAL",
         periodos_gracia=data.periodos_gracia or 0,
         opcion_compra=data.opcion_compra,
         fecha_inicio=data.fecha_inicio,
         fecha_primera_cuota=getattr(data, "fecha_primera_cuota", None),
         periodicidad=getattr(data, "periodicidad", "MENSUAL"),
         moneda=data.moneda,
+        iva_aplica=bool(getattr(data, "iva_aplica", False)),
+        iva_tasa=getattr(data, "iva_tasa", None),
         _monto_financiado_calculado=calculado,
     )
 
 
-def calcular_tea_anual(tasa_nominal_anual: Decimal | None) -> Decimal | None:
+def calcular_tea_anual(
+    tasa_nominal_anual: Decimal | None,
+    *,
+    tasa_tipo: str | None = "ANUAL",
+    periodicidad: str | None = "MENSUAL",
+) -> Decimal | None:
+    """TEA = (1 + i_periodo)^n − 1, con i_periodo = tasa efectiva del periodo."""
     if tasa_nominal_anual is None:
         return None
-    t = Decimal(str(tasa_nominal_anual))
-    if t <= Decimal("-0.99"):
+    try:
+        i = tasa_efectiva_periodo(tasa_nominal_anual, tasa_tipo=tasa_tipo, periodicidad=periodicidad)
+    except ValueError:
         return None
-    if t == 0:
+    if i == 0:
         return Decimal("0.0000")
-    im = t / Decimal("12")
-    tea = (Decimal("1") + im) ** 12 - Decimal("1")
+    n = Decimal(_periodos_anuales(normalizar_periodicidad(periodicidad)))
+    tea = _pow_decimal(Decimal("1") + i, n) - Decimal("1")
     return _q4(tea)
 
 
@@ -477,9 +541,9 @@ def simular_cotizacion(data: LeasingSimulacionInput) -> LeasingSimulacionResumen
     total_interes = sum((c.interes for c in tabla), Decimal("0.00"))
     total_rentas = sum((c.cuota for c in rentas), Decimal("0.00"))
     total_opcion = sum((c.cuota for c in tabla if c.es_opcion_compra), Decimal("0.00"))
-    tea = calcular_tea_anual(tasa)
-
     periodicidad = normalizar_periodicidad(getattr(data, "periodicidad", "MENSUAL"))
+    tea = calcular_tea_anual(tasa, tasa_tipo=getattr(data, "tasa_tipo", "ANUAL"), periodicidad=periodicidad)
+
     from services.leasing_financiero_metricas import calcular_cae_tir_operacion
     from services.leasing_financiero_tributario import calcular_desglose_tributario
 
@@ -535,6 +599,8 @@ def aplicar_parametros_financieros(data: dict) -> dict:
             data["tasa"] = _q4(Decimal(str(data["tasa_fondeo"])) + Decimal(str(data["spread_margen"])))
     if "tasa" in data and data["tasa"] is not None:
         data["tasa"] = normalizar_tasa_anual(data["tasa"])
+    if "tasa_tipo" in data and data["tasa_tipo"] is not None:
+        data["tasa_tipo"] = normalizar_tasa_tipo(data["tasa_tipo"])
     moneda = str(data.get("moneda") or "CLP").strip().upper()
     monto_fin = data.get("monto_financiado")
     valor_neto = data.get("valor_neto")
@@ -575,25 +641,30 @@ def aplicar_parametros_financieros(data: dict) -> dict:
 
 def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> List[AmortizacionCuota]:
     """
-    Tabla de amortización leasing financiero (método francés, cuota fija por periodo).
-    Soporta periodicidad MENSUAL/TRIMESTRAL/SEMESTRAL/ANUAL y fecha primera cuota.
+    Tabla de amortización leasing financiero — método francés (cuota fija por periodo).
+
+    Cuota constante (PMT) con valor residual FV:
+        i  = tasa efectiva del periodo (ver tasa_efectiva_periodo)
+        C  = [PV·i − FV·i / (1+i)^n] / [1 − 1/(1+i)^n]
+        Interés_k      = Saldo_{k-1} · i
+        Amortización_k = C − Interés_k
+        Saldo_k        = Saldo_{k-1} − Amortización_k
+    La última cuota se ajusta por redondeo para cerrar exactamente en el residual.
+    Si hay opción de compra, se agrega una línea final (capital residual, sin interés).
+    IVA, si aplica, se calcula sobre la cuota neta (no sobre gracia).
     """
     if cotizacion.plazo is None:
-        raise ValueError("La cotización debe tener un plazo > 0.")
+        raise ValueError("El plazo es obligatorio y debe ser mayor a 0 meses.")
 
     monto_base = cotizacion.monto_financiado or cotizacion.valor_neto or cotizacion.monto
     if not monto_base or monto_base <= 0:
-        raise ValueError("La cotización no tiene un monto financiado válido.")
+        raise ValueError("El monto a financiar debe ser mayor a 0.")
 
     saldo = _q(monto_base)
 
-    tasa_anual = normalizar_tasa_anual(cotizacion.tasa) if cotizacion.tasa is not None else Decimal("0")
-    if tasa_anual is None:
-        tasa_anual = Decimal("0")
-
     periodicidad = normalizar_periodicidad(getattr(cotizacion, "periodicidad", "MENSUAL"))
+    tasa_tipo = normalizar_tasa_tipo(getattr(cotizacion, "tasa_tipo", "ANUAL"))
     meses_por_cuota = _meses_por_periodo(periodicidad)
-    periodos_anuales = _periodos_anuales(periodicidad)
 
     plazo_meses = _int_meses(
         cotizacion.plazo,
@@ -621,25 +692,41 @@ def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> Li
         )
     periodos_gracia = gracia_meses // meses_por_cuota
 
-    i = _q4(tasa_anual / Decimal(periodos_anuales)) if tasa_anual > 0 else Decimal("0")
+    i = tasa_efectiva_periodo(
+        cotizacion.tasa if cotizacion.tasa is not None else Decimal("0"),
+        tasa_tipo=tasa_tipo,
+        periodicidad=periodicidad,
+    )
 
     residual = _q(cotizacion.opcion_compra or 0)
     if residual < 0:
-        raise ValueError("La opción de compra no puede ser negativa.")
+        raise ValueError("El valor residual / opción de compra no puede ser negativo.")
     if residual >= saldo:
-        raise ValueError("La opción de compra debe ser menor al monto financiado.")
+        raise ValueError("El valor residual debe ser menor al monto financiado.")
 
     if total_periodos <= periodos_gracia:
         raise ValueError("El plazo debe ser mayor a los períodos de gracia.")
 
     tiene_residual = residual > 0
 
+    iva_tasa = Decimal("0")
+    if bool(getattr(cotizacion, "iva_aplica", False)):
+        from services.leasing_financiero_tributario import normalizar_tasa_iva
+
+        iva_tasa = normalizar_tasa_iva(getattr(cotizacion, "iva_tasa", None))
+
+    def _iva_y_total(cuota_neta: Decimal, *, es_gracia: bool) -> tuple[Decimal, Decimal]:
+        if es_gracia or iva_tasa <= 0:
+            return Decimal("0.00"), _q(cuota_neta)
+        iva_c = _q(cuota_neta * iva_tasa)
+        return iva_c, _q(cuota_neta + iva_c)
+
     fecha_inicio: Optional[date] = cotizacion.fecha_inicio
     fecha_primera: Optional[date] = getattr(cotizacion, "fecha_primera_cuota", None)
     usar_fechas = fecha_inicio is not None or fecha_primera is not None
 
     def _fecha_cuota(indice_periodo: int) -> Optional[date]:
-        """indice_periodo: 1-based desde inicio contractual."""
+        """indice_periodo: 1-based desde inicio contractual. Es la fecha de vencimiento."""
         if not usar_fechas:
             return None
         if fecha_primera is not None:
@@ -654,29 +741,24 @@ def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> Li
     for g in range(1, periodos_gracia + 1):
         numero_cuota += 1
         saldo_inicial = saldo
-
-        if i > 0:
-            interes = _q(saldo_inicial * i)
-        else:
-            interes = Decimal("0.00")
-
+        interes = _q(saldo_inicial * i) if i > 0 else Decimal("0.00")
         saldo_final = _q(saldo_inicial + interes)
-        fecha_cuota = _fecha_cuota(g)
-
+        iva_c, total_c = _iva_y_total(Decimal("0.00"), es_gracia=True)
         tabla.append(
             AmortizacionCuota(
                 numero_cuota=numero_cuota,
-                fecha_cuota=fecha_cuota,
+                fecha_cuota=_fecha_cuota(g),
                 saldo_inicial=_q(saldo_inicial),
                 cuota=_q(0),
                 interes=_q(interes),
                 amortizacion=_q(0),
                 saldo_final=_q(saldo_final),
+                iva=iva_c,
+                total_cuota=total_c,
                 es_gracia=True,
                 es_opcion_compra=False,
             )
         )
-
         saldo = saldo_final
 
     n_pagos = total_periodos - periodos_gracia
@@ -686,7 +768,7 @@ def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> Li
     else:
         ip1 = Decimal("1") + i
         ip1_pow_N = ip1**n_pagos
-
+        # PMT con FV (residual): C = (PV·i − FV·i/(1+i)^n) / (1 − 1/(1+i)^n)
         if tiene_residual:
             numerador = saldo * i - residual * i / ip1_pow_N
             denominador = Decimal("1") - (Decimal("1") / ip1_pow_N)
@@ -697,11 +779,7 @@ def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> Li
     for k in range(1, n_pagos + 1):
         numero_cuota += 1
         saldo_inicial = saldo
-
-        if i > 0:
-            interes = _q(saldo_inicial * i)
-        else:
-            interes = Decimal("0.00")
+        interes = _q(saldo_inicial * i) if i > 0 else Decimal("0.00")
 
         es_ultima = k == n_pagos
         saldo_objetivo = residual if (es_ultima and tiene_residual) else Decimal("0.00")
@@ -737,37 +815,38 @@ def calcular_tabla_amortizacion(cotizacion: "LeasingFinancieroCotizacion") -> Li
         if amortizacion > 0 and cuota <= 0:
             raise ValueError("La renta calculada debe ser mayor a 0.")
 
-        fecha_cuota = _fecha_cuota(periodos_gracia + k)
-
+        iva_c, total_c = _iva_y_total(_q(cuota), es_gracia=False)
         tabla.append(
             AmortizacionCuota(
                 numero_cuota=numero_cuota,
-                fecha_cuota=fecha_cuota,
+                fecha_cuota=_fecha_cuota(periodos_gracia + k),
                 saldo_inicial=_q(saldo_inicial),
                 cuota=_q(cuota),
                 interes=_q(interes),
                 amortizacion=_q(amortizacion),
                 saldo_final=_q(saldo_final),
+                iva=iva_c,
+                total_cuota=total_c,
                 es_gracia=False,
                 es_opcion_compra=False,
             )
         )
-
         saldo = saldo_final
 
     if tiene_residual:
         numero_cuota += 1
-        fecha_opcion = _fecha_cuota(total_periodos + 1)
-
+        iva_c, total_c = _iva_y_total(_q(residual), es_gracia=False)
         tabla.append(
             AmortizacionCuota(
                 numero_cuota=numero_cuota,
-                fecha_cuota=fecha_opcion,
+                fecha_cuota=_fecha_cuota(total_periodos + 1),
                 saldo_inicial=_q(saldo),
                 cuota=_q(residual),
                 interes=_q(0),
                 amortizacion=_q(residual),
                 saldo_final=_q(0),
+                iva=iva_c,
+                total_cuota=total_c,
                 es_gracia=False,
                 es_opcion_compra=True,
             )

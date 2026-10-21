@@ -9,7 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from crud.finanzas.config_contable import obtener_configuracion_evento_modulo
-from crud.finanzas.contabilidad_asientos import crear_asiento
+from modules.contabilidad import accounting_service
 from models.inventario.inventario import InventarioMovimiento
 
 
@@ -105,6 +105,66 @@ def _construir_detalles_asiento(
     return detalles
 
 
+def contabilizar_salida_al_costo(
+    db: Session,
+    *,
+    movimiento_id: int,
+    usuario: str | None = None,
+) -> int | None:
+    """Asiento de salida al costo promedio. No corre para referencia VENTA.
+
+    Si no hay configuración INVENTARIO / SALIDA / SALIDA_INVENTARIO, no inventa
+    cuentas: el movimiento igual queda valorizado. No hace commit ni rollback.
+    """
+    movimiento: InventarioMovimiento | None = db.get(InventarioMovimiento, movimiento_id)
+    if not movimiento:
+        raise ValueError("Movimiento de inventario no encontrado.")
+    if str(getattr(movimiento, "referencia_tipo", "") or "").upper() == "VENTA":
+        return None
+
+    monto = (_d(movimiento.cantidad) * _d(movimiento.costo_unitario)).quantize(Decimal("0.01"))
+    if monto <= 0:
+        return None
+
+    try:
+        reglas = obtener_configuracion_evento_modulo(
+            db,
+            modulo="INVENTARIO",
+            submodulo="SALIDA",
+            tipo_documento="SALIDA_COSTO",
+            codigo_evento="SALIDA_INVENTARIO",
+        )
+    except SQLAlchemyError:
+        logger.info(
+            "No se pudo leer la configuración de salida de inventario; el movimiento %s queda valorizado sin asiento.",
+            movimiento_id,
+        )
+        return None
+    if not reglas:
+        logger.info(
+            "Sin configuración INVENTARIO/SALIDA/SALIDA_INVENTARIO; la salida %s queda valorizada sin asiento.",
+            movimiento_id,
+        )
+        return None
+
+    detalles = _construir_detalles_asiento(
+        reglas=reglas,
+        monto=monto,
+        descripcion=f"Salida inventario {movimiento_id}",
+    )
+    return accounting_service.post_entry(
+        db=db,
+        fecha=getattr(movimiento, "fecha", None),
+        origen_tipo="INVENTARIO_SALIDA",
+        origen_id=int(movimiento.id),
+        glosa=f"Salida de inventario al costo · movimiento {movimiento.id}"[:255],
+        detalles=detalles,
+        usuario=usuario,
+        moneda="CLP",
+        do_commit=False,
+    )
+
+
 def contabilizar_ingreso_compra_sin_factura(
     db: Session,
     *,
@@ -137,7 +197,7 @@ def contabilizar_ingreso_compra_sin_factura(
             descripcion=descripcion,
         )
 
-        crear_asiento(
+        accounting_service.post_entry(
             db=db,
             fecha=fecha,
             origen_tipo=str(referencia_tipo),
@@ -146,6 +206,7 @@ def contabilizar_ingreso_compra_sin_factura(
             detalles=detalles_asiento,
             usuario=usuario,
             moneda="CLP",
+            do_commit=False,
         )
 
         logger.info(

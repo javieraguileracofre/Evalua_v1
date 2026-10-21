@@ -194,7 +194,7 @@ Generado: 2026-04-18 12:53:08
 │       └── proveedores.html
 ├── tests/
 ├── tools/
-│   ├── bootstrap_athletic_tenant.py
+│   ├── create_tenant_database.py
 │   ├── create_tenant_database.py
 │   ├── export_estructura.py
 │   ├── generar_mapa_bd.py

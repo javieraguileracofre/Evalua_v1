@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy.orm import Session
 
 from core.paths import TEMPLATES_DIR

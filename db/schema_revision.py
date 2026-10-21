@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 # Debe coincidir con alembic head (ver tests/test_schema_revision_alembic.py).
-ERP_SCHEMA_REVISION = "0003_lop_residual_engine"
+ERP_SCHEMA_REVISION = "0013_tesoreria_sii"
 
 _ALEMBIC_VERSIONS = Path(__file__).resolve().parent.parent / "alembic" / "versions"
 

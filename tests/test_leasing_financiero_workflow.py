@@ -163,8 +163,11 @@ class _Req:
 
     @staticmethod
     def url_for(name: str, **params: object) -> str:
-        if name == "lf_cotizacion_detalle":
-            return f"/comercial/leasing/cotizaciones/{params['cotizacion_id']}"
+        if name in {"lf_cotizacion_detalle", "lf_cotizacion_amortizacion"}:
+            base = f"/comercial/leasing/cotizaciones/{params['cotizacion_id']}"
+            if name == "lf_cotizacion_amortizacion":
+                return base + "/amortizacion"
+            return base
         return "/"
 
 
@@ -173,6 +176,7 @@ _LF_FORM_DEFAULTS = {
     "bien_tipo": "",
     "fecha_primera_cuota": "",
     "periodicidad": "MENSUAL",
+    "tasa_tipo": "ANUAL",
     "comision_apertura": "",
     "comision_apertura_tipo": "",
     "financia_comision": False,
@@ -345,6 +349,8 @@ def test_hub_resumen_pipeline_y_funnel():
         ejecutivo=None,
         plazo=36,
         fecha_cotizacion=date.today(),
+        contrato_activo=False,
+        asiento_id=None,
     )
     c2 = SimpleNamespace(
         estado="ACTIVADA",
@@ -358,6 +364,8 @@ def test_hub_resumen_pipeline_y_funnel():
         ejecutivo=None,
         plazo=24,
         fecha_cotizacion=date.today(),
+        contrato_activo=True,
+        asiento_id=None,
     )
 
     class _Db:

@@ -12,7 +12,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from crud.finanzas.contabilidad_asientos import crear_asiento
+from modules.contabilidad import accounting_service
 from crud.finanzas.plan_cuentas import obtener_plan_cuenta_por_codigo
 from models.finanzas.plan_cuentas import PlanCuenta
 from models.fondos_rendir.fondo_rendir import FondoRendir
@@ -162,7 +162,7 @@ def contabilizar_entrega_anticipo(
         },
     ]
 
-    aid = crear_asiento(
+    aid = accounting_service.post_entry(
         db,
         fecha=fondo.fecha_entrega,
         origen_tipo="FONDO_RENDIR_ENT",
@@ -334,7 +334,7 @@ def contabilizar_liquidacion_rendicion(
 
     fecha_liq = fondo.fecha_aprobacion or datetime.utcnow()
 
-    aid = crear_asiento(
+    aid = accounting_service.post_entry(
         db,
         fecha=fecha_liq,
         origen_tipo="FONDO_RENDIR_LIQ",
@@ -346,6 +346,15 @@ def contabilizar_liquidacion_rendicion(
         do_commit=False,
     )
     fondo.asiento_id_liquidacion = aid  # type: ignore[assignment]
+    from erp_platform.events import publish_in_transaction
+    from erp_platform.events import types as event_types
+
+    publish_in_transaction(
+        db,
+        event_name=event_types.LIQUIDACION_GENERADA,
+        payload={"fondo_id": int(fondo.id), "asiento_id": int(aid), "tipo": "FONDO_RENDIR"},
+        correlation_id=f"FONDO_RENDIR_LIQ:{int(fondo.id)}",
+    )
     return aid
 
 

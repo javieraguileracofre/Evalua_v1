@@ -34,10 +34,9 @@ PSQL_DIR = ROOT / "db" / "psql"
 DEFAULT_PROJECT_REF = "qtrqsdabrpxitmqvqdko"
 DEFAULT_SUPABASE_POOLER_HOST = "aws-1-us-east-2.pooler.supabase.com"
 DEFAULT_SUPABASE_POOLER_PORT = 6543
-DEFAULT_TENANT = "athletic"
-MASTER_EMAIL = "javier.aguilera@evaluasoluciones.cl"
-MASTER_PASSWORD = "Evalua1234##"
-MASTER_NAME = "Javier Aguilera"
+MASTER_EMAIL = os.getenv("EVALUA_BOOTSTRAP_ADMIN_EMAIL", "").strip()
+MASTER_PASSWORD = os.getenv("EVALUA_BOOTSTRAP_ADMIN_PASSWORD", "").strip()
+MASTER_NAME = os.getenv("EVALUA_BOOTSTRAP_ADMIN_NAME", "Administrador").strip() or "Administrador"
 
 
 @dataclass(frozen=True)
@@ -237,46 +236,6 @@ def _run_sql_file(engine, path: Path) -> None:
         conn.exec_driver_sql(sql)
 
 
-def _upsert_tenant(engine, r: ResolvedDb) -> None:
-    from sqlalchemy import text
-
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                INSERT INTO public.tenants (
-                    tenant_code, tenant_name, db_driver, db_host, db_port,
-                    db_name, db_user, db_password, db_sslmode, is_active
-                ) VALUES (
-                    :code, :name, 'postgresql+psycopg', :host, :port,
-                    :dbname, :dbuser, :pwd, :sslmode, TRUE
-                )
-                ON CONFLICT (tenant_code) DO UPDATE SET
-                    tenant_name = EXCLUDED.tenant_name,
-                    db_driver = EXCLUDED.db_driver,
-                    db_host = EXCLUDED.db_host,
-                    db_port = EXCLUDED.db_port,
-                    db_name = EXCLUDED.db_name,
-                    db_user = EXCLUDED.db_user,
-                    db_password = EXCLUDED.db_password,
-                    db_sslmode = EXCLUDED.db_sslmode,
-                    is_active = EXCLUDED.is_active,
-                    updated_at = NOW()
-                """
-            ),
-            {
-                "code": DEFAULT_TENANT,
-                "name": "Evalua (Supabase)",
-                "host": r.host,
-                "port": r.port,
-                "dbname": r.db_name,
-                "dbuser": r.user,
-                "pwd": r.password_plain,
-                "sslmode": r.sslmode,
-            },
-        )
-
-
 def main() -> int:
     p = argparse.ArgumentParser(
         description="Bootstrap BD + usuario maestro (lee .env: DATABASE_URL o DB_*)."
@@ -319,7 +278,6 @@ def main() -> int:
     )
     os.environ["DATABASE_URL"] = url
     os.environ["PLATFORM_DATABASE_URL"] = url
-    os.environ["DEFAULT_TENANT_CODE"] = DEFAULT_TENANT
 
     from sqlalchemy import create_engine
 
@@ -361,8 +319,7 @@ def main() -> int:
                 if p.is_file():
                     print(f"Aplicando {p.name} (requerido para create_all)...")
                     _run_sql_file(engine, p)
-        print("Registrando tenant en public.tenants...")
-        _upsert_tenant(engine, resolved)
+        print("Esquema base aplicado. La compañía no se registra sola: use Administración → Empresas.")
     except Exception as exc:
         print(f"Error SQL / tenant: {exc}", file=sys.stderr)
         low = str(exc).lower()
@@ -392,7 +349,7 @@ def main() -> int:
 
     print("Creando tablas SQLAlchemy (create_all) y roles...")
     try:
-        eng = get_engine(DEFAULT_TENANT)
+        eng = get_engine(None)
         Base.metadata.create_all(bind=eng)
         ensure_auth_roles_seed(eng)
     except Exception as exc:
@@ -402,6 +359,14 @@ def main() -> int:
     from sqlalchemy.orm import sessionmaker
 
     from crud.auth.usuarios import crear_usuario_admin, get_usuario_por_email
+
+    if not MASTER_EMAIL or not MASTER_PASSWORD:
+        print(
+            "Usuario ADMIN no creado: defina EVALUA_BOOTSTRAP_ADMIN_EMAIL y "
+            "EVALUA_BOOTSTRAP_ADMIN_PASSWORD, o ejecute tools/create_admin_user.py."
+        )
+        print("Listo. Arranca la app con el mismo .env (DATABASE_URL o DB_*).")
+        return 0
 
     SessionLocal = sessionmaker(bind=eng, autoflush=False, autocommit=False, future=True)
     try:

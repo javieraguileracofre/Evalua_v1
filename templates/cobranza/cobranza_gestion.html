@@ -1,7 +1,7 @@
 {# templates/cobranza/cobranza_gestion.html #}
 {% extends "layout/base.html" %}
 
-{% block title %}Gestión de Cobranza · Evalua_V1{% endblock title %}
+{% block title %}Gestión de Cobranza · Evalua ERP{% endblock title %}
 
 {% block breadcrumbs %}
 <li class="breadcrumb-item">
@@ -237,8 +237,7 @@
 
       <div class="card-body pt-3">
         <div class="small text-muted mb-3">
-          Se enviará un correo de cobranza al cliente desde
-          <strong>cobranzas_athletic@evaluasoluciones.cl</strong>.
+          Se enviará un correo de cobranza al cliente desde la cuenta de correo configurada para esta compañía.
         </div>
 
         {% if not cliente.email %}

@@ -1,11 +1,14 @@
 {# templates/cobranza/cobranza_resumen.html #}
 {% extends "layout/base.html" %}
 
-{% block title %}Cobranza · Evalua_V1{% endblock title %}
+{% block title %}Cobranza · Evalua ERP{% endblock title %}
 
 {% block breadcrumbs %}
 <li class="breadcrumb-item">
   <a href="{{ request.url_for('menu_principal') }}">Inicio</a>
+</li>
+<li class="breadcrumb-item">
+  <a href="{{ request.url_for('credito_cobranzas_hub') }}">Crédito y cobranzas</a>
 </li>
 <li class="breadcrumb-item active" aria-current="page">Cobranza</li>
 {% endblock breadcrumbs %}

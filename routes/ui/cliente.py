@@ -17,8 +17,8 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -73,6 +73,11 @@ def clientes_list(
         skip=sk,
         limit=lim,
     )
+    resumen = crud_cliente.resumen_listado_clientes(
+        db,
+        activos_solo=activos_solo,
+        busqueda=q,
+    )
 
     return templates.TemplateResponse(
         "clientes/clientes.html",
@@ -85,10 +90,46 @@ def clientes_list(
             "limit": lim,
             "hay_mas": hay_mas,
             "list_page_max": LIST_PAGE_MAX,
+            "total_filtrado": resumen["total"],
+            "clientes_activos": resumen["activos"],
+            "clientes_inactivos": resumen["inactivos"],
+            "con_email": resumen["con_email"],
             "msg": msg,
             "sev": sev,
             "active_menu": "clientes",
         },
+    )
+
+
+@router.get("/clientes/sugerencias", name="clientes_sugerencias")
+def clientes_sugerencias(
+    request: Request,
+    q: str = Query("", max_length=80),
+    db: Session = Depends(get_db),
+):
+    """Autocompletado de clientes activos para formularios (nombre o RUT)."""
+    if (redir := guard_operacion_consulta(request)) is not None:
+        return redir
+    term = (q or "").strip()
+    if len(term) < 2:
+        return JSONResponse([])
+    clientes, _hay_mas = crud_cliente.listar_clientes(
+        db,
+        activos_solo=True,
+        busqueda=term,
+        skip=0,
+        limit=12,
+    )
+    return JSONResponse(
+        [
+            {
+                "id": cliente.id,
+                "label": f"{cliente.razon_social} · {cliente.rut}",
+                "rut": cliente.rut,
+                "razon_social": cliente.razon_social,
+            }
+            for cliente in clientes
+        ]
     )
 
 

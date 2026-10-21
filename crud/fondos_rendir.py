@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session, selectinload
 
-from crud.finanzas.contabilidad_asientos import eliminar_asiento_contable
+from modules.contabilidad import accounting_service
 from models.auth.usuario import Usuario
 from models.fondos_rendir.empleado import Empleado
 from models.fondos_rendir.fondo_rendir import FondoRendir, FondoRendirGasto
@@ -751,72 +751,129 @@ def eliminar_fondo_rendir(db: Session, fondo_id: int) -> None:
         )
     ent = getattr(f, "asiento_id_entrega", None)
     if ent:
-        eliminar_asiento_contable(db, int(ent))
+        accounting_service.reverse_business_entry(
+            db,
+            asiento_original_id=int(ent),
+            origen_tipo="FONDO_RENDIR_ENT_REVERSA",
+            origen_id=int(f.id),
+            glosa=f"Reversión entrega anticipo {f.folio}",
+            do_commit=False,
+        )
     db.delete(f)
     db.flush()
 
 
 def dashboard_conciliacion_transporte(db: Session) -> dict[str, Any]:
-    fondos = list(
-        db.scalars(
-            select(FondoRendir)
-            .options(
-                selectinload(FondoRendir.empleado),
-                selectinload(FondoRendir.vehiculo),
-                selectinload(FondoRendir.lineas_gasto),
-                selectinload(FondoRendir.viajes_transporte).selectinload(TransporteViaje.vehiculo),
-                selectinload(FondoRendir.viajes_transporte).selectinload(TransporteViaje.empleado),
+    """Excepciones de transporte en una consulta, sin cargar todos los anticipos."""
+    rows = db.execute(
+        text(
+            """
+            SELECT 'COMBUSTIBLE_SIN_VIAJE' AS tipo, f.folio, f.id AS fondo_id, g.monto,
+                   NULL::bigint AS viaje_id, NULL::text AS chofer_fondo, NULL::text AS chofer_viaje
+            FROM fondos_rendir_gastos g
+            JOIN fondos_rendir f ON f.id = g.fondo_id
+            WHERE lower(btrim(g.rubro)) = 'combustible'
+              AND NOT EXISTS (
+                  SELECT 1 FROM transporte_viajes v WHERE v.fondo_rendir_id = f.id
+              )
+            UNION ALL
+            SELECT 'FONDO_SIN_VIAJE', f.folio, f.id, NULL::numeric, NULL::bigint, NULL::text, NULL::text
+            FROM fondos_rendir f
+            WHERE NOT EXISTS (
+                SELECT 1 FROM transporte_viajes v WHERE v.fondo_rendir_id = f.id
             )
-        ).all()
-    )
+            UNION ALL
+            SELECT 'VIAJE_SIN_FONDO', v.folio, NULL::bigint, NULL::numeric, v.id, NULL::text, NULL::text
+            FROM transporte_viajes v
+            WHERE v.estado = 'CERRADO' AND v.fondo_rendir_id IS NULL
+            UNION ALL
+            SELECT 'SIN_ODOMETRO', f.folio, f.id, g.monto, v.id, NULL::text, NULL::text
+            FROM fondos_rendir_gastos g
+            JOIN fondos_rendir f ON f.id = g.fondo_id
+            JOIN transporte_viajes v ON v.fondo_rendir_id = f.id
+            WHERE lower(btrim(g.rubro)) = 'combustible'
+              AND (v.odometro_inicio IS NULL OR v.odometro_fin IS NULL)
+            UNION ALL
+            SELECT 'SIN_LITROS', f.folio, f.id, g.monto, v.id, NULL::text, NULL::text
+            FROM fondos_rendir_gastos g
+            JOIN fondos_rendir f ON f.id = g.fondo_id
+            JOIN transporte_viajes v ON v.fondo_rendir_id = f.id
+            WHERE lower(btrim(g.rubro)) = 'combustible'
+              AND v.litros_combustible IS NULL
+            UNION ALL
+            SELECT 'EXCESO', f.folio, f.id, g.monto, v.id, NULL::text, NULL::text
+            FROM fondos_rendir_gastos g
+            JOIN fondos_rendir f ON f.id = g.fondo_id
+            JOIN transporte_viajes v ON v.fondo_rendir_id = f.id
+            JOIN vehiculos_transporte vt ON vt.id = v.vehiculo_transporte_id
+            WHERE lower(btrim(g.rubro)) = 'combustible'
+              AND v.litros_combustible IS NOT NULL
+              AND vt.consumo_referencial_l100km IS NOT NULL
+              AND v.odometro_fin > v.odometro_inicio
+              AND v.litros_combustible > (
+                  (v.odometro_fin - v.odometro_inicio)::numeric
+                  * vt.consumo_referencial_l100km / 100
+              ) * 1.10
+            UNION ALL
+            SELECT 'CHOFER', f.folio, f.id, g.monto, v.id,
+                   COALESCE(ef.nombre_completo, ''), COALESCE(ev.nombre_completo, '')
+            FROM fondos_rendir_gastos g
+            JOIN fondos_rendir f ON f.id = g.fondo_id
+            JOIN transporte_viajes v ON v.fondo_rendir_id = f.id
+            LEFT JOIN empleados ef ON ef.id = f.empleado_id
+            LEFT JOIN empleados ev ON ev.id = v.empleado_id
+            WHERE lower(btrim(g.rubro)) = 'combustible'
+              AND (
+                  f.empleado_id <> v.empleado_id
+                  OR (
+                      f.vehiculo_transporte_id IS NOT NULL
+                      AND v.vehiculo_transporte_id IS NOT NULL
+                      AND f.vehiculo_transporte_id <> v.vehiculo_transporte_id
+                  )
+              )
+            """
+        )
+    ).mappings().all()
     gastos_sin_viaje: list[dict[str, Any]] = []
     rendiciones_inconsistentes: list[dict[str, Any]] = []
+    fondos_sin_viaje: list[dict[str, Any]] = []
+    viajes_sin_rendicion: list[dict[str, Any]] = []
     fondos_chofer_vehiculo_distinto: list[dict[str, Any]] = []
-    viajes_cerrados_sin_fondo = list(
-        db.scalars(
-            select(TransporteViaje)
-            .options(selectinload(TransporteViaje.empleado), selectinload(TransporteViaje.vehiculo))
-            .where(TransporteViaje.estado == "CERRADO", TransporteViaje.fondo_rendir_id.is_(None))
-        ).all()
-    )
-    for f in fondos:
-        viajes = list(f.viajes_transporte or [])
-        has_viajes = len(viajes) > 0
-        for g in f.lineas_gasto:
-            if str(g.rubro or "").strip().lower() != "combustible":
-                continue
-            if not has_viajes:
-                gastos_sin_viaje.append({"folio": f.folio, "fondo_id": f.id, "monto": g.monto})
-                rendiciones_inconsistentes.append({"folio": f.folio, "motivo": "Gasto combustible sin viaje asociado"})
-                continue
-            for v in viajes:
-                if v.odometro_inicio is None or v.odometro_fin is None:
-                    rendiciones_inconsistentes.append({"folio": f.folio, "viaje_id": v.id, "motivo": "No hay odómetro"})
-                if v.litros_combustible is None:
-                    rendiciones_inconsistentes.append({"folio": f.folio, "viaje_id": v.id, "motivo": "No hay litros registrados"})
-                if (
-                    v.litros_combustible
-                    and v.vehiculo
-                    and v.vehiculo.consumo_referencial_l100km
-                    and v.odometro_inicio is not None
-                    and v.odometro_fin is not None
-                    and v.odometro_fin > v.odometro_inicio
-                ):
-                    km = v.odometro_fin - v.odometro_inicio
-                    litros_ref = (Decimal(km) * Decimal(v.vehiculo.consumo_referencial_l100km)) / Decimal(100)
-                    if Decimal(v.litros_combustible) > litros_ref * Decimal("1.10"):
-                        rendiciones_inconsistentes.append({"folio": f.folio, "viaje_id": v.id, "motivo": "Combustible excesivo para km"})
-                if f.empleado_id != v.empleado_id or (
-                    f.vehiculo_transporte_id and v.vehiculo_transporte_id and f.vehiculo_transporte_id != v.vehiculo_transporte_id
-                ):
-                    fondos_chofer_vehiculo_distinto.append(
-                        {"folio": f.folio, "viaje_id": v.id, "chofer_fondo": f.empleado.nombre_completo if f.empleado else "", "chofer_viaje": v.empleado.nombre_completo if v.empleado else ""}
-                    )
+    motivos = {
+        "COMBUSTIBLE_SIN_VIAJE": "Gasto combustible sin viaje asociado",
+        "SIN_ODOMETRO": "No hay odómetro",
+        "SIN_LITROS": "No hay litros registrados",
+        "EXCESO": "Combustible excesivo para km",
+    }
+    for row in rows:
+        tipo = str(row["tipo"])
+        if tipo == "COMBUSTIBLE_SIN_VIAJE":
+            gastos_sin_viaje.append(
+                {"folio": row["folio"], "fondo_id": row["fondo_id"], "monto": row["monto"]}
+            )
+            rendiciones_inconsistentes.append({"folio": row["folio"], "motivo": motivos[tipo]})
+        elif tipo == "FONDO_SIN_VIAJE":
+            fondos_sin_viaje.append({"folio": row["folio"], "fondo_id": row["fondo_id"]})
+        elif tipo == "VIAJE_SIN_FONDO":
+            viajes_sin_rendicion.append({"folio": row["folio"], "viaje_id": row["viaje_id"]})
+        elif tipo == "CHOFER":
+            fondos_chofer_vehiculo_distinto.append(
+                {
+                    "folio": row["folio"],
+                    "viaje_id": row["viaje_id"],
+                    "chofer_fondo": row["chofer_fondo"] or "",
+                    "chofer_viaje": row["chofer_viaje"] or "",
+                }
+            )
+        elif tipo in motivos:
+            rendiciones_inconsistentes.append(
+                {"folio": row["folio"], "viaje_id": row["viaje_id"], "motivo": motivos[tipo]}
+            )
     return {
         "fondos_vencidos": [a for a in dashboard_stats(db)["alertas_rendicion"] if a["dias"] > 7],
-        "fondos_sin_viaje": [f for f in fondos if not f.viajes_transporte],
+        "fondos_sin_viaje": fondos_sin_viaje,
         "gastos_combustible_sin_viaje": gastos_sin_viaje,
-        "viajes_sin_rendicion": viajes_cerrados_sin_fondo,
+        "viajes_sin_rendicion": viajes_sin_rendicion,
         "rendiciones_inconsistentes": rendiciones_inconsistentes,
         "fondos_chofer_vehiculo_distinto": fondos_chofer_vehiculo_distinto,
     }

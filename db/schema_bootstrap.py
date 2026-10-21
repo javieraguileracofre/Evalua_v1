@@ -15,6 +15,27 @@ logger = logging.getLogger("evalua.schema")
 _ROOT = Path(__file__).resolve().parent.parent
 
 
+def _exec_sql(engine: Engine, sql: str) -> None:
+    with engine.connect() as conn:
+        conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+        conn.exec_driver_sql(sql)
+
+
+def _exec_company_sql(engine: Engine, sql: str) -> None:
+    """Ejecuta SQL de arranque. CREATE EXTENSION ya lo hizo el administrador."""
+    try:
+        _exec_sql(engine, sql)
+    except Exception as exc:
+        message = str(exc).lower()
+        if "extension" not in message and "pgcrypto" not in message and "citext" not in message:
+            raise
+        stripped = "\n".join(
+            line for line in sql.splitlines() if "create extension" not in line.lower()
+        )
+        logger.warning("Se omite CREATE EXTENSION; el administrador ya instaló pgcrypto y citext.")
+        _exec_sql(engine, stripped)
+
+
 def apply_company_schema(bind: Engine | Connection) -> str:
     """Crea el esquema operacional actual y devuelve la revisión."""
     engine = bind.engine if isinstance(bind, Connection) else bind
@@ -64,9 +85,7 @@ def apply_company_schema(bind: Engine | Connection) -> str:
             if not base_sql.is_file():
                 continue
             sql = base_sql.read_text(encoding="utf-8").replace("%", "%%")
-            with engine.connect() as conn:
-                conn = conn.execution_options(isolation_level="AUTOCOMMIT")
-                conn.exec_driver_sql(sql)
+            _exec_company_sql(engine, sql)
     Base.metadata.create_all(bind=engine)
     for fn in (
         ensure_ap_documento_contabilidad_columns,
@@ -102,5 +121,28 @@ def apply_company_schema(bind: Engine | Connection) -> str:
             fn(engine)
         except Exception as exc:
             logger.warning("Parche %s: %s", fn.__name__, type(exc).__name__)
+    if engine.dialect.name == "postgresql":
+        fase_d = _ROOT / "db" / "psql" / "144_fase_d_libros_tesoreria.sql"
+        sql = fase_d.read_text(encoding="utf-8")
+        with engine.begin() as conn:
+            for raw in sql.split(";"):
+                utiles = [
+                    ln
+                    for ln in raw.splitlines()
+                    if ln.strip() and not ln.strip().startswith("--")
+                ]
+                if utiles:
+                    conn.execute(text(raw.strip()))
+        tesoreria = _ROOT / "db" / "psql" / "148_tesoreria_sii.sql"
+        sql_sii = tesoreria.read_text(encoding="utf-8")
+        with engine.begin() as conn:
+            for raw in sql_sii.split(";"):
+                utiles = [
+                    ln
+                    for ln in raw.splitlines()
+                    if ln.strip() and not ln.strip().startswith("--")
+                ]
+                if utiles:
+                    conn.execute(text(raw.strip()))
     stamp_schema_revision(engine)
     return ERP_SCHEMA_REVISION

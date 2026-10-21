@@ -1475,20 +1475,27 @@ def apply_startup_schema(
     allow_ddl: bool,
     create_all: Callable[..., None] | None = None,
 ) -> None:
-    """Aplica DDL (opcional) + seeds y sella `ERP_SCHEMA_REVISION` si hay DDL."""
-    if allow_ddl:
-        if create_all is not None:
-            create_all(bind=engine)
-        _run_ensures(engine, STARTUP_DDL_ENSURES, label="ddl")
-        try:
-            from db.schema_revision import stamp_schema_revision
+    """Seeds de datos. El DDL de arranque ya no aplica parches SQL.
 
-            stamp_schema_revision(engine)
-        except Exception as exc:
-            logger.warning("No se pudo sellar app_metadata: %s", type(exc).__name__)
+    Con ``allow_ddl`` en PostgreSQL se delega en Alembic (``upgrade_database_url``).
+    ``create_all`` se conserva en la firma y no se ejecuta: el esquema lo define Alembic.
+    """
+    del create_all
+    if allow_ddl:
+        if engine.dialect.name != "postgresql":
+            logger.warning(
+                "AUTO_MIGRATE_ON_STARTUP solo migra con Alembic en PostgreSQL. "
+                "No se aplican parches SQL de arranque."
+            )
+        else:
+            logger.info("AUTO_MIGRATE_ON_STARTUP: alembic upgrade head. Sin parches SQL.")
+            from services.platform.schema_upgrade import upgrade_database_url
+
+            url = engine.url.render_as_string(hide_password=False)
+            upgrade_database_url(url)
     else:
         logger.info(
-            "AUTO_MIGRATE_ON_STARTUP=false: se omiten create_all y DDL ensure_*; "
-            "solo seeds. Use alembic upgrade head / apply_company_schema para schema."
+            "AUTO_MIGRATE_ON_STARTUP=false: sin DDL de arranque; solo seeds. "
+            "Use alembic upgrade head / tools/upgrade_company_schema.py para el esquema."
         )
     _run_ensures(engine, STARTUP_SEED_ENSURES, label="seed")

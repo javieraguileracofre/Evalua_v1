@@ -7,27 +7,39 @@ import os
 import re
 import smtplib
 import ssl
+from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from email.message import EmailMessage
 from html import escape
 from typing import Any, Iterable
 
 from sqlalchemy.orm import Session
 
 from crud.comunicaciones import email_log as crud_email_log
+import services.comunicaciones.smtp_transport as smtp_transport
+from services.comunicaciones.smtp_transport import SmtpConfig
+from core.email_safety import is_valid_email_address, strip_header_injection
 
 
-SMTP_HOST: str = os.getenv("EVALUA_SMTP_HOST", "mail.evaluasoluciones.cl")
+SMTP_HOST: str = os.getenv("EVALUA_SMTP_HOST", "").strip()
 SMTP_PORT: int = int(os.getenv("EVALUA_SMTP_PORT", "465"))
 
-SMTP_USER: str = os.getenv("EVALUA_SMTP_USER", "cobranzas_athletic@evaluasoluciones.cl")
+SMTP_USER: str = os.getenv("EVALUA_SMTP_USER", "").strip()
 SMTP_PASSWORD: str = os.getenv("EVALUA_SMTP_PASSWORD", "")
 
-FROM_NAME: str = os.getenv("EVALUA_MAIL_FROM_NAME", "Evalua Soluciones · Cobranza")
+FROM_NAME: str = os.getenv("EVALUA_MAIL_FROM_NAME", "Evalua ERP")
 REPLY_TO_DEFAULT: str | None = os.getenv("EVALUA_MAIL_REPLY_TO") or None
 
 AddressLike = str | Iterable[str]
+
+CHANNEL_BY_MODULO: dict[str, str] = {
+    "COBRANZA": "COBRANZA",
+    "POSTVENTA": "POSTVENTA",
+    "LEASING_FINANCIERO": "COMERCIAL",
+    "AUTH": "RECUPERACION_CONTRASENA",
+    "COMERCIAL": "COMERCIAL",
+    "SISTEMA": "SISTEMA",
+}
 
 
 def _normalize_recipients(value: AddressLike | None) -> list[str]:
@@ -48,8 +60,8 @@ def _normalize_recipients(value: AddressLike | None) -> list[str]:
     seen: set[str] = set()
 
     for item in raw_items:
-        email = item.strip()
-        if not email:
+        email = strip_header_injection(item, max_len=254)
+        if not email or not is_valid_email_address(email):
             continue
         key = email.lower()
         if key in seen:
@@ -130,11 +142,54 @@ class EmailService:
         self.from_name = from_name
         self.reply_to_default = reply_to_default
 
+    def _legacy_config(self) -> SmtpConfig:
+        port = int(self.port)
+        security = "SSL" if port == 465 else "STARTTLS"
+        return SmtpConfig(
+            host=self.host,
+            port=port,
+            username=self.username,
+            password=self.password,
+            from_email=self.username,
+            from_name=self.from_name,
+            security=security,
+            reply_to=self.reply_to_default,
+        )
+
+    def _config_for_send(
+        self,
+        *,
+        db: Session | None,
+        channel_code: str | None,
+    ) -> tuple[SmtpConfig, int | None, str | None]:
+        code = (channel_code or "").strip().upper() or None
+        if db is not None and code:
+            from services.comunicaciones.mail_account_service import resolve_for_channel
+
+            resolved = resolve_for_channel(db, code)
+            if resolved and resolved.account is not None:
+                return resolved.config, int(resolved.account.id), resolved.channel_code
+            if code == "COBRANZA":
+                from services.comunicaciones.mail_account_service import MailConfigError
+
+                raise MailConfigError(
+                    "sin_cuenta",
+                    "No existe una cuenta de correo configurada para esta compañía.",
+                )
+        if code == "COBRANZA":
+            from services.comunicaciones.mail_account_service import MailConfigError
+
+            raise MailConfigError(
+                "sin_cuenta",
+                "No existe una cuenta de correo configurada para esta compañía.",
+            )
+        return self._legacy_config(), None, code
+
     def _connect(self) -> smtplib.SMTP_SSL:
         if not self.password:
             raise RuntimeError("EVALUA_SMTP_PASSWORD no está configurado.")
         context = ssl.create_default_context()
-        server = smtplib.SMTP_SSL(self.host, self.port, context=context)
+        server = smtplib.SMTP_SSL(self.host, self.port, context=context, timeout=12)
         server.login(self.username, self.password)
         return server
 
@@ -149,6 +204,8 @@ class EmailService:
         bcc: AddressLike | None = None,
         reply_to: str | None = None,
         attachments: list[tuple[str, bytes, str]] | None = None,
+        db: Session | None = None,
+        channel_code: str | None = None,
     ) -> dict[str, Any]:
         to_list = _normalize_recipients(to)
         cc_list = _normalize_recipients(cc)
@@ -157,53 +214,31 @@ class EmailService:
         if not to_list:
             raise ValueError("No hay destinatarios válidos para el envío.")
 
-        msg = EmailMessage()
-        msg["From"] = f"{self.from_name} <{self.username}>"
-        msg["To"] = ", ".join(to_list)
-        msg["Subject"] = subject
+        subject = strip_header_injection(subject, max_len=180)
+        if not subject:
+            raise ValueError("Asunto de correo inválido.")
+        html_body = (html_body or "").replace("\x00", "")
+        if text_body:
+            text_body = text_body.replace("\x00", "")
+        if reply_to:
+            reply_to = strip_header_injection(reply_to, max_len=254)
+            if reply_to and not is_valid_email_address(reply_to):
+                reply_to = None
 
-        if cc_list:
-            msg["Cc"] = ", ".join(cc_list)
-
-        reply_to_value = reply_to or self.reply_to_default
-        if reply_to_value:
-            msg["Reply-To"] = reply_to_value
-
+        cfg, _account_id, _channel = self._config_for_send(db=db, channel_code=channel_code)
+        if reply_to:
+            cfg = replace(cfg, reply_to=reply_to)
         text_body_final = text_body or _strip_html_tags(html_body)
-        msg.set_content(text_body_final)
-        msg.add_alternative(html_body, subtype="html")
-
-        for filename, content, mime in attachments or []:
-            maintype, _, subtype = (mime or "application/octet-stream").partition("/")
-            if not subtype:
-                maintype, subtype = "application", "octet-stream"
-            msg.add_attachment(
-                content,
-                maintype=maintype,
-                subtype=subtype,
-                filename=filename or "adjunto.bin",
-            )
-
-        all_recipients = to_list + cc_list + bcc_list
-
-        server: smtplib.SMTP_SSL | None = None
-        try:
-            server = self._connect()
-            server.send_message(msg, from_addr=self.username, to_addrs=all_recipients)
-            return {
-                "ok": True,
-                "to": to_list,
-                "cc": cc_list,
-                "bcc_count": len(bcc_list),
-                "subject": subject,
-                "attachments": len(attachments or []),
-            }
-        finally:
-            if server is not None:
-                try:
-                    server.quit()
-                except Exception:
-                    pass
+        return smtp_transport.send_with_config(
+            cfg,
+            to=to_list,
+            subject=subject,
+            html_body=html_body,
+            text_body=text_body_final,
+            cc=cc_list or None,
+            bcc=bcc_list or None,
+            attachments=attachments,
+        )
 
     def send_and_log(
         self,
@@ -224,12 +259,23 @@ class EmailService:
         include_detalle: bool = True,
         meta: dict[str, Any] | None = None,
         attachments: list[tuple[str, bytes, str]] | None = None,
+        channel_code: str | None = None,
     ) -> Any:
         to_list = _normalize_recipients(to)
         if not to_list:
             raise ValueError("No hay destinatarios válidos para registrar el envío.")
 
         primary_to = to_list[0]
+        inferred = (channel_code or CHANNEL_BY_MODULO.get((modulo or "").strip().upper()) or "").strip().upper() or None
+        _cfg, account_id, inferred = self._config_for_send(db=db, channel_code=inferred)
+
+        safe_meta = dict(meta or {})
+        for banned in ("password", "code", "token", "secret", "codigo"):
+            safe_meta.pop(banned, None)
+        if inferred:
+            safe_meta.setdefault("channel", inferred)
+        if account_id:
+            safe_meta.setdefault("mail_account_id", account_id)
 
         log = crud_email_log.crear_email_log(
             db=db,
@@ -242,7 +288,9 @@ class EmailService:
             subject=subject,
             include_detalle=include_detalle,
             status="PENDIENTE",
-            meta_json=_safe_json(meta),
+            meta_json=_safe_json(safe_meta),
+            channel_code=inferred,
+            mail_account_id=account_id,
         )
 
         try:
@@ -255,11 +303,20 @@ class EmailService:
                 bcc=bcc,
                 reply_to=reply_to,
                 attachments=attachments,
+                db=db,
+                channel_code=inferred,
             )
             crud_email_log.marcar_enviado(db=db, email_log_id=log.id)
             return log
         except Exception as exc:
-            crud_email_log.marcar_error(db=db, email_log_id=log.id, error_message=str(exc))
+            from services.comunicaciones.mail_account_service import MailConfigError
+            from services.comunicaciones.smtp_transport import classify_smtp_error
+
+            if isinstance(exc, MailConfigError):
+                msg = exc.message
+            else:
+                msg = classify_smtp_error(exc).message
+            crud_email_log.marcar_error(db=db, email_log_id=log.id, error_message=msg)
             raise
 
     def send_cobranza_recordatorio_lote(
@@ -452,8 +509,25 @@ class EmailService:
         if not to_list:
             raise ValueError("Debe indicar al menos un correo destinatario válido.")
         primary_to = (to_list[0] or "").strip()
-        if "@" not in primary_to:
+        if not is_valid_email_address(primary_to):
             raise ValueError("Correo del cliente inválido para envío.")
+        subject = strip_header_injection(subject, max_len=180)
+        if not subject:
+            raise ValueError("Asunto de correo inválido.")
+        body = (body or "").replace("\x00", "")
+        if len(body) > 8000:
+            body = body[:8000]
+
+        allowed: set[str] = set()
+        cli = getattr(caso, "cliente", None)
+        if cli is not None and getattr(cli, "email", None):
+            allowed.add(str(cli.email).strip().lower())
+        if allowed:
+            for dest in to_list:
+                if dest.lower() not in allowed:
+                    raise ValueError("El destinatario no coincide con el correo del cliente del caso.")
+        else:
+            raise ValueError("El caso no tiene un correo de cliente válido para envío.")
 
         cliente_id = getattr(caso, "cliente_id", None)
         caso_id = getattr(caso, "id", None)
@@ -493,6 +567,59 @@ class EmailService:
             caso_id=caso_id,
             include_detalle=True,
             meta=meta,
+        )
+
+    def send_password_reset_code(
+        self,
+        *,
+        to_email: str,
+        code: str,
+        expires_minutes: int = 5,
+        db: Session | None = None,
+        user_name: str | None = None,
+        company_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Envía el código de recuperación. El código no se registra en claro en logs."""
+        from services.comunicaciones.email_templates import build_message
+
+        destinatario = (to_email or "").strip()
+        if not destinatario:
+            raise ValueError("No hay destinatarios válidos para el envío.")
+        ttl = max(1, int(expires_minutes))
+        codigo = "".join(ch for ch in (code or "") if ch.isalnum())
+        msg = build_message(
+            "password_reset",
+            {
+                "code": codigo,
+                "user": {"name": user_name or "usuario", "email": destinatario},
+                "company": {"name": company_name or FROM_NAME},
+            },
+        )
+        subject = msg["subject"]
+        html_body = (
+            msg["html"]
+            + f"<p class=\"small\">Este código vence en {ttl} minutos y solo puede usarse una vez.</p>"
+        )
+        text_body = msg["text"] + f"\nVence en {ttl} minutos.\n"
+        if db is not None:
+            return self.send_and_log(
+                db=db,
+                modulo="AUTH",
+                evento="PASSWORD_RESET",
+                to=destinatario,
+                subject=subject,
+                html_body=html_body,
+                text_body=text_body,
+                include_detalle=False,
+                meta={"expires_minutes": ttl},
+                channel_code="RECUPERACION_CONTRASENA",
+            )
+        return self.send_email(
+            to=destinatario,
+            subject=subject,
+            html_body=html_body,
+            text_body=text_body,
+            channel_code="RECUPERACION_CONTRASENA",
         )
 
 

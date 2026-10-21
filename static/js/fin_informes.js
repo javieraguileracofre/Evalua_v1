@@ -29,19 +29,10 @@
     });
   }
 
-  function bind() {
-    var inp = document.getElementById("fin-inf-search");
-    if (!inp) return;
-    var run = function () {
-      applyFilter(inp);
-    };
-    inp.addEventListener("input", run);
-    inp.addEventListener("search", run);
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bind);
-  } else {
-    bind();
-  }
+  document.addEventListener("input", function (ev) {
+    if (ev.target && ev.target.id === "fin-inf-search") applyFilter(ev.target);
+  });
+  document.addEventListener("search", function (ev) {
+    if (ev.target && ev.target.id === "fin-inf-search") applyFilter(ev.target);
+  });
 })();

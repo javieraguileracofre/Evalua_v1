@@ -2,18 +2,30 @@
 {% block title %}{{ sim.codigo }} — Leasing operativo{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="/static/css/leasing_operativo.css" />
-<div class="container py-4 lo-page">
+<div class="container-fluid py-4 lo-page">
   <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
     <div>
       <a href="{{ request.url_for('leasing_operativo_list') }}" class="small text-decoration-none">← Listado</a>
+      · <a href="{{ request.url_for('leasing_operativo_hub') }}" class="small text-decoration-none">Hub</a>
       <h1 class="h5 fw-semibold mt-1 mb-0">{{ sim.nombre }}</h1>
-      <p class="text-secondary small mb-0 font-monospace">{{ sim.codigo }} · {{ sim.tipo.nombre if sim.tipo else '' }} · {{ sim.escenario }}</p>
+      <p class="text-secondary small mb-0 font-monospace">
+        {{ sim.codigo }} · {{ sim.tipo.nombre if sim.tipo else '' }} · {{ sim.escenario }}
+        · <span class="badge text-bg-light border">{{ etapa_label or (workflow.get('etapa_actual') if workflow else 'COTIZACION') }}</span>
+      </p>
     </div>
     <div class="d-flex flex-wrap gap-2">
       <span class="badge align-self-center text-bg-light border">{{ sim.estado }}</span>
+      {% if puede_editar %}
+      <a class="btn btn-sm btn-primary" href="{{ request.url_for('leasing_operativo_editar', sim_id=sim.id) }}">Editar</a>
+      {% endif %}
       <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_export_xlsx', sim_id=sim.id) }}">Excel</a>
       <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('leasing_operativo_amortizacion', sim_id=sim.id) }}">Amortización</a>
       <a class="btn btn-sm btn-outline-danger" href="{{ request.url_for('leasing_operativo_cotizacion_pdf', sim_id=sim.id) }}">PDF</a>
+      {% if puede_eliminar %}
+      <form method="post" action="{{ request.url_for('leasing_operativo_eliminar', sim_id=sim.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar la cotización {{ sim.codigo }}? Esta acción no se puede deshacer.');">
+        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+      </form>
+      {% endif %}
     </div>
   </div>
 
@@ -27,10 +39,53 @@
     <li class="nav-item"><a class="nav-link" href="#lo-reportes">Reportes</a></li>
   </ul>
 
+  {% set flota = res.flota or {} %}
+  {% set lineas = res.lineas or [] %}
+  {% if lineas %}
+  <div class="lo-flota-banner">
+    <div class="d-flex flex-wrap justify-content-between gap-2 align-items-center">
+      <div>
+        <div class="fw-semibold">Cotización multi-unidad</div>
+        <div class="small text-muted">{{ flota.unidades_totales or lineas|length }} unidad(es) en {{ lineas|length }} línea(s)</div>
+      </div>
+      <div class="small">Capital amortizable flota: <strong>${{ "{:,.0f}".format(res.capital_amortizable or 0).replace(",", ".") }}</strong></div>
+    </div>
+    <div class="table-responsive mt-2 mb-0">
+      <table class="table table-sm mb-0 lo-table">
+        <thead>
+          <tr>
+            <th>Línea</th>
+            <th class="text-end">Cant.</th>
+            <th class="text-end">Valor</th>
+            <th class="text-end">Residual</th>
+            <th class="text-end">Renta unit.</th>
+            <th class="text-end">Renta línea</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ln in lineas %}
+          <tr>
+            <td>{{ ln.descripcion or ln.tipo_nombre or '—' }}</td>
+            <td class="text-end">{{ ln.cantidad or 1 }}</td>
+            <td class="text-end">{{ "{:,.0f}".format(ln.valor_bien_unitario or 0).replace(",", ".") }}</td>
+            <td class="text-end">{{ "{:,.0f}".format(ln.residual_aceptado_unitario or 0).replace(",", ".") }}</td>
+            <td class="text-end">{{ "{:,.0f}".format(ln.renta_unitaria or 0).replace(",", ".") }}</td>
+            <td class="text-end fw-semibold">{{ "{:,.0f}".format(ln.renta_linea or 0).replace(",", ".") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
   <div id="lo-resumen" class="lo-kpi-grid mb-4">
     <div class="lo-kpi"><div class="label">CAPEX total</div><div class="value">{{ "{:,.0f}".format(res.capex_total or 0).replace(",", ".") }}</div></div>
+    {% if res.capital_amortizable is defined and res.capital_amortizable is not none %}
+    <div class="lo-kpi"><div class="label">Capital amortizable</div><div class="value">{{ "{:,.0f}".format(res.capital_amortizable or 0).replace(",", ".") }}</div></div>
+    {% endif %}
     <div class="lo-kpi"><div class="label">Residual ajust.</div><div class="value">{{ "{:,.0f}".format((res.valor_residual or {}).get('valor_residual_ajustado', 0)).replace(",", ".") }}</div></div>
-    <div class="lo-kpi"><div class="label">LTV %</div><div class="value">{{ "%.2f"|format(res.ltv_pct or 0) }}</div></div>
+    <div class="lo-kpi"><div class="label">LTV % <span class="text-muted fw-normal" style="font-size:0.65rem;text-transform:none;letter-spacing:0;">(cap. fin. / valor)</span></div><div class="value">{{ "%.2f"|format(res.ltv_pct or 0) }}</div></div>
     <div class="lo-kpi"><div class="label">LGD %</div><div class="value">{{ "%.2f"|format(res.lgd_pct or 0) }}</div></div>
     <div class="lo-kpi"><div class="label">Renta mínima</div><div class="value">{{ "{:,.0f}".format(res.renta_minima or 0).replace(",", ".") }}</div></div>
     <div class="lo-kpi"><div class="label">Renta sugerida</div><div class="value text-primary">{{ "{:,.0f}".format(res.renta_sugerida or 0).replace(",", ".") }}</div></div>
@@ -156,10 +211,13 @@
     <div class="card-header bg-white fw-semibold">Riesgo y collateral</div>
     <div class="card-body small row g-2">
       {% set col = res.collateral or {} %}
-      <div class="col-md-4">Valor mercado: <strong>${{ "{:,.0f}".format(col.get('valor_mercado', 0) or 0).replace(",", ".") }}</strong></div>
+      <div class="col-md-4">Valor vehículo: <strong>${{ "{:,.0f}".format(col.get('valor_vehiculo', 0) or 0).replace(",", ".") }}</strong></div>
+      <div class="col-md-4">Capital financiado: <strong>${{ "{:,.0f}".format(col.get('capital_financiado', res.capex_financiado or 0) or 0).replace(",", ".") }}</strong></div>
+      <div class="col-md-4">LTV: <strong>{{ "%.2f"|format(res.ltv_pct or 0) }}%</strong> <span class="text-muted">(cap. fin. / valor veh.)</span></div>
+      <div class="col-md-4">Valor mercado (tasación): <strong>${{ "{:,.0f}".format(col.get('collateral_valor_mercado', col.get('valor_mercado', 0)) or 0).replace(",", ".") }}</strong></div>
       <div class="col-md-4">Recovery rate: <strong>{{ "%.2f"|format(res.recovery_rate_pct or 0) }}%</strong></div>
       <div class="col-md-4">LGD: <strong>{{ "%.2f"|format(res.lgd_pct or 0) }}%</strong></div>
-      <div class="col-md-4">Net recovery: <strong>${{ "{:,.0f}".format(col.get('net_recovery', 0) or 0).replace(",", ".") }}</strong></div>
+      <div class="col-md-4">Net recovery: <strong>${{ "{:,.0f}".format(col.get('collateral_neto_liquidacion', col.get('net_recovery', 0)) or 0).replace(",", ".") }}</strong></div>
       <div class="col-md-4">Meses liquidación: <strong>{{ col.get('meses_liquidacion', '—') }}</strong></div>
       <div class="col-md-4">Desc. venta forzada: <strong>{{ col.get('descuento_venta_forzada_pct', 0) }}%</strong></div>
     </div>

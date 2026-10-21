@@ -1,0 +1,146 @@
+{% extends "auth/base_acceso.html" %}
+
+{% block title %}Recuperar contraseña · Evalua ERP{% endblock %}
+
+{% block card %}
+        {% if step == 'exito' %}
+        <h2>Contraseña actualizada</h2>
+        <p class="sub">Ya puede iniciar sesión con su nueva clave. El código de recuperación quedó invalidado.</p>
+        {% elif step == 'clave' %}
+        <h2>Nueva contraseña</h2>
+        <p class="sub">Ingrese la nueva clave dos veces. Debe tener al menos 10 caracteres, con letras y números.</p>
+        {% elif step == 'codigo' %}
+        <h2>Ingrese el código</h2>
+        <p class="sub">Si el correo está registrado, recibirá un código de 8 dígitos. Vence en 5 minutos y es de un solo uso.</p>
+        {% else %}
+        <h2>Olvidé mi contraseña</h2>
+        <p class="sub">Indique el correo asociado a su cuenta. Si está registrado, enviaremos un código de recuperación.</p>
+        {% endif %}
+
+        {% if error_message %}
+        <div class="alert alert-danger border-0 py-2 px-3 mb-3" role="alert">
+          <i class="bi bi-exclamation-octagon me-1"></i>
+          {{ error_message }}
+        </div>
+        {% endif %}
+
+        {% if query_msg %}
+        <div class="alert alert-{{ query_sev or 'info' }} border-0 py-2 px-3 mb-3" role="status">
+          {{ query_msg }}
+        </div>
+        {% endif %}
+
+        {% if step == 'exito' %}
+        <a class="btn btn-login w-100" href="{{ request.url_for('auth_login') }}">
+          <i class="bi bi-box-arrow-in-right me-1"></i>
+          Ir a iniciar sesión
+        </a>
+        {% elif step == 'clave' %}
+        <form id="form-reset-clave" method="post" action="{{ request.url_for('auth_recuperar_clave_submit') }}" autocomplete="off" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}"/>
+          <div class="mb-3">
+            <label class="form-label" for="new_password">Nueva contraseña</label>
+            <input class="form-control" id="new_password" name="new_password" type="password" required minlength="10" placeholder="Mínimo 10 caracteres">
+          </div>
+          <div class="mb-4">
+            <label class="form-label" for="confirm_password">Confirmar contraseña</label>
+            <input class="form-control" id="confirm_password" name="confirm_password" type="password" required minlength="10" placeholder="Repita la contraseña">
+          </div>
+          <div id="pwd-mismatch" class="alert alert-danger border-0 py-2 px-3 mb-3 d-none" role="alert">
+            Las contraseñas no coinciden.
+          </div>
+          <button type="submit" class="btn btn-login w-100" id="btn-reset-clave">
+            <i class="bi bi-shield-check me-1"></i>
+            Guardar nueva contraseña
+          </button>
+        </form>
+        {% elif step == 'codigo' %}
+        <form id="form-reset-codigo" method="post" action="{{ request.url_for('auth_recuperar_codigo_submit') }}" autocomplete="off" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}"/>
+          <div class="mb-4">
+            <label class="form-label" for="code">Código de 8 dígitos</label>
+            <input
+              class="form-control code-input"
+              id="code"
+              name="code"
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9 ]{8,16}"
+              maxlength="16"
+              required
+              placeholder="••••••••"
+              autofocus
+            >
+          </div>
+          <button type="submit" class="btn btn-login w-100">
+            <i class="bi bi-key me-1"></i>
+            Verificar código
+          </button>
+        </form>
+        {% else %}
+        <form id="form-reset-email" method="post" action="{{ request.url_for('auth_recuperar_submit') }}" autocomplete="off" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}"/>
+          <div class="mb-4">
+            <label class="form-label" for="email">Correo corporativo</label>
+            <input
+              class="form-control"
+              id="email"
+              name="email"
+              type="email"
+              required
+              placeholder="nombre@empresa.cl"
+              value="{{ email_value or '' }}"
+              autofocus
+            >
+          </div>
+          <button type="submit" class="btn btn-login w-100">
+            <i class="bi bi-envelope me-1"></i>
+            Enviar código
+          </button>
+        </form>
+        {% endif %}
+
+        {% if step != 'exito' %}
+        <a class="back-login" href="{{ request.url_for('auth_login') }}">
+          <i class="bi bi-arrow-left"></i>
+          Volver al inicio de sesión
+        </a>
+        {% endif %}
+
+        <div class="security-note">
+          <i class="bi bi-info-circle"></i>
+          <span>
+            Por seguridad no indicamos si un correo existe en el sistema.
+            El código vence a los 5 minutos y no puede reutilizarse.
+          </span>
+        </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  document.querySelectorAll("form").forEach(function (form) {
+    form.addEventListener("submit", function (ev) {
+      var btn = form.querySelector("button[type=submit]");
+      if (form.id === "form-reset-clave") {
+        var a = document.getElementById("new_password");
+        var b = document.getElementById("confirm_password");
+        var box = document.getElementById("pwd-mismatch");
+        if (a && b && a.value !== b.value) {
+          ev.preventDefault();
+          if (box) box.classList.remove("d-none");
+          if (btn) btn.disabled = false;
+          return;
+        }
+        if (box) box.classList.add("d-none");
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.dataset.originalHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Procesando…';
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

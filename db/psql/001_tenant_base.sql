@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS public.app_metadata (
     id                BIGSERIAL PRIMARY KEY,
     tenant_code       VARCHAR(60)  NOT NULL UNIQUE,
     tenant_name       VARCHAR(160) NOT NULL,
-    app_version       VARCHAR(30)  NOT NULL DEFAULT '1.0.0',
+    app_version       VARCHAR(64)  NOT NULL DEFAULT '1.0.0',
     installed_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );

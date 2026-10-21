@@ -86,12 +86,12 @@ class AsientoDetalle(Base):
     descripcion: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     debe: Mapped[Decimal] = mapped_column(
-        Numeric(14, 2),
+        Numeric(18, 2),
         nullable=False,
         default=Decimal("0.00"),
     )
     haber: Mapped[Decimal] = mapped_column(
-        Numeric(14, 2),
+        Numeric(18, 2),
         nullable=False,
         default=Decimal("0.00"),
     )

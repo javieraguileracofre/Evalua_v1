@@ -15,6 +15,7 @@ from crud.auth.usuarios import (
     listar_roles_codigos,
     listar_usuarios,
     serializar_sesion_usuario,
+    validar_politica_password,
 )
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     "listar_roles_codigos",
     "listar_usuarios",
     "serializar_sesion_usuario",
+    "validar_politica_password",
 ]

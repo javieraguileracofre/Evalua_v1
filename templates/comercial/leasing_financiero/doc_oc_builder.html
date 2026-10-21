@@ -2,7 +2,7 @@
 {% block title %}Orden de compra — Cotización {{ cotizacion.id }}{% endblock %}
 {% block head %}<link rel="stylesheet" href="/static/css/leasing_financiero.css">{% endblock %}
 {% block content %}
-<div class="container py-4">
+<div class="container-fluid py-4 lf-page">
   <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=cotizacion.id) }}" class="small text-decoration-none">← Volver al detalle</a>
   <h1 class="h5 lf-title mt-2 mb-3">Orden de compra — Cotización #{{ cotizacion.id }}</h1>
   <div class="card lf-card shadow-sm border-0">

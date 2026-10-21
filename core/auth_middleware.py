@@ -9,7 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from core.auth_paths import is_public_path
+from core.auth_paths import is_public_path, respuesta_sin_sesion
 from core.config import settings
 
 logger = logging.getLogger("evalua.auth.mw")
@@ -49,9 +49,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if request.url.query:
                 nxt = f"{path}?{request.url.query}"
             loc = f"/login?next={quote(nxt, safe='')}"
-            from starlette.responses import RedirectResponse
-
-            return RedirectResponse(url=loc, status_code=302)
+            return respuesta_sin_sesion(path, loc)
 
         refreshed = None
         try:
@@ -72,9 +70,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if sess is not None:
                 sess.pop("auth", None)
             request.state.auth_user = None
-            from starlette.responses import RedirectResponse
-
-            return RedirectResponse(url="/login?msg=Sesion+expirada&sev=warning", status_code=302)
+            return respuesta_sin_sesion(path, "/login?msg=Sesion+expirada&sev=warning")
 
         auth = refreshed
         request.state.auth_user = auth
@@ -99,5 +95,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.auth_user = auth
             if sess is not None:
                 sess["auth"] = auth
+
+        try:
+            from core.request_context import set_request_context
+
+            actor = auth.get("id") or auth.get("user_id") or auth.get("uid")
+            if actor is not None:
+                set_request_context(actor_id=int(actor))
+        except (TypeError, ValueError):
+            pass
 
         return await call_next(request)

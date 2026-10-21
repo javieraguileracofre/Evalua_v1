@@ -155,6 +155,17 @@ class IdentityPasswordResetCode(IdentityBase):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
 
+class IdentityLoginAttempt(IdentityBase):
+    """Cupo de login de la identidad. No vive en la base operacional."""
+
+    __tablename__ = "identity_login_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email_hmac: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    ip_hmac: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+
+
 class PlatformAuditLog(IdentityBase):
     __tablename__ = "platform_audit_log"
 

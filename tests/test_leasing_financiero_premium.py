@@ -93,7 +93,7 @@ def test_desglose_iva_recuperable():
 
 
 def test_comision_financiada_incrementa_monto():
-    monto, _, _, _ = leasing_financiero.calcular_monto_financiado(
+    monto, _, _, _, _, _ = leasing_financiero.calcular_monto_financiado(
         moneda="CLP",
         valor_neto=Decimal("1000000"),
         pago_inicial_tipo="PORCENTAJE",
@@ -122,6 +122,10 @@ def test_estados_lf_incluyen_flujo_comercial():
     from schemas.comercial.leasing_cotizacion import ESTADOS_LF
 
     assert "BORRADOR" in ESTADOS_LF
+    assert "EN_EVALUACION" in ESTADOS_LF
+    assert "ACUERDO_FIRMADO" in ESTADOS_LF
+    assert "ACTIVO_PENDIENTE_COMPRA" in ESTADOS_LF
+    assert "ACTIVO_ADQUIRIDO" in ESTADOS_LF
     assert "ACTIVADA" in ESTADOS_LF
     assert "ANULADA" in ESTADOS_LF
 

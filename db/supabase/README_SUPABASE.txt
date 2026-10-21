@@ -116,6 +116,22 @@ O desde su PC con la clave actual del panel Supabase en .env:
 
 La app también intenta aplicar db/psql/108_* y 109_* al arrancar en Render si faltan columnas/tablas.
 
+Recuperación de contraseña (códigos de un solo uso)
+---------------------------------------------------
+En SQL Editor ejecute (idempotente):
+
+  db/psql/132_auth_password_reset_codes.sql
+
+La app también aplica este parche al arrancar. Documentación: docs/recuperacion_contrasena.md.
+
+Cuentas de correo por tipo de gestión
+-------------------------------------
+En SQL Editor ejecute (idempotente):
+
+  db/psql/133_mail_accounts.sql
+
+Documentación: docs/cuentas_correo.md.
+
 Si algo falla
 -------------
 - "password authentication failed": la clave no es la del proyecto en la nube; reset en Database.

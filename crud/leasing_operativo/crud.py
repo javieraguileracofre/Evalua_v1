@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from crud.comercial import credito_riesgo as crud_cr
@@ -15,6 +15,7 @@ from crud.finanzas.cuentas_por_pagar import CuentasPorPagarCRUD
 from models.comercial.credito_riesgo import CreditoSolicitud
 from models.cobranza.cuentas_por_cobrar import CuentaPorCobrar
 from models.finanzas.compras_finanzas import APDocumento
+from models.maestros.cliente import Cliente
 from models.maestros.proveedor import Proveedor
 from models.leasing_operativo.models import (
     LeasingOpActivoDepreciacion,
@@ -58,19 +59,30 @@ def _add_months(d: date, months: int) -> date:
     return date(y, m, min(d.day, last))
 
 
-def _default_perfil_param() -> dict[str, Any]:
+def _default_perfil_param(codigo_tipo: str | None = None) -> dict[str, Any]:
+    cod = (codigo_tipo or "").strip().upper()
+    uso_by_tipo = {
+        "VEHICULO_LIVIANO": {"km_anual": 25000, "horas_anual": 0},
+        "VEHICULO_GERENCIAL": {"km_anual": 18000, "horas_anual": 0},
+        "FURGON": {"km_anual": 45000, "horas_anual": 0},
+        "CAMIONETA": {"km_anual": 80000, "horas_anual": 0},
+        "VEHICULO_PESADO": {"km_anual": 100000, "horas_anual": 0},
+        "GRUA": {"km_anual": 0, "horas_anual": 1600},
+        "MAQUINARIA": {"km_anual": 0, "horas_anual": 1800},
+        "EQUIPO_IT": {"km_anual": 0, "horas_anual": 0},
+    }
     return {
-        "uso": {"km_anual": 80000, "horas_anual": 0},
+        "uso": dict(uso_by_tipo.get(cod) or {"km_anual": 80000, "horas_anual": 0}),
         "activo": {
-            "marca_modelo_factor": 1,
-            "sector_economico_mult": 1,
+            "marca_modelo_factor": 1.05 if cod == "VEHICULO_GERENCIAL" else 1,
+            "sector_economico_mult": 1.05 if cod == "GRUA" else 1,
             "inflacion_activo_pct_anual": 3,
             "condicion_factor": 1,
         },
         "collateral": {
-            "descuento_venta_forzada_pct": 12,
-            "meses_liquidacion": 4,
-            "tasa_fin_liquidacion_mensual": 0.008,
+            "descuento_venta_forzada_pct": 18 if cod == "GRUA" else (14 if cod == "VEHICULO_GERENCIAL" else 12),
+            "meses_liquidacion": 6 if cod == "GRUA" else 4,
+            "tasa_fin_liquidacion_mensual": 0.01 if cod == "GRUA" else 0.008,
             "costo_repossession": 0,
             "costo_legal": 0,
             "transporte": 0,
@@ -78,10 +90,10 @@ def _default_perfil_param() -> dict[str, Any]:
         },
         "riesgo": {
             "segmento_cliente": "MEDIO",
-            "sector_mult": 1,
-            "activo_mult": 1,
-            "uso_intensivo_mult": 1,
-            "liquidez_mult": 1,
+            "sector_mult": 1.1 if cod == "GRUA" else 1,
+            "activo_mult": 1.15 if cod == "GRUA" else 1,
+            "uso_intensivo_mult": 1.1 if cod in {"GRUA", "FURGON"} else 1,
+            "liquidez_mult": 1.2 if cod == "GRUA" else 1,
         },
         "comercial": {
             "comision_vendedor": 0,
@@ -499,14 +511,198 @@ def _dictamen_from_credito_estado(estado: str | None) -> str:
     return "PENDIENTE"
 
 
-def listar_politica(db: Session) -> list[LeasingOpPolitica]:
-    return list(db.scalars(select(LeasingOpPolitica).where(LeasingOpPolitica.activo.is_(True))).all())
+def listar_politica(db: Session, *, incluir_inactivas: bool = False) -> list[LeasingOpPolitica]:
+    q = select(LeasingOpPolitica)
+    if not incluir_inactivas:
+        q = q.where(LeasingOpPolitica.activo.is_(True))
+    return list(db.scalars(q.order_by(LeasingOpPolitica.clave.asc())).all())
+
+
+def obtener_politica(db: Session, clave: str) -> LeasingOpPolitica | None:
+    k = (clave or "").strip()
+    if not k:
+        return None
+    return db.scalars(select(LeasingOpPolitica).where(LeasingOpPolitica.clave == k).limit(1)).first()
+
+
+# Catálogo base de flota Chile (complementa seed SQL 102/138).
+_TIPOS_FLOTA_CATALOGO: tuple[dict[str, Any], ...] = (
+    {
+        "codigo": "VEHICULO_LIVIANO",
+        "nombre": "Vehículo liviano",
+        "sector": "TRANSPORTE",
+        "residual_base_pct": Decimal("20"),
+        "residual_max_pct": Decimal("45"),
+        "liquidez_factor": Decimal("1.04"),
+        "obsolescencia_factor": Decimal("1.03"),
+        "desgaste_km_factor": Decimal("0.00014"),
+        "desgaste_hora_factor": Decimal("0.00002"),
+        "haircut_residual_pct": Decimal("5"),
+    },
+    {
+        "codigo": "VEHICULO_GERENCIAL",
+        "nombre": "Vehículos gerenciales",
+        "sector": "TRANSPORTE",
+        "residual_base_pct": Decimal("24"),
+        "residual_max_pct": Decimal("52"),
+        "liquidez_factor": Decimal("1.06"),
+        "obsolescencia_factor": Decimal("1.04"),
+        "desgaste_km_factor": Decimal("0.00011"),
+        "desgaste_hora_factor": Decimal("0.00002"),
+        "haircut_residual_pct": Decimal("6"),
+    },
+    {
+        "codigo": "GRUA",
+        "nombre": "Grúas",
+        "sector": "INDUSTRIA",
+        "residual_base_pct": Decimal("14"),
+        "residual_max_pct": Decimal("38"),
+        "liquidez_factor": Decimal("0.82"),
+        "obsolescencia_factor": Decimal("1.10"),
+        "desgaste_km_factor": Decimal("0.00002"),
+        "desgaste_hora_factor": Decimal("0.00075"),
+        "haircut_residual_pct": Decimal("10"),
+    },
+    {
+        "codigo": "FURGON",
+        "nombre": "Camioneta tipo furgón (Partner y similares)",
+        "sector": "TRANSPORTE",
+        "residual_base_pct": Decimal("18"),
+        "residual_max_pct": Decimal("42"),
+        "liquidez_factor": Decimal("1.00"),
+        "obsolescencia_factor": Decimal("1.04"),
+        "desgaste_km_factor": Decimal("0.00016"),
+        "desgaste_hora_factor": Decimal("0.00003"),
+        "haircut_residual_pct": Decimal("6"),
+    },
+)
+
+
+def asegurar_tipos_activo_catalogo(db: Session) -> int:
+    """Inserta tipos de flota faltantes (liviano, gerencial, grúa, furgón)."""
+    existentes = {
+        str(c).upper()
+        for c in db.scalars(select(LeasingOpTipoActivo.codigo)).all()
+    }
+    created = 0
+    for spec in _TIPOS_FLOTA_CATALOGO:
+        cod = str(spec["codigo"]).upper()
+        if cod in existentes:
+            continue
+        db.add(
+            LeasingOpTipoActivo(
+                codigo=cod,
+                nombre=str(spec["nombre"])[:160],
+                sector=str(spec.get("sector") or "")[:120] or None,
+                residual_base_pct=spec["residual_base_pct"],
+                residual_max_pct=spec["residual_max_pct"],
+                liquidez_factor=spec["liquidez_factor"],
+                obsolescencia_factor=spec["obsolescencia_factor"],
+                desgaste_km_factor=spec["desgaste_km_factor"],
+                desgaste_hora_factor=spec["desgaste_hora_factor"],
+                haircut_residual_pct=spec["haircut_residual_pct"],
+                activo=True,
+            )
+        )
+        created += 1
+    if created:
+        db.commit()
+        asegurar_parametros_tipo_default(db)
+    return created
 
 
 def listar_tipos_activo(db: Session) -> list[LeasingOpTipoActivo]:
+    asegurar_tipos_activo_catalogo(db)
     return list(
         db.scalars(select(LeasingOpTipoActivo).where(LeasingOpTipoActivo.activo.is_(True)).order_by(LeasingOpTipoActivo.nombre)).all()
     )
+
+
+def listar_tipos_activo_admin(db: Session, *, incluir_inactivos: bool = True) -> list[LeasingOpTipoActivo]:
+    """Catálogo completo para configuración (incluye inactivos)."""
+    asegurar_tipos_activo_catalogo(db)
+    stmt = select(LeasingOpTipoActivo).order_by(LeasingOpTipoActivo.activo.desc(), LeasingOpTipoActivo.nombre)
+    if not incluir_inactivos:
+        stmt = stmt.where(LeasingOpTipoActivo.activo.is_(True))
+    return list(db.scalars(stmt).all())
+
+
+def _normalizar_codigo_tipo(codigo: str) -> str:
+    raw = (codigo or "").strip().upper().replace(" ", "_").replace("-", "_")
+    cleaned = "".join(ch for ch in raw if ch.isalnum() or ch == "_")
+    return cleaned[:40]
+
+
+def upsert_tipo_activo(
+    db: Session,
+    *,
+    tipo_id: int | None,
+    codigo: str,
+    nombre: str,
+    sector: str | None,
+    residual_base_pct: Decimal,
+    residual_max_pct: Decimal,
+    liquidez_factor: Decimal,
+    obsolescencia_factor: Decimal,
+    desgaste_km_factor: Decimal,
+    desgaste_hora_factor: Decimal,
+    haircut_residual_pct: Decimal,
+    activo: bool = True,
+) -> LeasingOpTipoActivo:
+    """Crea o actualiza el catálogo técnico del tipo de activo (motor residual)."""
+    cod = _normalizar_codigo_tipo(codigo)
+    nom = (nombre or "").strip()
+    if not cod:
+        raise ValueError("Código de tipo de activo requerido")
+    if not nom:
+        raise ValueError("Nombre de tipo de activo requerido")
+    base = residual_base_pct if residual_base_pct is not None else Decimal("15")
+    mx = residual_max_pct if residual_max_pct is not None else Decimal("45")
+    if base < 0 or mx < 0 or base > mx:
+        raise ValueError("Residual base debe ser ≥ 0 y ≤ residual máximo")
+
+    row: LeasingOpTipoActivo | None = None
+    if tipo_id:
+        row = db.get(LeasingOpTipoActivo, tipo_id)
+        if not row:
+            raise ValueError("Tipo de activo no encontrado")
+        # Código único: permitir mismo id
+        existing = db.scalars(select(LeasingOpTipoActivo).where(LeasingOpTipoActivo.codigo == cod)).first()
+        if existing and int(existing.id) != int(tipo_id):
+            raise ValueError(f"Ya existe un tipo con código {cod}")
+    else:
+        existing = db.scalars(select(LeasingOpTipoActivo).where(LeasingOpTipoActivo.codigo == cod)).first()
+        if existing:
+            raise ValueError(f"Ya existe un tipo con código {cod}")
+        row = LeasingOpTipoActivo(codigo=cod)
+
+    row.codigo = cod
+    row.nombre = nom[:160]
+    row.sector = (sector or "").strip()[:120] or None
+    row.residual_base_pct = base
+    row.residual_max_pct = mx
+    row.liquidez_factor = liquidez_factor if liquidez_factor is not None else Decimal("1")
+    row.obsolescencia_factor = obsolescencia_factor if obsolescencia_factor is not None else Decimal("1")
+    row.desgaste_km_factor = desgaste_km_factor if desgaste_km_factor is not None else Decimal("0.0001")
+    row.desgaste_hora_factor = desgaste_hora_factor if desgaste_hora_factor is not None else Decimal("0.0005")
+    row.haircut_residual_pct = haircut_residual_pct if haircut_residual_pct is not None else Decimal("5")
+    row.activo = bool(activo)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    asegurar_parametros_tipo_default(db)
+    return row
+
+
+def set_tipo_activo_activo(db: Session, tipo_id: int, activo: bool) -> LeasingOpTipoActivo:
+    row = db.get(LeasingOpTipoActivo, tipo_id)
+    if not row:
+        raise ValueError("Tipo de activo no encontrado")
+    row.activo = bool(activo)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 def listar_parametros_tipo(db: Session) -> list[LeasingOpParametroTipo]:
@@ -515,8 +711,8 @@ def listar_parametros_tipo(db: Session) -> list[LeasingOpParametroTipo]:
 
 
 def asegurar_parametros_tipo_default(db: Session) -> int:
-    """Crea filas default faltantes para cada tipo de activo."""
-    tipos = listar_tipos_activo(db)
+    """Crea filas default faltantes para cada tipo de activo (incl. inactivos)."""
+    tipos = list(db.scalars(select(LeasingOpTipoActivo).order_by(LeasingOpTipoActivo.id)).all())
     existentes = {int(x.tipo_activo_id) for x in listar_parametros_tipo(db)}
     created = 0
     for t in tipos:
@@ -532,7 +728,7 @@ def asegurar_parametros_tipo_default(db: Session) -> int:
                 spread_default_pct=Decimal("8"),
                 margen_default_pct=Decimal("12"),
                 tir_default_pct=Decimal("14"),
-                perfil_json=_default_perfil_param(),
+                perfil_json=_default_perfil_param(getattr(t, "codigo", None)),
             )
         )
         created += 1
@@ -619,39 +815,46 @@ def listar_simulaciones(
     *,
     q: str | None = None,
     etapa: str | None = None,
-) -> list[LeasingOpSimulacion]:
+) -> tuple[list[LeasingOpSimulacion], bool]:
+    """Filtra en SQL y avisa si el límite ocultó filas.
+
+    Devuelve (filas, hay_mas). La etapa vive en result_json.workflow_v1.etapa_actual.
+    """
+    tope = max(1, min(int(limit), 1000))
+    etapa_sql = func.upper(
+        func.coalesce(
+            LeasingOpSimulacion.result_json["workflow_v1"]["etapa_actual"].astext,
+            "COTIZACION",
+        )
+    )
     stmt = (
         select(LeasingOpSimulacion)
-        .options(selectinload(LeasingOpSimulacion.tipo), selectinload(LeasingOpSimulacion.cliente))
+        .options(
+            selectinload(LeasingOpSimulacion.tipo),
+            selectinload(LeasingOpSimulacion.cliente),
+            selectinload(LeasingOpSimulacion.contrato),
+        )
         .order_by(LeasingOpSimulacion.id.desc())
-        .limit(limit)
     )
-    rows = list(db.scalars(stmt).all())
-    q_norm = (q or "").strip().lower()
     etapa_norm = (etapa or "").strip().upper()
-    if not q_norm and not etapa_norm:
-        return rows
-    out: list[LeasingOpSimulacion] = []
-    for r in rows:
-        wf = (r.result_json or {}).get("workflow_v1") or {}
-        et = str(wf.get("etapa_actual") or "COTIZACION").upper()
-        if etapa_norm and et != etapa_norm:
-            continue
-        if q_norm:
-            blob = " ".join(
-                [
-                    str(r.codigo or ""),
-                    str(r.nombre or ""),
-                    str(r.estado or ""),
-                    str(r.cliente.razon_social if r.cliente else ""),
-                    str(r.tipo.nombre if r.tipo else ""),
-                    et,
-                ]
-            ).lower()
-            if q_norm not in blob:
-                continue
-        out.append(r)
-    return out
+    if etapa_norm:
+        stmt = stmt.where(etapa_sql == etapa_norm)
+    q_norm = (q or "").strip()
+    if q_norm:
+        pattern = f"%{q_norm}%"
+        stmt = stmt.where(
+            or_(
+                LeasingOpSimulacion.codigo.ilike(pattern),
+                LeasingOpSimulacion.nombre.ilike(pattern),
+                LeasingOpSimulacion.estado.ilike(pattern),
+                etapa_sql.ilike(pattern),
+                LeasingOpSimulacion.cliente.has(Cliente.razon_social.ilike(pattern)),
+                LeasingOpSimulacion.tipo.has(LeasingOpTipoActivo.nombre.ilike(pattern)),
+            )
+        )
+    rows = list(db.scalars(stmt.limit(tope + 1)).unique().all())
+    hay_mas = len(rows) > tope
+    return rows[:tope], hay_mas
 
 
 def segmento_riesgo_cliente(db: Session, cliente_id: int) -> dict[str, Any] | None:
@@ -797,54 +1000,95 @@ def crear_simulacion_y_calcular(
     pie_inicial_pct: Any | None = None,
     opcion_compra_pct: Any | None = None,
 ) -> LeasingOpSimulacion:
-    tipo = obtener_tipo(db, tipo_activo_id)
-    if not tipo:
-        raise ValueError("Tipo de activo inválido")
+    unidades_raw = (inputs or {}).get("unidades") if isinstance(inputs, dict) else None
+    if isinstance(unidades_raw, list) and len(unidades_raw) > 0:
+        from services.leasing_operativo.cotizacion_flota import calcular_cotizacion_flota
 
-    politica_rows = listar_politica(db)
-    politica = merge_politica(politica_rows)
-    plantillas = plantillas_por_tipo(db, tipo_activo_id)
-    if not plantillas:
-        raise ValueError("El tipo de activo no tiene plantillas de costo operativo configuradas.")
+        flota = calcular_cotizacion_flota(
+            db,
+            unidades=unidades_raw,
+            plazo_meses=plazo_meses,
+            escenario=escenario,
+            metodo_pricing=metodo_pricing,
+            margen_pct=margen_pct,
+            spread_pct=spread_pct,
+            tir_objetivo=tir_objetivo,
+            cliente_id=cliente_id,
+            indexacion_tipo=str(indexacion_tipo or "NINGUNA"),
+            indexacion_pct=indexacion_pct or 0,
+            pie_inicial_pct=pie_inicial_pct or 0,
+            opcion_compra_pct=opcion_compra_pct or 0,
+            moneda=str((inputs or {}).get("moneda") or "CLP"),
+            iva_pct=(inputs or {}).get("iva_pct") or 19,
+            market_data=(inputs or {}).get("market_data") if isinstance((inputs or {}).get("market_data"), dict) else {},
+        )
+        tipo_activo_id = int(flota["tipo_activo_id_principal"])
+        tipo = obtener_tipo(db, tipo_activo_id)
+        if not tipo:
+            raise ValueError("Tipo de activo inválido")
+        result = flota["result"]
+        inp = dict(inputs or {})
+        inp["unidades"] = flota["unidades"]
+        inp["plazo_meses"] = plazo_meses
+        inp["escenario"] = escenario
+        inp["metodo_pricing"] = metodo_pricing
+        inp["cotizacion_modo"] = "FLOTA"
+        inp_json = _json_safe(inp)
+        result_json = _json_safe(result)
+        result_json["workflow_v1"] = _workflow_default()
+        dec = result.get("decision") or {}
+        total_u = int(flota.get("total_unidades") or 1)
+        nombre_final = nombre or f"Cotización flota ({total_u} unidad{'es' if total_u != 1 else ''})"
+    else:
+        tipo = obtener_tipo(db, tipo_activo_id)
+        if not tipo:
+            raise ValueError("Tipo de activo inválido")
 
-    param_tipo = obtener_parametro_tipo(db, tipo_activo_id)
-    inp = preparar_inputs_simulacion(
-        inputs=dict(inputs),
-        tipo_activo_id=tipo_activo_id,
-        param_tipo=param_tipo,
-        plazo_meses=plazo_meses,
-        escenario=escenario,
-        metodo_pricing=metodo_pricing,
-        margen_pct=margen_pct,
-        spread_pct=spread_pct,
-        tir_objetivo=tir_objetivo,
-        indexacion_tipo=indexacion_tipo,
-        indexacion_pct=indexacion_pct,
-        pie_inicial_pct=pie_inicial_pct,
-        opcion_compra_pct=opcion_compra_pct,
-    )
-    inp = aplicar_segmento_cliente_inputs(db, inp, cliente_id)
+        politica_rows = listar_politica(db)
+        politica = merge_politica(politica_rows)
+        plantillas = plantillas_por_tipo(db, tipo_activo_id)
+        if not plantillas:
+            raise ValueError("El tipo de activo no tiene plantillas de costo operativo configuradas.")
 
-    tipo_d = {
-        "residual_base_pct": tipo.residual_base_pct,
-        "residual_max_pct": tipo.residual_max_pct,
-        "liquidez_factor": tipo.liquidez_factor,
-        "obsolescencia_factor": tipo.obsolescencia_factor,
-        "desgaste_km_factor": tipo.desgaste_km_factor,
-        "desgaste_hora_factor": tipo.desgaste_hora_factor,
-        "haircut_residual_pct": tipo.haircut_residual_pct,
-    }
-    result = run_economic_engine(inputs=inp, tipo_activo=tipo_d, politica=politica, plantillas_costo=plantillas)
-    inp_json = _json_safe(inp)
-    result_json = _json_safe(result)
-    result_json["workflow_v1"] = _workflow_default()
+        param_tipo = obtener_parametro_tipo(db, tipo_activo_id)
+        inp = preparar_inputs_simulacion(
+            inputs=dict(inputs),
+            tipo_activo_id=tipo_activo_id,
+            param_tipo=param_tipo,
+            plazo_meses=plazo_meses,
+            escenario=escenario,
+            metodo_pricing=metodo_pricing,
+            margen_pct=margen_pct,
+            spread_pct=spread_pct,
+            tir_objetivo=tir_objetivo,
+            indexacion_tipo=indexacion_tipo,
+            indexacion_pct=indexacion_pct,
+            pie_inicial_pct=pie_inicial_pct,
+            opcion_compra_pct=opcion_compra_pct,
+        )
+        inp = aplicar_segmento_cliente_inputs(db, inp, cliente_id)
 
-    dec = result.get("decision") or {}
+        tipo_d = {
+            "residual_base_pct": tipo.residual_base_pct,
+            "residual_max_pct": tipo.residual_max_pct,
+            "liquidez_factor": tipo.liquidez_factor,
+            "obsolescencia_factor": tipo.obsolescencia_factor,
+            "desgaste_km_factor": tipo.desgaste_km_factor,
+            "desgaste_hora_factor": tipo.desgaste_hora_factor,
+            "haircut_residual_pct": tipo.haircut_residual_pct,
+        }
+        result = run_economic_engine(inputs=inp, tipo_activo=tipo_d, politica=politica, plantillas_costo=plantillas)
+        inp_json = _json_safe(inp)
+        result_json = _json_safe(result)
+        result_json["workflow_v1"] = _workflow_default()
+        dec = result.get("decision") or {}
+        nombre_final = nombre or "Simulación"
+
     sim = LeasingOpSimulacion(
         codigo=None,
         cliente_id=cliente_id,
         tipo_activo_id=tipo_activo_id,
-        nombre=nombre or "Simulación",
+        nombre=nombre_final,
         plazo_meses=plazo_meses,
         escenario=escenario,
         metodo_pricing=metodo_pricing,
@@ -874,6 +1118,357 @@ def crear_simulacion_y_calcular(
     db.commit()
     db.refresh(sim)
     return sim
+
+
+_ETAPAS_BLOQUEO_EDICION = frozenset(
+    {
+        "CONTRATO_CONFECCIONADO",
+        "ORDEN_COMPRA",
+        "ENTREGA_RECEPCION",
+        "FACTURA_COMPRA",
+        "ACTIVADO_CONTABLE",
+    }
+)
+
+_ETAPAS_BLOQUEO_ELIMINACION = frozenset(
+    {
+        "CONTRATO_CONFECCIONADO",
+        "ORDEN_COMPRA",
+        "ENTREGA_RECEPCION",
+        "FACTURA_COMPRA",
+        "ACTIVADO_CONTABLE",
+    }
+)
+
+ETAPA_LABELS: dict[str, str] = {
+    "COTIZACION": "Cotización",
+    "CREDITO_EN_EVALUACION": "En crédito",
+    "CREDITO_APROBADO": "Crédito aprobado",
+    "CREDITO_RECHAZADO": "Crédito rechazado",
+    "CONTRATO_CONFECCIONADO": "Contrato",
+    "ORDEN_COMPRA": "Orden de compra",
+    "ENTREGA_RECEPCION": "Entrega",
+    "FACTURA_COMPRA": "Factura compra",
+    "ACTIVADO_CONTABLE": "En cartera",
+    "OTROS": "Otra etapa",
+}
+
+
+def etapa_actual(sim: LeasingOpSimulacion) -> str:
+    wf = (sim.result_json or {}).get("workflow_v1") if isinstance(sim.result_json, dict) else {}
+    return str((wf or {}).get("etapa_actual") or "COTIZACION").upper()
+
+
+def etiqueta_etapa(etapa: str | None) -> str:
+    key = str(etapa or "COTIZACION").upper()
+    return ETAPA_LABELS.get(key, key.replace("_", " ").title())
+
+
+def _tiene_contrato(sim: LeasingOpSimulacion) -> bool:
+    ctr = getattr(sim, "contrato", None)
+    if ctr is not None:
+        return True
+    # Relación no cargada: no asumir; el caller debe selectinload o consultar aparte.
+    return False
+
+
+def puede_editar_simulacion(sim: LeasingOpSimulacion) -> bool:
+    """Editable mientras no haya contrato ni formalización avanzada."""
+    if _tiene_contrato(sim):
+        return False
+    et = etapa_actual(sim)
+    if et in _ETAPAS_BLOQUEO_EDICION:
+        return False
+    hitos = ((sim.result_json or {}).get("workflow_v1") or {}).get("hitos") or {}
+    if bool(hitos.get("contrato_confeccionado") or hitos.get("activacion_contable")):
+        return False
+    return True
+
+
+def puede_eliminar_simulacion(sim: LeasingOpSimulacion) -> bool:
+    """Eliminable si no hay contrato ni activación contable / formalización."""
+    if _tiene_contrato(sim):
+        return False
+    et = etapa_actual(sim)
+    if et in _ETAPAS_BLOQUEO_ELIMINACION:
+        return False
+    hitos = ((sim.result_json or {}).get("workflow_v1") or {}).get("hitos") or {}
+    if bool(hitos.get("contrato_confeccionado") or hitos.get("activacion_contable")):
+        return False
+    return True
+
+
+def unidades_para_edicion(sim: LeasingOpSimulacion) -> list[dict[str, Any]]:
+    """Normaliza unidades del inputs_json (flota o legacy 1 unidad) para el simulador."""
+    inp = dict(sim.inputs_json or {})
+    unidades = inp.get("unidades")
+    if isinstance(unidades, list) and unidades:
+        out: list[dict[str, Any]] = []
+        for u in unidades:
+            if not isinstance(u, dict):
+                continue
+            out.append(dict(u))
+        if out:
+            return out
+    activo = inp.get("activo") if isinstance(inp.get("activo"), dict) else {}
+    uso = inp.get("uso") if isinstance(inp.get("uso"), dict) else {}
+    capex = inp.get("capex") if isinstance(inp.get("capex"), dict) else {}
+    residual = ((sim.result_json or {}).get("valor_residual") or {}) if isinstance(sim.result_json, dict) else {}
+    precio = capex.get("precio_compra") or inp.get("precio_compra") or 0
+    residual_val = residual.get("valor_residual_ajustado") or residual.get("valor_residual") or 0
+    return [
+        {
+            "tipo_activo_id": int(sim.tipo_activo_id),
+            "descripcion": str(sim.nombre or ""),
+            "marca": str(activo.get("marca") or ""),
+            "modelo": str(activo.get("modelo") or ""),
+            "anio": int(activo.get("anio") or 0) or None,
+            "cantidad": 1,
+            "valor_bien": float(precio or 0),
+            "tipo_uso": str(uso.get("tipo_uso") or "INTERURBANO"),
+            "km_anual": float(uso.get("km_anual") or 40000),
+            "km_inicial": float(uso.get("km_inicial") or 0),
+            "residual_sugerido": float(residual_val or 0),
+            "residual_aceptado": float(residual_val or 0),
+            "residual_fuente": "modelo_interno",
+            "residual_estimacion": None,
+        }
+    ]
+
+
+def _calcular_result_inputs(
+    db: Session,
+    *,
+    tipo_activo_id: int,
+    cliente_id: int | None,
+    plazo_meses: int,
+    escenario: str,
+    metodo_pricing: str,
+    margen_pct: Any,
+    spread_pct: Any,
+    tir_objetivo: Any,
+    inputs: dict[str, Any],
+    indexacion_tipo: str | None = None,
+    indexacion_pct: Any | None = None,
+    pie_inicial_pct: Any | None = None,
+    opcion_compra_pct: Any | None = None,
+    nombre: str = "",
+) -> tuple[int, str, dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Retorna (tipo_id, nombre_final, inp_json, result_json_sin_wf, dec)."""
+    unidades_raw = (inputs or {}).get("unidades") if isinstance(inputs, dict) else None
+    if isinstance(unidades_raw, list) and len(unidades_raw) > 0:
+        from services.leasing_operativo.cotizacion_flota import calcular_cotizacion_flota
+
+        flota = calcular_cotizacion_flota(
+            db,
+            unidades=unidades_raw,
+            plazo_meses=plazo_meses,
+            escenario=escenario,
+            metodo_pricing=metodo_pricing,
+            margen_pct=margen_pct,
+            spread_pct=spread_pct,
+            tir_objetivo=tir_objetivo,
+            cliente_id=cliente_id,
+            indexacion_tipo=str(indexacion_tipo or "NINGUNA"),
+            indexacion_pct=indexacion_pct or 0,
+            pie_inicial_pct=pie_inicial_pct or 0,
+            opcion_compra_pct=opcion_compra_pct or 0,
+            moneda=str((inputs or {}).get("moneda") or "CLP"),
+            iva_pct=(inputs or {}).get("iva_pct") or 19,
+            market_data=(inputs or {}).get("market_data") if isinstance((inputs or {}).get("market_data"), dict) else {},
+        )
+        tipo_activo_id = int(flota["tipo_activo_id_principal"])
+        tipo = obtener_tipo(db, tipo_activo_id)
+        if not tipo:
+            raise ValueError("Tipo de activo inválido")
+        result = flota["result"]
+        inp = dict(inputs or {})
+        inp["unidades"] = flota["unidades"]
+        inp["plazo_meses"] = plazo_meses
+        inp["escenario"] = escenario
+        inp["metodo_pricing"] = metodo_pricing
+        inp["cotizacion_modo"] = "FLOTA"
+        inp_json = _json_safe(inp)
+        result_json = _json_safe(result)
+        dec = result.get("decision") or {}
+        total_u = int(flota.get("total_unidades") or 1)
+        nombre_final = nombre or f"Cotización flota ({total_u} unidad{'es' if total_u != 1 else ''})"
+        return tipo_activo_id, nombre_final, inp_json, result_json, dec
+
+    tipo = obtener_tipo(db, tipo_activo_id)
+    if not tipo:
+        raise ValueError("Tipo de activo inválido")
+    politica_rows = listar_politica(db)
+    politica = merge_politica(politica_rows)
+    plantillas = plantillas_por_tipo(db, tipo_activo_id)
+    if not plantillas:
+        raise ValueError("El tipo de activo no tiene plantillas de costo operativo configuradas.")
+    param_tipo = obtener_parametro_tipo(db, tipo_activo_id)
+    inp = preparar_inputs_simulacion(
+        inputs=dict(inputs),
+        tipo_activo_id=tipo_activo_id,
+        param_tipo=param_tipo,
+        plazo_meses=plazo_meses,
+        escenario=escenario,
+        metodo_pricing=metodo_pricing,
+        margen_pct=margen_pct,
+        spread_pct=spread_pct,
+        tir_objetivo=tir_objetivo,
+        indexacion_tipo=indexacion_tipo,
+        indexacion_pct=indexacion_pct,
+        pie_inicial_pct=pie_inicial_pct,
+        opcion_compra_pct=opcion_compra_pct,
+    )
+    inp = aplicar_segmento_cliente_inputs(db, inp, cliente_id)
+    tipo_d = {
+        "residual_base_pct": tipo.residual_base_pct,
+        "residual_max_pct": tipo.residual_max_pct,
+        "liquidez_factor": tipo.liquidez_factor,
+        "obsolescencia_factor": tipo.obsolescencia_factor,
+        "desgaste_km_factor": tipo.desgaste_km_factor,
+        "desgaste_hora_factor": tipo.desgaste_hora_factor,
+        "haircut_residual_pct": tipo.haircut_residual_pct,
+    }
+    result = run_economic_engine(inputs=inp, tipo_activo=tipo_d, politica=politica, plantillas_costo=plantillas)
+    inp_json = _json_safe(inp)
+    result_json = _json_safe(result)
+    dec = result.get("decision") or {}
+    nombre_final = nombre or "Simulación"
+    return tipo_activo_id, nombre_final, inp_json, result_json, dec
+
+
+def actualizar_simulacion_y_calcular(
+    db: Session,
+    sim: LeasingOpSimulacion,
+    *,
+    tipo_activo_id: int,
+    cliente_id: int | None,
+    nombre: str,
+    plazo_meses: int,
+    escenario: str,
+    metodo_pricing: str,
+    margen_pct: Any,
+    spread_pct: Any,
+    tir_objetivo: Any,
+    inputs: dict[str, Any],
+    usuario: str = "sistema",
+    indexacion_tipo: str | None = None,
+    indexacion_pct: Any | None = None,
+    pie_inicial_pct: Any | None = None,
+    opcion_compra_pct: Any | None = None,
+) -> LeasingOpSimulacion:
+    if not puede_editar_simulacion(sim):
+        raise ValueError(
+            "Esta cotización no se puede editar: ya tiene contrato o está en formalización/activación."
+        )
+    prev = sim.result_json or {}
+    wf = prev.get("workflow_v1") or _workflow_default()
+    versions = list(prev.get("result_versions") or [])
+    if prev.get("renta_sugerida") is not None:
+        versions.append(
+            {
+                "van": prev.get("van"),
+                "tir_anual_pct": prev.get("tir_anual_pct"),
+                "renta_sugerida": prev.get("renta_sugerida"),
+                "decision": (prev.get("decision") or {}).get("decision_codigo"),
+            }
+        )
+        versions = versions[-8:]
+
+    tid, nombre_final, inp_json, result_json, dec = _calcular_result_inputs(
+        db,
+        tipo_activo_id=tipo_activo_id,
+        cliente_id=cliente_id,
+        plazo_meses=plazo_meses,
+        escenario=escenario,
+        metodo_pricing=metodo_pricing,
+        margen_pct=margen_pct,
+        spread_pct=spread_pct,
+        tir_objetivo=tir_objetivo,
+        inputs=inputs,
+        indexacion_tipo=indexacion_tipo,
+        indexacion_pct=indexacion_pct,
+        pie_inicial_pct=pie_inicial_pct,
+        opcion_compra_pct=opcion_compra_pct,
+        nombre=nombre,
+    )
+    result_json["workflow_v1"] = wf
+    result_json["result_versions"] = versions
+
+    sim.cliente_id = cliente_id
+    sim.tipo_activo_id = tid
+    sim.nombre = nombre_final
+    sim.plazo_meses = plazo_meses
+    sim.escenario = escenario
+    sim.metodo_pricing = metodo_pricing
+    sim.margen_pct = margen_pct
+    sim.spread_pct = spread_pct
+    sim.tir_objetivo_anual = tir_objetivo
+    sim.inputs_json = inp_json
+    sim.result_json = result_json
+    sim.decision_codigo = str(dec.get("decision_codigo") or sim.decision_codigo or "PENDIENTE")
+    sim.decision_detalle = str(dec.get("decision_detalle") or "")
+    if str(sim.estado or "").upper() in {"BORRADOR", ""}:
+        sim.estado = "COTIZADO"
+    db.add(sim)
+    db.add(
+        LeasingOpHistorial(
+            simulacion_id=int(sim.id),
+            evento="SIMULACION_EDITADA",
+            detalle_json={"renta_sugerida": result_json.get("renta_sugerida"), "van": result_json.get("van")},
+            usuario=usuario,
+        )
+    )
+    db.commit()
+    db.refresh(sim)
+    return sim
+
+
+def eliminar_simulaciones(db: Session, *, ids: list[int]) -> dict[str, Any]:
+    if not ids:
+        raise ValueError("Seleccione al menos una cotización.")
+    ids_unicos = list(dict.fromkeys(int(i) for i in ids if int(i) > 0))
+    stmt = (
+        select(LeasingOpSimulacion)
+        .options(selectinload(LeasingOpSimulacion.contrato))
+        .where(LeasingOpSimulacion.id.in_(ids_unicos))
+    )
+    sims = list(db.scalars(stmt).all())
+    encontrados = {int(s.id) for s in sims}
+    no_encontradas = [i for i in ids_unicos if i not in encontrados]
+    eliminables: list[LeasingOpSimulacion] = []
+    bloqueadas: list[LeasingOpSimulacion] = []
+    for sim in sims:
+        if puede_eliminar_simulacion(sim):
+            eliminables.append(sim)
+        else:
+            bloqueadas.append(sim)
+    if not eliminables:
+        if bloqueadas:
+            raise ValueError(
+                "Las cotizaciones seleccionadas no pueden eliminarse (tienen contrato o están formalizadas/activadas)."
+            )
+        raise ValueError("No se encontraron cotizaciones válidas para eliminar.")
+
+    elim_ids = [int(s.id) for s in eliminables]
+    try:
+        # Desvincular activos fijos (FK SET NULL) por si hay referencias.
+        db.execute(
+            update(LeasingOpActivoFijo)
+            .where(LeasingOpActivoFijo.simulacion_id.in_(elim_ids))
+            .values(simulacion_id=None)
+        )
+        db.execute(delete(LeasingOpSimulacion).where(LeasingOpSimulacion.id.in_(elim_ids)))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {
+        "eliminadas": len(eliminables),
+        "bloqueadas": len(bloqueadas),
+        "no_encontradas": len(no_encontradas),
+        "ids_eliminados": elim_ids,
+    }
 
 
 def derivar_a_credito(db: Session, sim: LeasingOpSimulacion, *, usuario: str = "sistema") -> tuple[LeasingOpSimulacion, CreditoSolicitud]:
@@ -1467,6 +2062,8 @@ def generar_depreciacion_mensual_activo(
         valor_libro_cierre=nuevo_libro,
         asiento_ref=(asiento_ref or "").strip() or None,
     )
+    db.add(row)
+    db.flush()  # id estable para origen contable idempotente por periodo
     if not row.asiento_ref:
         as_id = _crear_asiento_desde_config_evento(
             db,
@@ -1478,7 +2075,8 @@ def generar_depreciacion_mensual_activo(
             monto_iva=Decimal("0"),
             fecha=date(y, m, 1),
             origen_tipo="LOP_DEPRECIACION",
-            origen_id=int(activo.id),
+            # Un asiento por fila de depreciación (activo+periodo), no por activo.
+            origen_id=int(row.id),
             glosa=f"Depreciación activo {activo.codigo} periodo {periodo}",
             usuario=usuario,
         )
@@ -1494,7 +2092,7 @@ def generar_depreciacion_mensual_activo(
 
 def get_hub_resumen(db: Session) -> dict[str, Any]:
     """KPIs del pipeline LOP para hub operativo."""
-    sims = listar_simulaciones(db, limit=1000)
+    sims, sims_truncadas = listar_simulaciones(db, limit=1000)
     contratos = listar_contratos_cartera(db, limit=1000)
     kpis = {
         "abiertas": 0,
@@ -1593,6 +2191,7 @@ def get_hub_resumen(db: Session) -> dict[str, Any]:
         "pendientes_documentacion": pendientes_documentacion,
         "pendientes_activacion": pendientes_activacion,
         "recientes": sims[:12],
+        "simulaciones_truncadas": sims_truncadas,
     }
 
 
@@ -1745,6 +2344,29 @@ def upsert_politica(
     db.commit()
     db.refresh(row)
     return row
+
+
+def set_politica_activa(db: Session, *, clave: str, activo: bool) -> LeasingOpPolitica:
+    row = obtener_politica(db, clave)
+    if not row:
+        raise ValueError(f"Política «{clave}» no encontrada.")
+    row.activo = bool(activo)
+    row.updated_at = datetime.now(timezone.utc)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def restaurar_politica_defaults(
+    db: Session,
+    *,
+    clave: str,
+    valor_json: dict[str, Any],
+    descripcion: str | None = None,
+) -> LeasingOpPolitica:
+    """Restablece valor_json a defaults de fábrica y reactiva la política."""
+    return upsert_politica(db, clave=clave, valor_json=valor_json, descripcion=descripcion)
 
 
 def obtener_tabla_amortizacion_sim(db: Session, sim_id: int) -> tuple[list[Any], dict[str, Decimal]]:

@@ -39,23 +39,67 @@ Administra productos, códigos de barra, precios, stock y reglas de operación d
 
 {% block content %}
 
-{% set total_productos = productos|length %}
-{% set activos = productos|selectattr("activo")|list|length %}
-{% set inactivos = total_productos - activos %}
-{% set agotados = productos
+{% set total_productos = total_filtrado if total_filtrado is defined else productos|length %}
+{% set activos = productos_activos if productos_activos is defined else productos|selectattr("activo")|list|length %}
+{% set inactivos = productos_inactivos if productos_inactivos is defined else (total_productos - activos) %}
+{% set agotados = productos_agotados if productos_agotados is defined else (
+    productos
     |selectattr("activo")
     |selectattr("controla_stock")
     |selectattr("stock_actual", "le", 0)
     |list
-    |length %}
+    |length
+) %}
+{% set desde_n = (skip|default(0)) + (1 if productos else 0) %}
+{% set hasta_n = (skip|default(0)) + productos|length %}
 
+<div data-live-list>
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <form class="row g-3 align-items-end" method="get" data-live-form action="{{ request.url_for('productos_list') }}">
+      <div class="col-md-5">
+        <label class="form-label small mb-1 fw-semibold" for="qProductos">Buscar</label>
+        <input
+          id="qProductos"
+          type="search"
+          name="q"
+          class="form-control form-control-sm"
+          value="{{ q or '' }}"
+          placeholder="Nombre, código interno o código de barra"
+          autocomplete="off"
+        >
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label small mb-1 fw-semibold" for="activosProductos">Visualización</label>
+        <select id="activosProductos" name="activos_solo" class="form-select form-select-sm">
+          <option value="false" {% if not activos_solo %}selected{% endif %}>Todos los productos</option>
+          <option value="true" {% if activos_solo %}selected{% endif %}>Solo activos</option>
+        </select>
+      </div>
+
+      <div class="col-md-4 d-flex gap-2">
+        <input type="hidden" name="skip" value="0">
+        <input type="hidden" name="limit" value="{{ limit|default(200) }}">
+        <button class="btn btn-primary btn-sm" type="submit">
+          <i class="bi bi-search"></i> Buscar
+        </button>
+        <a href="{{ request.url_for('productos_list') }}" class="btn btn-light btn-sm" data-live-reset>
+          <i class="bi bi-x-circle"></i> Limpiar
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div data-live-results>
 <div class="row g-3 mb-4">
   <div class="col-12 col-md-6 col-xl-3">
     <div class="card h-100 shadow-sm border-0">
       <div class="card-body">
         <div class="text-muted small text-uppercase fw-semibold mb-2">Total productos</div>
         <div class="fs-3 fw-bold">{{ total_productos }}</div>
-        <div class="small text-muted mt-2">Registros cargados en esta página (máx. {{ limit|default(200) }} por consulta).</div>
+        <div class="small text-muted mt-2">Coincidencias del filtro. En esta página: {{ desde_n }}–{{ hasta_n }}.</div>
       </div>
     </div>
   </div>
@@ -91,47 +135,11 @@ Administra productos, códigos de barra, precios, stock y reglas de operación d
   </div>
 </div>
 
-<div class="card shadow-sm border-0 mb-4">
-  <div class="card-body">
-    <form class="row g-3 align-items-end" method="get" action="{{ request.url_for('productos_list') }}">
-      <div class="col-md-5">
-        <label class="form-label small mb-1 fw-semibold">Buscar</label>
-        <input
-          type="text"
-          name="q"
-          class="form-control form-control-sm"
-          value="{{ q or '' }}"
-          placeholder="Nombre, código interno o código de barra"
-        >
-      </div>
-
-      <div class="col-md-3">
-        <label class="form-label small mb-1 fw-semibold">Visualización</label>
-        <select name="activos_solo" class="form-select form-select-sm">
-          <option value="false" {% if not activos_solo %}selected{% endif %}>Todos los productos</option>
-          <option value="true" {% if activos_solo %}selected{% endif %}>Solo activos</option>
-        </select>
-      </div>
-
-      <div class="col-md-4 d-flex gap-2">
-        <input type="hidden" name="skip" value="0">
-        <input type="hidden" name="limit" value="{{ limit|default(200) }}">
-        <button class="btn btn-primary btn-sm" type="submit">
-          <i class="bi bi-search"></i> Buscar
-        </button>
-        <a href="{{ request.url_for('productos_list') }}" class="btn btn-light btn-sm">
-          <i class="bi bi-x-circle"></i> Limpiar
-        </a>
-      </div>
-    </form>
-  </div>
-</div>
-
 {% if skip is defined %}
 <div class="card shadow-sm border-0 mb-3">
   <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
     <span class="small text-muted mb-0">
-      Página {{ (skip // limit) + 1 }} · {{ limit }} filas · máximo {{ list_page_max|default(500) }} por página
+      Página {{ (skip // limit) + 1 }} · mostrando {{ desde_n }}–{{ hasta_n }} de {{ total_productos }}
     </span>
     <div class="ms-auto d-flex flex-wrap gap-2">
       {% if skip > 0 %}
@@ -167,7 +175,7 @@ Administra productos, códigos de barra, precios, stock y reglas de operación d
   </div>
 
   <div class="card-body p-0">
-    <div class="table-responsive">
+    <div class="table-responsive evalua-table-wrap">
       <table class="table table-hover table-sm align-middle mb-0">
         <thead class="table-light">
           <tr>
@@ -195,7 +203,7 @@ Administra productos, códigos de barra, precios, stock y reglas de operación d
           {% set stock = (p.stock_actual or 0)|float %}
           {% set stock_min = (p.stock_minimo or 0)|float %}
 
-          <tr class="{% if not p.activo %}table-secondary{% endif %}">
+          <tr class="{% if not p.activo %}table-secondary{% endif %}" data-row-href="{{ request.url_for('producto_form_editar', producto_id=p.id) }}">
             <td>{{ (skip|default(0)) + loop.index }}</td>
 
             <td>
@@ -361,6 +369,8 @@ Administra productos, códigos de barra, precios, stock y reglas de operación d
       </table>
     </div>
   </div>
+</div>
+</div>
 </div>
 
 <div class="modal fade" id="modalAjusteStock" tabindex="-1" aria-hidden="true">

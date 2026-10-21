@@ -506,6 +506,21 @@ Líneas con neto e IVA, otros impuestos y cuentas del plan contable. Los totales
   const kpiLineas = document.getElementById("kpi_lineas");
   const kpiImpuestos = document.getElementById("kpi_impuestos");
 
+  function fillSelect(selectEl, items, selectedId) {
+    selectEl.replaceChildren();
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "-";
+    selectEl.appendChild(empty);
+    items.forEach((item) => {
+      const opt = document.createElement("option");
+      opt.value = item.id == null ? "" : String(item.id);
+      opt.textContent = item.codigo ? `${item.codigo} · ${item.nombre}` : (item.nombre || "");
+      if (String(selectedId ?? "") === String(item.id ?? "")) opt.selected = true;
+      selectEl.appendChild(opt);
+    });
+  }
+
   function opcionesCatalogo(items, selectedId) {
     let html = '<option value="">-</option>';
     items.forEach((item) => {
@@ -533,28 +548,88 @@ Líneas con neto e IVA, otros impuestos y cuentas del plan contable. Los totales
 
   window.agregarFilaDetalle = function (data = {}) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><input class="form-control form-control-sm det-descripcion" value="${escapeHtml(data.descripcion ?? "")}" required></td>
-      <td><input type="number" step="0.000001" min="0.000001" class="form-control form-control-sm det-cantidad" value="${escapeHtml(data.cantidad ?? 1)}"></td>
-      <td><input type="number" step="0.000001" min="0" class="form-control form-control-sm det-precio" value="${escapeHtml(data.precio_unitario ?? 0)}"></td>
-      <td><input type="number" step="0.01" min="0" class="form-control form-control-sm det-descuento" value="${escapeHtml(data.descuento ?? 0)}"></td>
-      <td><select class="form-select form-select-sm det-categoria">${opcionesCatalogo(categoriasData, data.categoria_gasto_id)}</select></td>
-      <td><select class="form-select form-select-sm det-centro">${opcionesCatalogo(centrosData, data.centro_costo_id)}</select></td>
-      <td><button type="button" class="btn btn-sm btn-outline-danger btn-eliminar-fila"><i class="bi bi-x-lg"></i></button></td>
-    `;
+    const tdDesc = document.createElement("td");
+    const inpDesc = document.createElement("input");
+    inpDesc.className = "form-control form-control-sm det-descripcion";
+    inpDesc.required = true;
+    inpDesc.value = data.descripcion == null ? "" : String(data.descripcion);
+    tdDesc.appendChild(inpDesc);
+
+    function numInput(cls, val, step, min) {
+      const td = document.createElement("td");
+      const inp = document.createElement("input");
+      inp.type = "number";
+      inp.step = step;
+      inp.min = min;
+      inp.className = "form-control form-control-sm " + cls;
+      inp.value = val == null ? "" : String(val);
+      td.appendChild(inp);
+      return td;
+    }
+
+    const tdCat = document.createElement("td");
+    const selCat = document.createElement("select");
+    selCat.className = "form-select form-select-sm det-categoria";
+    fillSelect(selCat, categoriasData, data.categoria_gasto_id);
+    tdCat.appendChild(selCat);
+
+    const tdCen = document.createElement("td");
+    const selCen = document.createElement("select");
+    selCen.className = "form-select form-select-sm det-centro";
+    fillSelect(selCen, centrosData, data.centro_costo_id);
+    tdCen.appendChild(selCen);
+
+    const tdDel = document.createElement("td");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm btn-outline-danger btn-eliminar-fila";
+    const ic = document.createElement("i");
+    ic.className = "bi bi-x-lg";
+    btn.appendChild(ic);
+    tdDel.appendChild(btn);
+
+    tr.appendChild(tdDesc);
+    tr.appendChild(numInput("det-cantidad", data.cantidad ?? 1, "0.000001", "0.000001"));
+    tr.appendChild(numInput("det-precio", data.precio_unitario ?? 0, "0.000001", "0"));
+    tr.appendChild(numInput("det-descuento", data.descuento ?? 0, "0.01", "0"));
+    tr.appendChild(tdCat);
+    tr.appendChild(tdCen);
+    tr.appendChild(tdDel);
     tablaDetallesBody.appendChild(tr);
     recalcularResumen();
   };
 
   window.agregarFilaImpuesto = function (data = {}) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><input class="form-control form-control-sm imp-tipo" value="${escapeHtml(data.tipo ?? "OTRO")}"></td>
-      <td><input class="form-control form-control-sm imp-codigo" value="${escapeHtml(data.codigo ?? "")}"></td>
-      <td><input class="form-control form-control-sm imp-nombre" value="${escapeHtml(data.nombre ?? "")}"></td>
-      <td><input type="number" step="0.01" min="0" class="form-control form-control-sm imp-monto" value="${escapeHtml(data.monto ?? 0)}"></td>
-      <td><button type="button" class="btn btn-sm btn-outline-danger btn-eliminar-fila"><i class="bi bi-x-lg"></i></button></td>
-    `;
+    function textInput(cls, val) {
+      const td = document.createElement("td");
+      const inp = document.createElement("input");
+      inp.className = "form-control form-control-sm " + cls;
+      inp.value = val == null ? "" : String(val);
+      td.appendChild(inp);
+      return td;
+    }
+    const tdMonto = document.createElement("td");
+    const inpMonto = document.createElement("input");
+    inpMonto.type = "number";
+    inpMonto.step = "0.01";
+    inpMonto.min = "0";
+    inpMonto.className = "form-control form-control-sm imp-monto";
+    inpMonto.value = data.monto == null ? "0" : String(data.monto);
+    tdMonto.appendChild(inpMonto);
+    const tdDel = document.createElement("td");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm btn-outline-danger btn-eliminar-fila";
+    const ic = document.createElement("i");
+    ic.className = "bi bi-x-lg";
+    btn.appendChild(ic);
+    tdDel.appendChild(btn);
+    tr.appendChild(textInput("imp-tipo", data.tipo ?? "OTRO"));
+    tr.appendChild(textInput("imp-codigo", data.codigo ?? ""));
+    tr.appendChild(textInput("imp-nombre", data.nombre ?? ""));
+    tr.appendChild(tdMonto);
+    tr.appendChild(tdDel);
     tablaImpuestosBody.appendChild(tr);
     recalcularResumen();
   };

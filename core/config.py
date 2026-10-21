@@ -219,6 +219,11 @@ class Settings:
     google_oauth_client_secret: str
     microsoft_oauth_client_id: str
     microsoft_oauth_client_secret: str
+    sii_login_url: str
+    sii_rcv_url: str
+    sii_headless: bool
+    sii_timeout_seconds: int
+    sii_download_timeout_seconds: int
 
     @property
     def database_per_company(self) -> bool:
@@ -411,7 +416,8 @@ class Settings:
             db_connect_timeout_seconds=db_connect_timeout,
             auto_migrate_on_startup=auto_migrate_on_startup,
             allowed_hosts=allowed_hosts,
-            trust_x_forwarded_for=_to_bool(os.getenv("TRUST_X_FORWARDED_FOR"), default=not is_dev),
+            # Apagado salvo que el despliegue lo encienda. El primer X-Forwarded-For lo elige el cliente.
+            trust_x_forwarded_for=_to_bool(os.getenv("TRUST_X_FORWARDED_FOR"), default=False),
             fondo_rendir_cuenta_anticipo=os.getenv("FONDO_RENDIR_CUENTA_ANTICIPO", "").strip(),
             fondo_rendir_cuenta_caja=os.getenv("FONDO_RENDIR_CUENTA_CAJA", "").strip(),
             fondo_rendir_cuenta_gasto=os.getenv("FONDO_RENDIR_CUENTA_GASTO", "").strip(),
@@ -433,6 +439,17 @@ class Settings:
             google_oauth_client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "").strip(),
             microsoft_oauth_client_id=os.getenv("MICROSOFT_OAUTH_CLIENT_ID", "").strip(),
             microsoft_oauth_client_secret=os.getenv("MICROSOFT_OAUTH_CLIENT_SECRET", "").strip(),
+            sii_login_url=os.getenv(
+                "SII_LOGIN_URL",
+                "https://zeusr.sii.cl/AUT2000/InicioAutenticacion/IngresoRutClave.html?https://misiir.sii.cl/cgi_misii/siihome.cgi",
+            ).strip(),
+            sii_rcv_url=os.getenv(
+                "SII_RCV_URL",
+                "https://www4.sii.cl/consdcvinternetui/#/index",
+            ).strip(),
+            sii_headless=_to_bool(os.getenv("SII_HEADLESS"), default=not is_dev),
+            sii_timeout_seconds=_to_int(os.getenv("SII_TIMEOUT"), 45),
+            sii_download_timeout_seconds=_to_int(os.getenv("SII_DOWNLOAD_TIMEOUT"), 120),
         )
 
 

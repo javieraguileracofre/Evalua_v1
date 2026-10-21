@@ -59,7 +59,27 @@ def crear_email_log(
     include_detalle: bool = True,
     status: str = "PENDIENTE",
     meta_json: str | None = None,
+    channel_code: str | None = None,
+    mail_account_id: int | None = None,
+    attempts: int = 1,
+    provider_message_id: str | None = None,
 ) -> EmailLog:
+    payload_meta: dict[str, Any]
+    try:
+        payload_meta = json.loads(meta_json) if meta_json else {}
+        if not isinstance(payload_meta, dict):
+            payload_meta = {}
+    except (TypeError, json.JSONDecodeError):
+        payload_meta = {}
+    if channel_code:
+        payload_meta.setdefault("channel", str(channel_code).strip().upper())
+    if mail_account_id:
+        payload_meta.setdefault("mail_account_id", int(mail_account_id))
+    if attempts:
+        payload_meta.setdefault("attempts", max(1, int(attempts)))
+    if provider_message_id:
+        payload_meta.setdefault("provider_message_id", provider_message_id)
+
     item = EmailLog(
         modulo=modulo,
         evento=evento,
@@ -70,7 +90,7 @@ def crear_email_log(
         subject=subject,
         include_detalle=bool(include_detalle),
         status=status,
-        meta_json=meta_json or json.dumps({}, ensure_ascii=False),
+        meta_json=json.dumps(payload_meta, ensure_ascii=False),
     )
     db.add(item)
     db.commit()
@@ -97,7 +117,15 @@ def marcar_error(db: Session, *, email_log_id: int, error_message: str) -> Email
         raise ValueError("EmailLog no encontrado.")
 
     item.status = "ERROR"
-    item.error_message = (error_message or "")[:5000]
+    item.error_message = (error_message or "")[:500]
+    try:
+        meta = json.loads(item.meta_json or "{}")
+        if not isinstance(meta, dict):
+            meta = {}
+    except (TypeError, json.JSONDecodeError):
+        meta = {}
+    meta["attempts"] = int(meta.get("attempts") or 1) + 1
+    item.meta_json = json.dumps(meta, ensure_ascii=False)
     db.commit()
     db.refresh(item)
     return item

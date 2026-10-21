@@ -128,6 +128,13 @@ class Producto(Base):
         server_default="0",
     )
 
+    costo_promedio: Mapped[Decimal] = mapped_column(
+        Numeric(14, 4),
+        nullable=False,
+        default=Decimal("0.0000"),
+        server_default="0",
+    )
+
     precio_venta: Mapped[Decimal] = mapped_column(
         Numeric(14, 2),
         nullable=False,

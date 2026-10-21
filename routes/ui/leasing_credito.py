@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy.orm import Session
 
 from core.rbac import guard_leasing_fin_consulta, guard_leasing_fin_mutacion

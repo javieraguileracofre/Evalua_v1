@@ -60,6 +60,11 @@ def main() -> None:
     elif args.database_url:
         db_url = args.database_url
     else:
+        if settings.database_per_company:
+            raise SystemExit(
+                "En database_per_company indique --database-url de la compañía. "
+                "DATABASE_URL no es la base operacional."
+            )
         db_url = settings.database_url
 
     engine = create_engine(db_url, future=True)

@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from core.paths import TEMPLATES_DIR
 from core.public_errors import public_error_message
 from core.rbac import guard_finanzas_consulta, guard_finanzas_mutacion
 from crud.finanzas.cuentas_por_pagar import cuentas_por_pagar as crud_cxp
+from modules.finanzas import anular_documento_ap, registrar_documento_ap, registrar_pago_ap
 from db.session import get_db
 from schemas.finanzas.cuentas_por_pagar import DocumentoCreate, DocumentoUpdate, PagoCreate
 
@@ -281,7 +282,7 @@ def cxp_crear(
                 generar_default=True,
             )
         )
-        doc = crud_cxp.create_documento(db, payload)
+        doc = registrar_documento_ap(db, payload)
         return _redirect(
             request,
             "cxp_detalle",
@@ -507,7 +508,7 @@ def cxp_pagar(
             aplicaciones=_safe_loads(aplicaciones_json),
         )
 
-        crud_cxp.registrar_pago(db, payload)
+        registrar_pago_ap(db, payload)
 
         return _redirect(
             request,
@@ -535,7 +536,7 @@ def cxp_eliminar(
     if (redir := guard_finanzas_mutacion(request)) is not None:
         return redir
     try:
-        crud_cxp.eliminar_documento(db, documento_id)
+        anular_documento_ap(db, documento_id)
         return _redirect(
             request,
             "cxp_lista",

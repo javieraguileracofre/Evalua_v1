@@ -1,0 +1,395 @@
+{% extends "layout/base.html" %}
+{% block title %}Tipos de activo · LOP{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/leasing_operativo.css" />
+<div class="container-fluid py-4 lo-page">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <a href="{{ request.url_for('leasing_operativo_hub') }}" class="small text-decoration-none">← Hub</a>
+      <h1 class="h5 fw-semibold mt-1 mb-0">Configuración · Tipos de activo</h1>
+      <p class="text-secondary small mb-0">
+        Parámetros actuales vs <strong>sugerencia mercado Chile</strong>. Usted decide: adopte un valor, aplique todo o edite con doble clic.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_parametros') }}">Parámetros comerciales</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_politicas') }}">Políticas globales</a>
+      <a class="btn btn-sm btn-primary" href="{{ request.url_for('leasing_operativo_tipo_nuevo') }}">
+        <i class="bi bi-plus-lg me-1"></i>Nuevo tipo
+      </a>
+    </div>
+  </div>
+
+  {% if msg %}
+  <div class="alert alert-{{ sev or 'success' }} py-2 small">{{ msg }}</div>
+  {% endif %}
+
+  {% set ctx = mercado_ctx or {} %}
+  <div class="lo-market-strip mb-3">
+    <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+      <span class="lo-market-badge"><i class="bi bi-graph-up-arrow"></i> Análisis mercado Chile</span>
+      <span class="small"><strong>UF</strong> ${{ "{:,.2f}".format(ctx.uf_clp or 0).replace(",", "X").replace(".", ",").replace("X", ".") }}</span>
+      <span class="small"><strong>USD</strong> ${{ "{:,.2f}".format(ctx.usd_clp or 0).replace(",", "X").replace(".", ",").replace("X", ".") }}</span>
+      <span class="small"><strong>IPC</strong> {{ ctx.ipc_pct or 0 }}%</span>
+      <span class="small text-muted">· {{ ctx.fuente_indicadores or '—' }}{% if ctx.as_of %} · {{ ctx.as_of }}{% endif %}</span>
+    </div>
+    <p class="small text-muted mb-0">{{ ctx.metodologia or '' }}</p>
+    <p class="small mb-0 mt-1">
+      <span class="lo-sug-chip">Mercado</span> = sugerencia · clic en el chip para cargarlo en el campo · luego <strong>Guardar</strong>,
+      o use <strong>Aplicar mercado</strong> para adoptar todos los parámetros del tipo.
+    </p>
+  </div>
+
+  {% for t in tipos %}
+  <form
+    id="lo-tipo-form-{{ t.id }}"
+    method="post"
+    action="{{ request.url_for('leasing_operativo_tipo_guardar', tipo_id=t.id) }}"
+    class="lo-tipo-inline-form d-none"
+    data-tipo-id="{{ t.id }}"
+    data-dirty="0"
+  >
+    <input type="hidden" name="return_to" value="lista" />
+    <input type="hidden" name="codigo" value="{{ t.codigo }}" />
+    <input type="hidden" name="activo" value="{% if t.activo %}1{% else %}0{% endif %}" />
+  </form>
+  <form
+    id="lo-toggle-{{ t.id }}"
+    method="post"
+    action="{{ request.url_for('leasing_operativo_tipo_toggle', tipo_id=t.id) }}"
+    class="d-none"
+  >
+    <input type="hidden" name="activo" value="{% if t.activo %}0{% else %}1{% endif %}" />
+  </form>
+  <form
+    id="lo-mkt-{{ t.id }}"
+    method="post"
+    action="{{ request.url_for('leasing_operativo_tipo_aplicar_mercado', tipo_id=t.id) }}"
+    class="d-none"
+  ></form>
+  {% endfor %}
+
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm align-middle mb-0" id="lo-tipos-inline">
+        <thead class="table-light">
+          <tr>
+            <th>Tipo</th>
+            <th>Sector</th>
+            <th class="text-end">Residual base %</th>
+            <th class="text-end">Residual máx. %</th>
+            <th class="text-end" title="Colchón prudencial sobre el residual">Colchón residual %</th>
+            <th class="text-end">Liquidez</th>
+            <th class="text-end">Obsolesc.</th>
+            <th class="text-end">Desgaste km</th>
+            <th class="text-end">Desgaste h</th>
+            <th>Estado</th>
+            <th class="text-end">Decisión</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in tipos %}
+          {% set p = params_by_tipo.get(t.id) %}
+          {% set cmp = (mercado_cmp or {}).get(t.id) or {} %}
+          {% set sug = cmp.sugerencia if cmp.tiene_sugerencia else none %}
+          {% set diffs = cmp.diffs_by_key or {} %}
+          {% set fid = 'lo-tipo-form-' ~ t.id %}
+          <tr class="lo-tipo-row {% if not t.activo %}table-secondary{% endif %}" data-form="{{ fid }}" data-tipo-id="{{ t.id }}">
+            <td>
+              <div class="lo-inline-cell" data-field="nombre" title="Doble clic para editar">
+                <span class="lo-inline-display fw-semibold">{{ t.nombre }}</span>
+                <input form="{{ fid }}" type="text" name="nombre" class="form-control form-control-sm lo-inline-input" value="{{ t.nombre }}" maxlength="160" required hidden />
+              </div>
+              <div class="small text-muted font-monospace">{{ t.codigo }}</div>
+              {% if sug %}
+              <div class="small mt-1">
+                <span class="lo-market-badge lo-market-badge--sm">Ref. {{ sug.nombre_ref }}</span>
+                <span class="text-muted">· {{ sug.plazo_ref_meses }}m
+                  {% if sug.km_anual_tipico %}· {{ sug.km_anual_tipico }} km/año{% endif %}
+                  · confianza {{ sug.confianza }}
+                </span>
+              </div>
+              {% if cmp.alineado %}
+              <div class="small text-success mt-1">Alineado a mercado CL</div>
+              {% else %}
+              <div class="small text-warning-emphasis mt-1">Difiere de sugerencia mercado</div>
+              {% endif %}
+              {% endif %}
+              {% if p %}
+              <div class="small text-muted">Default comercial {{ p.plazo_default }}m · spread {{ p.spread_default_pct }}%</div>
+              {% endif %}
+            </td>
+            <td>
+              <div class="lo-inline-cell" data-field="sector" title="Doble clic para editar">
+                <span class="lo-inline-display small">{{ t.sector or '—' }}</span>
+                <input form="{{ fid }}" type="text" name="sector" class="form-control form-control-sm lo-inline-input" value="{{ t.sector or '' }}" maxlength="120" hidden />
+              </div>
+            </td>
+            {% for key in ['residual_base_pct','residual_max_pct','haircut_residual_pct','liquidez_factor','obsolescencia_factor','desgaste_km_factor','desgaste_hora_factor'] %}
+            {% set d = diffs.get(key) %}
+            {% set val = t|attr(key) %}
+            <td class="text-end">
+              <div class="lo-inline-cell lo-inline-num" data-field="{{ key }}" title="Doble clic para editar">
+                <span class="lo-inline-display font-monospace small">{{ val }}</span>
+                <input form="{{ fid }}" type="text" name="{{ key }}" class="form-control form-control-sm lo-inline-input text-end font-monospace" value="{{ val }}" hidden />
+              </div>
+              {% if d and not d.alineado %}
+              <button
+                type="button"
+                class="lo-sug-chip lo-adopt-sug"
+                data-field="{{ key }}"
+                data-value="{{ d.sugerido }}"
+                title="Cargar sugerencia de mercado en este campo (luego Guardar)"
+              >Mercado {{ d.sugerido }}</button>
+              {% elif d and d.alineado %}
+              <span class="lo-sug-chip lo-sug-chip--ok" title="Igual a sugerencia de mercado">= mercado</span>
+              {% endif %}
+            </td>
+            {% endfor %}
+            <td>
+              {% if t.activo %}
+              <span class="badge text-bg-success-subtle border">Activo</span>
+              {% else %}
+              <span class="badge text-bg-secondary">Inactivo</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <div class="d-inline-flex flex-wrap gap-1 justify-content-end align-items-center">
+                <button form="{{ fid }}" type="submit" class="btn btn-sm btn-primary lo-inline-save" hidden>Guardar</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary lo-inline-cancel" hidden>Cancelar</button>
+                {% if sug and not cmp.alineado %}
+                <button
+                  form="lo-mkt-{{ t.id }}"
+                  type="submit"
+                  class="btn btn-sm btn-outline-dark lo-extra-link"
+                  title="Adopta todos los parámetros sugeridos por el análisis de mercado CL"
+                  onclick="return confirm('¿Aplicar sugerencia de mercado Chile a «{{ t.nombre }}»? Podrá volver a editar después.');"
+                >Aplicar mercado</button>
+                {% endif %}
+                <button type="button" class="btn btn-sm btn-outline-secondary lo-extra-link lo-toggle-why" data-why="lo-why-{{ t.id }}">
+                  Por qué
+                </button>
+                <a class="btn btn-sm btn-outline-secondary lo-extra-link" href="{{ request.url_for('leasing_operativo_parametros') }}#tipo-{{ t.id }}">Comercial</a>
+                <button form="lo-toggle-{{ t.id }}" type="submit" class="btn btn-sm btn-outline-{% if t.activo %}warning{% else %}success{% endif %} lo-extra-link">
+                  {% if t.activo %}Off{% else %}On{% endif %}
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% if sug %}
+          <tr class="lo-tipo-why" id="lo-why-{{ t.id }}" hidden>
+            <td colspan="11" class="bg-light">
+              <div class="p-3 small">
+                <div class="fw-semibold mb-1">Criterio de mercado · {{ sug.nombre_ref }}</div>
+                <ul class="mb-2 ps-3">
+                  {% for f in sug.fuentes %}
+                  <li class="mb-1">{{ f }}</li>
+                  {% endfor %}
+                </ul>
+                {% if sug.decision_hint %}
+                <div class="lo-decision-hint"><strong>Para decidir:</strong> {{ sug.decision_hint }}</div>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endif %}
+        {% else %}
+          <tr>
+            <td colspan="11" class="text-center text-muted py-4">
+              No hay tipos de activo. Cree el primero o ejecute el parche SQL 102.
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="small text-muted mt-3 mb-0">
+    Las sugerencias son referenciales (no tasación). Doble clic edita el valor actual; el chip <em>Mercado</em> propone el valor del análisis.
+  </p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var root = document.getElementById("lo-tipos-inline");
+  if (!root) return;
+
+  function allFormControls(form) {
+    var id = form.id;
+    var fromAttr = Array.prototype.slice.call(document.querySelectorAll('[form="' + id + '"]'));
+    var inside = Array.prototype.slice.call(form.querySelectorAll("input,button,select,textarea"));
+    var out = [];
+    var seen = new Set();
+    fromAttr.concat(inside).forEach(function (el) {
+      if (seen.has(el)) return;
+      seen.add(el);
+      out.push(el);
+    });
+    return out;
+  }
+
+  function snapshot(form) {
+    var data = {};
+    allFormControls(form).forEach(function (el) {
+      if (!el.name || el.type === "submit" || el.type === "button") return;
+      if (el.name === "return_to") return;
+      data[el.name] = el.value;
+    });
+    return data;
+  }
+
+  function isDirty(form) {
+    var orig = form._orig || {};
+    var now = snapshot(form);
+    return Object.keys(now).some(function (k) {
+      return String(now[k] ?? "") !== String(orig[k] ?? "");
+    });
+  }
+
+  function rowOf(form) {
+    return root.querySelector('tr.lo-tipo-row[data-form="' + form.id + '"]');
+  }
+
+  function syncDirty(form) {
+    var dirty = isDirty(form);
+    form.dataset.dirty = dirty ? "1" : "0";
+    var row = rowOf(form);
+    if (row) row.classList.toggle("is-dirty", dirty);
+    if (!row) return;
+    var save = row.querySelector(".lo-inline-save");
+    var cancel = row.querySelector(".lo-inline-cancel");
+    var extras = row.querySelectorAll(".lo-extra-link");
+    if (save) save.hidden = !dirty;
+    if (cancel) cancel.hidden = !dirty;
+    extras.forEach(function (el) { el.hidden = dirty; });
+  }
+
+  function closeCell(cell, commitDisplay) {
+    var input = cell.querySelector(".lo-inline-input");
+    var display = cell.querySelector(".lo-inline-display");
+    if (!input || !display) return;
+    if (commitDisplay) {
+      var v = (input.value || "").trim();
+      display.textContent = v || "—";
+    }
+    input.hidden = true;
+    display.hidden = false;
+    cell.classList.remove("is-editing");
+  }
+
+  function openCell(cell) {
+    var row = cell.closest("tr.lo-tipo-row");
+    if (!row) return;
+    row.querySelectorAll(".lo-inline-cell.is-editing").forEach(function (c) {
+      if (c !== cell) closeCell(c, true);
+    });
+    var input = cell.querySelector(".lo-inline-input");
+    var display = cell.querySelector(".lo-inline-display");
+    if (!input || !display) return;
+    display.hidden = true;
+    input.hidden = false;
+    cell.classList.add("is-editing");
+    input.focus();
+    try { input.select(); } catch (e) {}
+  }
+
+  function formFromRow(row) {
+    var id = row.getAttribute("data-form");
+    return id ? document.getElementById(id) : null;
+  }
+
+  root.querySelectorAll(".lo-toggle-why").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var id = btn.getAttribute("data-why");
+      var panel = id ? document.getElementById(id) : null;
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
+    });
+  });
+
+  root.querySelectorAll("tr.lo-tipo-row").forEach(function (row) {
+    var form = formFromRow(row);
+    if (!form) return;
+    form._orig = snapshot(form);
+
+    row.addEventListener("dblclick", function (ev) {
+      if (ev.target.closest(".lo-adopt-sug")) return;
+      var cell = ev.target.closest(".lo-inline-cell");
+      if (!cell || !row.contains(cell)) return;
+      ev.preventDefault();
+      openCell(cell);
+    });
+
+    row.addEventListener("input", function () { syncDirty(form); });
+    row.addEventListener("change", function () { syncDirty(form); });
+
+    row.addEventListener("keydown", function (ev) {
+      var cell = ev.target.closest(".lo-inline-cell");
+      if (!cell) return;
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        closeCell(cell, true);
+        syncDirty(form);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        var input = cell.querySelector(".lo-inline-input");
+        var name = input && input.name;
+        if (input && name && form._orig) input.value = form._orig[name] ?? "";
+        closeCell(cell, true);
+        syncDirty(form);
+      }
+    });
+
+    row.addEventListener("focusout", function (ev) {
+      var cell = ev.target.closest(".lo-inline-cell");
+      if (!cell || !row.contains(cell)) return;
+      setTimeout(function () {
+        if (cell.contains(document.activeElement)) return;
+        closeCell(cell, true);
+        syncDirty(form);
+      }, 0);
+    });
+
+    row.querySelectorAll(".lo-adopt-sug").forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var field = btn.getAttribute("data-field");
+        var value = btn.getAttribute("data-value");
+        var cell = row.querySelector('.lo-inline-cell[data-field="' + field + '"]');
+        if (!cell) return;
+        var input = cell.querySelector(".lo-inline-input");
+        var display = cell.querySelector(".lo-inline-display");
+        if (!input) return;
+        input.value = value;
+        if (display) display.textContent = value;
+        closeCell(cell, true);
+        syncDirty(form);
+        btn.classList.add("lo-sug-chip--adopted");
+      });
+    });
+
+    var cancelBtn = row.querySelector(".lo-inline-cancel");
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", function () {
+        allFormControls(form).forEach(function (el) {
+          if (!el.name || el.type === "submit" || el.type === "button") return;
+          if (el.name === "return_to") return;
+          if (form._orig && Object.prototype.hasOwnProperty.call(form._orig, el.name)) {
+            el.value = form._orig[el.name];
+          }
+        });
+        row.querySelectorAll(".lo-inline-cell").forEach(function (cell) {
+          closeCell(cell, true);
+        });
+        row.querySelectorAll(".lo-sug-chip--adopted").forEach(function (el) {
+          el.classList.remove("lo-sug-chip--adopted");
+        });
+        syncDirty(form);
+      });
+    }
+  });
+})();
+</script>
+{% endblock %}

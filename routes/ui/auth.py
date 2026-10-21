@@ -9,12 +9,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Form, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.client_ip import client_ip
 from core.config import settings
+from core.csrf_middleware import tokens_match
 from core.login_throttle import (
     GENERIC_FAILURE,
     is_login_blocked,
@@ -57,6 +58,13 @@ def render_login_form(
     )
 
 
+def _start_authenticated_session(request: Request, auth_payload: dict) -> None:
+    """Descarta la cookie previa y emite un CSRF nuevo junto con la sesión autenticada."""
+    request.session.clear()
+    request.session["csrf_global"] = secrets.token_urlsafe(32)
+    request.session["auth"] = auth_payload
+
+
 def _safe_next_url(request: Request, raw: str | None) -> str:
     """Evita redirecciones abiertas a dominios externos."""
     if not raw or not str(raw).strip():
@@ -69,6 +77,18 @@ def _safe_next_url(request: Request, raw: str | None) -> str:
     return path
 
 
+def _rate_limited_login(request: Request, next_url: str) -> RedirectResponse:
+    request.session["csrf_login"] = secrets.token_urlsafe(32)
+    request.session["login_error"] = GENERIC_FAILURE
+    security_event("login_failed", uid="-", reason="rate_limited")
+    q = ""
+    if (next_url or "").strip():
+        from urllib.parse import urlencode
+
+        q = "?" + urlencode({"next": next_url.strip()})
+    return RedirectResponse(url=f"/login{q}", status_code=status.HTTP_303_SEE_OTHER)
+
+
 def _login_identity(request: Request, *, email: str, password: str, next_url: str):
     from db.identity_session import get_identity_sessionmaker
     from services.platform.audit import write_audit
@@ -77,24 +97,25 @@ def _login_identity(request: Request, *, email: str, password: str, next_url: st
 
     identity = get_identity_sessionmaker()()
     try:
+        if is_login_blocked(email=email, ip=_client_ip(request), db=identity):
+            return _rate_limited_login(request, next_url)
         user = authenticate_identity(identity, email, password)
         if user is None:
-            register_login_failure(email=email, ip=client_ip(request))
+            register_login_failure(email=email, ip=_client_ip(request), db=identity)
             write_audit(identity, actor_id=None, action="LOGIN_FAILED", result="failed", module="auth")
             identity.commit()
             request.session["csrf_login"] = secrets.token_urlsafe(32)
             request.session["login_error"] = GENERIC_FAILURE
             return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
         started = begin_session(identity, user)
-        identity.commit()
-        request.session["auth"] = started["auth"]
-        request.session.pop("csrf_login", None)
-        register_login_success(email=email, ip=client_ip(request))
+        register_login_success(email=email, ip=_client_ip(request), db=identity)
         destination = started["destination"]
         if destination == "no_company":
-            request.session.pop("auth", None)
+            request.session.clear()
+            request.session["csrf_login"] = secrets.token_urlsafe(32)
             request.session["login_error"] = MSG_NO_COMPANY
             return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+        _start_authenticated_session(request, started["auth"])
         if destination == "selector":
             return RedirectResponse(url="/empresa/seleccionar", status_code=status.HTTP_303_SEE_OTHER)
         if destination == "platform":
@@ -137,7 +158,7 @@ def login_post(
     next: str = Form(""),
 ):
     expect = request.session.get("csrf_login")
-    if not expect or expect != (csrf_token or "").strip():
+    if not tokens_match(expect, csrf_token):
         request.session["login_error"] = (
             "Sesión de seguridad expirada. Intente nuevamente. "
             "Si el problema continúa, recargue la página de login antes de enviar el formulario."
@@ -147,19 +168,11 @@ def login_post(
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    if is_login_blocked(email=email, ip=client_ip(request)):
-        request.session["csrf_login"] = secrets.token_urlsafe(32)
-        request.session["login_error"] = GENERIC_FAILURE
-        security_event("login_failed", uid="-", reason="rate_limited")
-        q = ""
-        if (next or "").strip():
-            from urllib.parse import urlencode
-
-            q = "?" + urlencode({"next": next.strip()})
-        return RedirectResponse(url=f"/login{q}", status_code=status.HTTP_303_SEE_OTHER)
-
     if settings.database_per_company:
         return _login_identity(request, email=email, password=password, next_url=next)
+
+    if is_login_blocked(email=email, ip=_client_ip(request), db=db):
+        return _rate_limited_login(request, next)
 
     try:
         u = crud_auth.autenticar(db, email, password)
@@ -188,7 +201,7 @@ def login_post(
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
     if not u:
-        register_login_failure(email=email, ip=client_ip(request))
+        register_login_failure(email=email, ip=_client_ip(request), db=db)
         request.session["csrf_login"] = secrets.token_urlsafe(32)
         if crud_auth.contar_usuarios(db) == 0:
             request.session["login_error"] = (
@@ -209,11 +222,9 @@ def login_post(
 
         visible = crud_modulos.user_visible_modules_list(u, db)
         auth_payload = jsonable_encoder(crud_auth.serializar_sesion_usuario(u, visible_modules=visible))
-        request.session["auth"] = auth_payload
-        request.session.pop("csrf_login", None)
+        _start_authenticated_session(request, auth_payload)
         crud_auth.actualizar_ultimo_acceso(db, int(u.id))
-        db.commit()
-        register_login_success(email=email, ip=client_ip(request))
+        register_login_success(email=email, ip=_client_ip(request), db=db)
         security_event("login_success", uid=int(u.id))
     except SQLAlchemyError:
         logger.exception("Login: error al guardar sesión o último acceso")
@@ -262,11 +273,13 @@ def _ensure_csrf_login(request: Request) -> str:
 
 
 def _csrf_ok(request: Request, csrf_token: str) -> bool:
-    expect = request.session.get("csrf_login")
-    return bool(expect) and expect == (csrf_token or "").strip()
+    return tokens_match(request.session.get("csrf_login"), csrf_token)
 
 
 def _client_ip(request: Request) -> str | None:
+    """IP de cliente solo detrás de un proxy explícito. Si no, el cupo es por correo."""
+    if not settings.trust_x_forwarded_for:
+        return None
     return client_ip(request)
 
 

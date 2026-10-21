@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,6 @@ from core.module_catalog import (
     ALL_ASSIGNABLE_KEYS,
     ALL_MODULE_KEYS,
     MODULE_LABELS,
-    NAV_SUBMODULE_KEYS,
     SUBMODULE_LABELS,
     module_label,
 )
@@ -25,6 +24,7 @@ from core.rbac import usuario_es_admin
 from crud.auth import modulos_visibles as crud_modulos
 from crud.auth import usuarios as crud_auth
 from db.session import get_db
+from services.audit import audit_event
 
 router = APIRouter(prefix="/seguridad", tags=["Seguridad"])
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -32,11 +32,26 @@ logger = logging.getLogger("evalua.seguridad")
 
 
 def _modulos_catalogo() -> list[dict[str, str]]:
+    from core.module_catalog import (
+        NAV_COMERCIAL_SUBMODULE_KEYS,
+        NAV_CREDITO_COBRANZAS_SUBMODULE_KEYS,
+    )
+
     out: list[dict[str, str]] = []
     for k in ALL_MODULE_KEYS:
-        out.append({"key": k, "label": MODULE_LABELS.get(k, k), "grupo": "Área principal"})
-    for k in NAV_SUBMODULE_KEYS:
+        if k == "EMPRESAS":
+            grupo = "Empresas"
+        elif k == "CREDITO_COBRANZAS":
+            grupo = "Crédito y cobranzas"
+        else:
+            grupo = "Área principal"
+        out.append({"key": k, "label": MODULE_LABELS.get(k, k), "grupo": grupo})
+    for k in NAV_COMERCIAL_SUBMODULE_KEYS:
         out.append({"key": k, "label": SUBMODULE_LABELS.get(k, k), "grupo": "Comercial · sub-módulo"})
+    for k in NAV_CREDITO_COBRANZAS_SUBMODULE_KEYS:
+        out.append(
+            {"key": k, "label": SUBMODULE_LABELS.get(k, k), "grupo": "Crédito y cobranzas · sub-módulo"}
+        )
     return out
 
 
@@ -115,14 +130,33 @@ def _parse_modulos(fd) -> list[str] | None:
 
 
 @router.get("/usuarios", response_class=HTMLResponse, name="seguridad_usuarios")
-def usuarios_lista(request: Request, db: Session = Depends(get_db)):
+def usuarios_lista(
+    request: Request,
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    q: str = Query(""),
+    estado: str = Query(""),
+):
     if (redir := _guard_admin(request)) is not None:
         return redir
-    usuarios = crud_auth.listar_usuarios(db)
+    page_size = 40
+    solo_activos = True if estado == "activos" else False if estado == "inactivos" else None
+    total = crud_auth.contar_usuarios_filtrados(db, q=q, solo_activos=solo_activos)
+    usuarios = crud_auth.listar_usuarios(
+        db,
+        limite=page_size,
+        offset=(page - 1) * page_size,
+        q=q,
+        solo_activos=solo_activos,
+    )
     roles_catalogo = crud_auth.listar_roles(db)
     modulos_por_usuario = {
-        int(u.id): crud_modulos.user_visible_modules_list(u, db) for u in usuarios
+        int(u.id): sorted(
+            {str(m.module_key).upper() for m in (u.modulos_visibles or []) if m.module_key}
+        )
+        for u in usuarios
     }
+    pages = max(1, (total + page_size - 1) // page_size)
     return templates.TemplateResponse(
         "seguridad/usuarios_lista.html",
         {
@@ -131,6 +165,11 @@ def usuarios_lista(request: Request, db: Session = Depends(get_db)):
             "usuarios": usuarios,
             "roles_catalogo": roles_catalogo,
             "modulos_por_usuario": modulos_por_usuario,
+            "page": page,
+            "pages": pages,
+            "total": total,
+            "q": q,
+            "estado": estado,
         },
     )
 
@@ -193,7 +232,7 @@ async def usuario_crear_post(request: Request, db: Session = Depends(get_db)):
         )
 
     try:
-        crud_auth.crear_usuario(
+        u_new = crud_auth.crear_usuario(
             db,
             email=email,
             password=pw,
@@ -201,6 +240,17 @@ async def usuario_crear_post(request: Request, db: Session = Depends(get_db)):
             rol_codigos=roles_sel,
             activo=activo,
             modulo_keys=modulo_keys,
+        )
+        audit_event(
+            action="user_create",
+            result="ok",
+            auth=getattr(request.state, "auth_user", None),
+            request=request,
+            db=db,
+            module="security",
+            entity="usuario",
+            entity_id=int(u_new.id),
+            detail={"email": email, "roles": ",".join(roles_sel)},
         )
         db.commit()
     except ValueError as e:
@@ -295,6 +345,17 @@ async def usuario_actualizar_post(request: Request, usuario_id: int, db: Session
             if pw != pw2:
                 raise ValueError("Las contraseñas nuevas no coinciden.")
             crud_auth.establecer_password(db, usuario_id, pw)
+        audit_event(
+            action="user_update",
+            result="ok",
+            auth=auth if isinstance(auth, dict) else None,
+            request=request,
+            db=db,
+            module="security",
+            entity="usuario",
+            entity_id=int(usuario_id),
+            detail={"roles": ",".join(roles_sel), "activo": str(activo)},
+        )
         db.commit()
     except ValueError as e:
         db.rollback()

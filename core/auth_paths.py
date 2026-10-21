@@ -3,7 +3,16 @@
 """Rutas que no requieren sesión autenticada."""
 from __future__ import annotations
 
+from starlette.responses import JSONResponse, RedirectResponse
+
 from core.config import Settings
+
+
+def respuesta_sin_sesion(path: str, location: str):
+    """Las rutas /api/ responden 401. El resto vuelve al login."""
+    if path.startswith("/api/"):
+        return JSONResponse(status_code=401, content={"detail": "Autenticación requerida."})
+    return RedirectResponse(url=location, status_code=302)
 
 
 def is_public_path(path: str, settings: Settings) -> bool:

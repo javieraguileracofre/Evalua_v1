@@ -283,7 +283,26 @@ def run_economic_engine(
         inflacion_activo_pct_anual=infl_act,
         condicion_factor=cond_f,
     )
+    residual_in = inputs.get("residual") if isinstance(inputs.get("residual"), dict) else {}
+    override = _d(
+        residual_in.get("valor_aceptado")
+        if residual_in.get("valor_aceptado") not in (None, "", 0, "0")
+        else inputs.get("valor_residual_override")
+    )
     valor_residual = Decimal(str(res_info["valor_residual_ajustado"]))
+    warnings: list[str] = []
+    if override > 0:
+        res_info = dict(res_info)
+        res_info["valor_residual_sugerido"] = float(valor_residual)
+        res_info["valor_residual_ajustado"] = float(override.quantize(Decimal("1")))
+        res_info["override"] = True
+        res_info["fuente"] = str(residual_in.get("fuente") or "manual")
+        valor_residual = override.quantize(Decimal("1"))
+        if valor_residual > capex_financiado:
+            valor_residual = capex_financiado
+            res_info["valor_residual_ajustado"] = float(valor_residual)
+            warnings.append("Residual aceptado limitado al CAPEX financiado.")
+    capital_amortizable = max(capex_financiado - valor_residual, Decimal("0"))
     if opcion_fijo > 0:
         valor_terminal = valor_residual + opcion_fijo
     elif opcion_pct > 0:
@@ -293,15 +312,17 @@ def run_economic_engine(
 
     col_in = inputs.get("collateral") or {}
     ead = capex_financiado * _d((politica.get("riesgo_base_v1") or {}).get("EAD_pct_capex"), "1")
+    # Valor del vehículo = precio de compra (o CAPEX bruto si no hay desglose).
+    precio_compra = _d((inputs.get("capex") or {}).get("precio_compra"))
+    valor_vehiculo = precio_compra if precio_compra > 0 else capex_bruto
     vm_col = _d(col_in.get("valor_mercado"))
-    warnings: list[str] = []
     if vm_col <= 0:
         if esc in {"CONSERVADOR", "ESTRES"}:
-            vm_col = (capex_financiado * Decimal("0.82")).quantize(Decimal("1"))
-            warnings.append("Valor de mercado no informado: se aplicó haircut conservador del 18% sobre CAPEX.")
+            vm_col = (valor_vehiculo * Decimal("0.82")).quantize(Decimal("1"))
+            warnings.append("Valor de mercado no informado: se aplicó haircut conservador del 18% sobre valor del vehículo.")
         else:
-            vm_col = capex_financiado
-            warnings.append("Valor de mercado igual a CAPEX financiado (revisar tasación).")
+            vm_col = valor_vehiculo
+            warnings.append("Valor de mercado igual al valor del vehículo (revisar tasación).")
 
     col_out = analizar_collateral(
         valor_mercado=vm_col,
@@ -313,6 +334,8 @@ def run_economic_engine(
         meses_liquidacion=int(col_in.get("meses_liquidacion") or 4),
         tasa_fin_liquidacion_mensual=_d(col_in.get("tasa_fin_liquidacion_mensual"), "0.008"),
         ead=ead,
+        capital_financiado=capex_financiado,
+        valor_vehiculo=valor_vehiculo,
     )
     ltv = Decimal(str(col_out["ltv_pct"]))
     lgd_pct = Decimal(str(col_out["lgd_pct"]))
@@ -484,6 +507,7 @@ def run_economic_engine(
         "engine_version": "2.0",
         "capex_total": float(capex_bruto),
         "capex_financiado": float(capex_financiado),
+        "capital_amortizable": float(capital_amortizable),
         "pie_inicial": float(pie_inicial),
         "pie_inicial_pct": float(pie_pct),
         "opcion_compra_terminal": float(valor_terminal - valor_residual),

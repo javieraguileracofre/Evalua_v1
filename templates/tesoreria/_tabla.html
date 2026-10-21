@@ -1,0 +1,31 @@
+<div class="card shadow-sm h-100">
+  <div class="card-body">
+    <h2 class="h6">{{ titulo }}</h2>
+    {% if not filas %}
+    <p class="text-muted small mb-0">No hay documentos en este período.</p>
+    {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>RUT</th>
+            <th>Razón social</th>
+            <th class="text-end">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fila in filas %}
+          <tr>
+            <td>{{ fila.folio }}</td>
+            <td>{{ fila.rut }}</td>
+            <td>{{ fila.razon }}</td>
+            <td class="text-end">{{ fila.total }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>

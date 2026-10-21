@@ -112,7 +112,7 @@
 </form>
 
 <script type="application/json" id="gastos-initial-data">{{ gastos_json | safe }}</script>
-<script type="application/json" id="rubros-data">{{ rubros | tojson | safe }}</script>
+<script type="application/json" id="rubros-data">{{ rubros | tojson }}</script>
 <script>
 (function(){
   var RUBROS = [];
@@ -124,20 +124,48 @@
   try { initial = JSON.parse(raw ? raw.textContent : '[]'); } catch(e) { initial = []; }
   if(!initial.length) initial = [{ fecha_gasto: '', rubro: 'Combustible', descripcion: '', monto: '0', nro_documento: '' }];
 
-  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
-
   function rowTemplate(row){
     var tr = document.createElement('tr');
-    var opts = RUBROS.map(function(r){ return '<option value="'+esc(r)+'"'+(row.rubro===r?' selected':'')+'>'+esc(r)+'</option>'; }).join('');
-    tr.innerHTML =
-      '<td><input type="datetime-local" class="form-control form-control-sm g-fecha" value="'+esc(row.fecha_gasto||'')+'"></td>'+
-      '<td><select class="form-select form-select-sm g-rubro">'+opts+'</select></td>'+
-      '<td><input type="text" class="form-control form-control-sm g-desc" value="'+esc(row.descripcion||'')+'" placeholder="Detalle"></td>'+
-      '<td><input type="text" class="form-control form-control-sm text-end g-monto" value="'+esc(row.monto||'0')+'"></td>'+
-      '<td><input type="text" class="form-control form-control-sm g-doc" value="'+esc(row.nro_documento||'')+'"></td>'+
-      '<td><button type="button" class="btn btn-sm btn-outline-danger py-0 g-del">×</button></td>';
-    tr.querySelector('.g-del').addEventListener('click', function(){ tr.remove(); sync(); });
-    ['g-fecha','g-rubro','g-desc','g-monto','g-doc'].forEach(function(c){ tr.querySelector('.'+c).addEventListener('input', sync); tr.querySelector('.'+c).addEventListener('change', sync); });
+    function cellInput(cls, type, value, extra){
+      var td = document.createElement('td');
+      var inp = document.createElement('input');
+      inp.type = type;
+      inp.className = extra ? extra : ('form-control form-control-sm ' + cls);
+      inp.value = value == null ? '' : String(value);
+      td.appendChild(inp);
+      return td;
+    }
+    tr.appendChild(cellInput('g-fecha', 'datetime-local', row.fecha_gasto || '', 'form-control form-control-sm g-fecha'));
+    var tdRub = document.createElement('td');
+    var sel = document.createElement('select');
+    sel.className = 'form-select form-select-sm g-rubro';
+    RUBROS.forEach(function(r){
+      var opt = document.createElement('option');
+      opt.value = r;
+      opt.textContent = r;
+      if (row.rubro === r) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    tdRub.appendChild(sel);
+    tr.appendChild(tdRub);
+    var tdDesc = cellInput('g-desc', 'text', row.descripcion || '', 'form-control form-control-sm g-desc');
+    tdDesc.querySelector('input').placeholder = 'Detalle';
+    tr.appendChild(tdDesc);
+    tr.appendChild(cellInput('g-monto', 'text', row.monto || '0', 'form-control form-control-sm text-end g-monto'));
+    tr.appendChild(cellInput('g-doc', 'text', row.nro_documento || '', 'form-control form-control-sm g-doc'));
+    var tdDel = document.createElement('td');
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-outline-danger py-0 g-del';
+    btn.textContent = '×';
+    tdDel.appendChild(btn);
+    tr.appendChild(tdDel);
+    btn.addEventListener('click', function(){ tr.remove(); sync(); });
+    ['g-fecha','g-rubro','g-desc','g-monto','g-doc'].forEach(function(c){
+      var el = tr.querySelector('.'+c);
+      el.addEventListener('input', sync);
+      el.addEventListener('change', sync);
+    });
     return tr;
   }
 

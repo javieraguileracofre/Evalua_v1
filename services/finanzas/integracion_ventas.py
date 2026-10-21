@@ -10,11 +10,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from crud.finanzas.config_contable import obtener_configuracion_evento_modulo
-from crud.finanzas.contabilidad_asientos import (
-    crear_asiento,
-    eliminar_asiento_contable,
-    obtener_asiento_detalle,
-)
+from modules.contabilidad import accounting_service
+
 from models import InventarioMovimiento, Producto
 from models.comercial.nota_venta import NotaVenta
 
@@ -170,7 +167,9 @@ def _obtener_costo_total_nota(db: Session, *, nota: NotaVenta) -> Decimal:
         )
         if not controla_stock:
             continue
-        costo_unitario = _d(getattr(producto, "precio_compra", 0))
+        costo_unitario = _d(getattr(producto, "costo_promedio", 0))
+        if costo_unitario <= 0:
+            costo_unitario = _d(getattr(producto, "precio_compra", 0))
         total_fallback += (_d(det.cantidad) * costo_unitario).quantize(Decimal("0.01"))
 
     return total_fallback.quantize(Decimal("0.01"))
@@ -219,23 +218,57 @@ def eliminar_movimiento_contable_nota_venta(
     db: Session,
     *,
     nota_venta_id: int,
+    liberar_origen: bool = True,
 ) -> int:
     """
-    Elimina asientos ligados a una nota de venta:
-    - NOTA_VENTA (original)
-    - NOTA_VENTA_ANULACION (reversa)
-    """
-    ids: list[int] = []
-    for origen in ("NOTA_VENTA_ANULACION", "NOTA_VENTA"):
-        aid = _obtener_id_asiento(db, origen_tipo=origen, origen_id=nota_venta_id)
-        if aid:
-            ids.append(int(aid))
+    Deja en cero el efecto de la nota sin borrar asientos.
 
-    eliminados = 0
-    for aid in ids:
-        eliminar_asiento_contable(db, aid)
-        eliminados += 1
-    return eliminados
+    Si ya existe anulación, el neto ya es cero y no se agrega otra reversión.
+    Si no, se reversa el asiento vivo y se archiva su clave para poder
+    contabilizar de nuevo el mismo documento.
+    """
+    anulacion_id = _obtener_id_asiento(
+        db, origen_tipo="NOTA_VENTA_ANULACION", origen_id=nota_venta_id
+    )
+    original_id = _obtener_id_asiento(
+        db, origen_tipo="NOTA_VENTA", origen_id=nota_venta_id
+    )
+    if original_id is None or anulacion_id is not None:
+        return 0
+    accounting_service.reverse_business_entry(
+        db,
+        asiento_original_id=int(original_id),
+        origen_tipo="NOTA_VENTA_REVERSA",
+        origen_id=int(original_id),
+        glosa=f"Reversión nota de venta {nota_venta_id}",
+        do_commit=False,
+    )
+    if liberar_origen:
+        accounting_service.release_origin_key(db, int(original_id))
+    return 1
+
+
+def _vincular_libro_venta(
+    db: Session,
+    nota: NotaVenta,
+    *,
+    asiento_id: int | None = None,
+    estricto: bool,
+) -> None:
+    """Deja el folio de la nota en el libro interno. No envía nada al SII."""
+    from services.finanzas.documento_tributario import registrar_emitido_nota
+
+    if asiento_id is None:
+        asiento_id = _obtener_id_asiento(db, origen_tipo="NOTA_VENTA", origen_id=int(nota.id))
+    try:
+        registrar_emitido_nota(db, nota, asiento_id)
+    except ValueError:
+        if estricto:
+            raise
+        logger.warning(
+            "Libro de ventas no actualizado para la nota %s.",
+            getattr(nota, "numero", nota.id),
+        )
 
 
 def contabilizar_nota_venta(
@@ -250,6 +283,7 @@ def contabilizar_nota_venta(
 
     if _existe_asiento(db, origen_tipo="NOTA_VENTA", origen_id=nota.id):
         logger.info("La nota %s ya tiene asiento contable generado.", nota.numero)
+        _vincular_libro_venta(db, nota, estricto=False)
         return
 
     neto = _d(nota.total_neto).quantize(Decimal("0.01"))
@@ -302,7 +336,7 @@ def contabilizar_nota_venta(
                 f"No fue posible construir el asiento contable de la nota {nota.numero}."
             )
 
-        crear_asiento(
+        asiento_id = accounting_service.post_entry(
             db=db,
             fecha=nota.fecha,
             origen_tipo="NOTA_VENTA",
@@ -311,7 +345,9 @@ def contabilizar_nota_venta(
             detalles=detalles_asiento,
             usuario=usuario,
             moneda="CLP",
+            do_commit=False,
         )
+        _vincular_libro_venta(db, nota, asiento_id=asiento_id, estricto=True)
 
         logger.info(
             "Asiento contable compuesto generado correctamente para nota de venta %s (id=%s).",
@@ -364,7 +400,7 @@ def contabilizar_anulacion_nota_venta(
         )
         return
 
-    asiento_original = obtener_asiento_detalle(db, asiento_original_id)
+    asiento_original = accounting_service.get_entry(db, asiento_original_id)
     if not asiento_original:
         logger.warning(
             "No fue posible leer el asiento original de la nota %s.",
@@ -392,7 +428,7 @@ def contabilizar_anulacion_nota_venta(
         return
 
     try:
-        crear_asiento(
+        accounting_service.post_entry(
             db=db,
             fecha=nota.fecha,
             origen_tipo="NOTA_VENTA_ANULACION",
@@ -401,6 +437,7 @@ def contabilizar_anulacion_nota_venta(
             detalles=detalles_reversa,
             usuario=usuario,
             moneda="CLP",
+            do_commit=False,
         )
 
         logger.info(

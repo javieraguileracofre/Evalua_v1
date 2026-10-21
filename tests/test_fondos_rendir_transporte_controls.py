@@ -29,33 +29,39 @@ def test_bloqueo_anticipo_con_fondos_abiertos_antiguos(monkeypatch) -> None:
 
 
 def test_detecta_gasto_combustible_sin_viaje(monkeypatch) -> None:
-    f = SimpleNamespace(
-        id=1,
-        folio="FR-1",
-        empleado=SimpleNamespace(nombre_completo="A"),
-        empleado_id=1,
-        vehiculo_transporte_id=None,
-        lineas_gasto=[SimpleNamespace(rubro="Combustible", monto=Decimal("100"))],
-        viajes_transporte=[],
-    )
-
-    class _FakeScalars:
+    class _Rows:
         def __init__(self, rows):
             self._rows = rows
+
+        def mappings(self):
+            return self
 
         def all(self):
             return self._rows
 
     class _DB:
-        def scalars(self, stmt):
-            sql = str(stmt)
-            if "FROM fondos_rendir" in sql:
-                return _FakeScalars([f])
-            return _FakeScalars([])
+        def execute(self, stmt, params=None):
+            sql = " ".join(str(stmt).lower().split())
+            assert "not exists" in sql
+            assert "combustible_sin_viaje" in sql
+            return _Rows(
+                [
+                    {
+                        "tipo": "COMBUSTIBLE_SIN_VIAJE",
+                        "folio": "FR-1",
+                        "fondo_id": 1,
+                        "monto": Decimal("100"),
+                        "viaje_id": None,
+                        "chofer_fondo": None,
+                        "chofer_viaje": None,
+                    }
+                ]
+            )
 
     monkeypatch.setattr(fr, "dashboard_stats", lambda _db: {"alertas_rendicion": []})
     res = fr.dashboard_conciliacion_transporte(_DB())
     assert len(res["gastos_combustible_sin_viaje"]) == 1
+    assert res["rendiciones_inconsistentes"][0]["motivo"] == "Gasto combustible sin viaje asociado"
 
 
 def test_liquidacion_contable_mapea_rubro(monkeypatch) -> None:
@@ -67,7 +73,17 @@ def test_liquidacion_contable_mapea_rubro(monkeypatch) -> None:
     }
     monkeypatch.setattr(frc, "_resolver_cuenta", lambda _db, **kw: cuentas[kw["rol"]])
     capt = {}
-    monkeypatch.setattr(frc, "crear_asiento", lambda *_a, **kw: capt.setdefault("detalles", kw["detalles"]) or 99)
+    published: dict = {}
+
+    def _fake_post_entry(_db, **kw):
+        capt["detalles"] = kw["detalles"]
+        return 99
+
+    def _fake_publish(_db, **kw):
+        published.update(kw)
+
+    monkeypatch.setattr(frc.accounting_service, "post_entry", _fake_post_entry)
+    monkeypatch.setattr("erp_platform.events.publish_in_transaction", _fake_publish)
     f = SimpleNamespace(
         id=1,
         folio="FR-1",
@@ -78,6 +94,10 @@ def test_liquidacion_contable_mapea_rubro(monkeypatch) -> None:
     )
     frc.contabilizar_liquidacion_rendicion(SimpleNamespace(), f)
     assert any(d["codigo_cuenta"] == "610102" for d in capt["detalles"])
+    assert published["event_name"] == "LiquidacionGenerada"
+    assert published["correlation_id"] == "FONDO_RENDIR_LIQ:1"
+    assert published["payload"]["asiento_id"] == 99
+    assert published["payload"]["fondo_id"] == 1
 
 
 def test_alertas_mantencion_vencida_proxima(monkeypatch) -> None:

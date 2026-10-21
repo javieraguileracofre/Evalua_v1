@@ -363,7 +363,7 @@
         </div>
         <div class="card-body">
           <div class="text-center mb-3 p-2 bg-light rounded border">
-            <img src="{{ request.url_for('static', path='img/TALLER/SECCION_VH_DAÑOS.png') }}" alt="Vistas del vehículo para marcar daños" class="img-fluid" style="max-height:220px;" onerror="this.closest('.text-center').innerHTML='<p class=\'text-muted small mb-0\'>Coloque la imagen <code>static/img/TALLER/SECCION_VH_DAÑOS.png</code> para ver el diagrama.</p>'">
+            <img src="{{ request.url_for('static', path='img/TALLER/SECCION_VH_DAÑOS.png') }}" alt="Vistas del vehículo para marcar daños" class="img-fluid" style="max-height:220px;" id="taller-diagrama-danos">
           </div>
           <p class="small text-muted mb-2">Indique rayones, bollos u observaciones por vista (según diagrama).</p>
           <div class="row g-2">
@@ -448,12 +448,46 @@
   }
   function rowTemplate(d, c, p){
     var tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td><input type="text" class="form-control form-control-sm text-center cot-cant" value="'+ (c||'') +'"></td>'+
-      '<td><input type="text" class="form-control form-control-sm cot-desc" placeholder="Descripción del trabajo" value="'+ (d||'').replace(/"/g,'&quot;') +'"></td>'+
-      '<td><input type="text" class="form-control form-control-sm text-end cot-pu" value="'+ (p||'') +'"></td>'+
-      '<td class="text-end align-middle cot-net fw-semibold">0</td>'+
-      '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger py-0 cot-del" title="Quitar">&times;</button></td>';
+    var tdCant = document.createElement('td');
+    var inpCant = document.createElement('input');
+    inpCant.type = 'text';
+    inpCant.className = 'form-control form-control-sm text-center cot-cant';
+    inpCant.value = c || '';
+    tdCant.appendChild(inpCant);
+
+    var tdDesc = document.createElement('td');
+    var inpDesc = document.createElement('input');
+    inpDesc.type = 'text';
+    inpDesc.className = 'form-control form-control-sm cot-desc';
+    inpDesc.placeholder = 'Descripción del trabajo';
+    inpDesc.value = d || '';
+    tdDesc.appendChild(inpDesc);
+
+    var tdPu = document.createElement('td');
+    var inpPu = document.createElement('input');
+    inpPu.type = 'text';
+    inpPu.className = 'form-control form-control-sm text-end cot-pu';
+    inpPu.value = p || '';
+    tdPu.appendChild(inpPu);
+
+    var tdNet = document.createElement('td');
+    tdNet.className = 'text-end align-middle cot-net fw-semibold';
+    tdNet.textContent = '0';
+
+    var tdDel = document.createElement('td');
+    tdDel.className = 'text-center';
+    var btnDel = document.createElement('button');
+    btnDel.type = 'button';
+    btnDel.className = 'btn btn-sm btn-outline-danger py-0 cot-del';
+    btnDel.title = 'Quitar';
+    btnDel.textContent = '×';
+    tdDel.appendChild(btnDel);
+
+    tr.appendChild(tdCant);
+    tr.appendChild(tdDesc);
+    tr.appendChild(tdPu);
+    tr.appendChild(tdNet);
+    tr.appendChild(tdDel);
     return tr;
   }
   function recalcRow(tr){

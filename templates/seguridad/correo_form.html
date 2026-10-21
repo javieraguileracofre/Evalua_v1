@@ -1,0 +1,91 @@
+{% extends "layout/base.html" %}
+{% block title %}{% if modo == 'nuevo' %}Nueva cuenta de correo{% else %}Editar cuenta de correo{% endif %} · Evalua ERP{% endblock %}
+{% block page_title %}{% if modo == 'nuevo' %}Nueva cuenta de correo{% else %}Editar cuenta{% endif %}{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('seguridad_correo') }}">Cuentas de correo</a></li>
+<li class="breadcrumb-item active">{% if modo == 'nuevo' %}Nueva{% else %}Editar{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+{% if form_error %}
+<div class="alert alert-danger border-0 shadow-sm mb-3">{{ form_error }}</div>
+{% endif %}
+
+<div class="alert alert-light border mb-3 small">
+  <strong>Gmail / Microsoft 365:</strong> use una <em>contraseña de aplicación</em> (no la clave personal)
+  y se almacenará cifrada. Si configura <code>GOOGLE_OAUTH_CLIENT_ID</code> /
+  <code>MICROSOFT_OAUTH_CLIENT_ID</code> en el servidor, podrá conectar OAuth sin guardar la clave de correo.
+  SMTP personalizado continúa usando usuario + contraseña cifrada.
+</div>
+
+<form method="post" class="card border-0 shadow-sm js-busy-form" autocomplete="off">
+  <div class="card-body row g-3">
+    <div class="col-md-6">
+      <label class="form-label">Nombre descriptivo</label>
+      <input class="form-control" name="nombre" required
+             value="{{ form_values.nombre if form_values.nombre is defined else (cuenta.nombre if cuenta else '') }}"
+             placeholder="Ej. TI · recuperación de claves">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Proveedor</label>
+      <select class="form-select" name="provider" id="provider">
+        {% set prov = form_values.provider if form_values.provider is defined else (cuenta.provider if cuenta else 'SMTP') %}
+        {% for code, label in providers %}
+        <option value="{{ code }}" {% if prov == code %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Correo remitente</label>
+      <input class="form-control" type="email" name="from_email" required
+             value="{{ form_values.from_email if form_values.from_email is defined else (cuenta.from_email if cuenta else '') }}">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Nombre visible</label>
+      <input class="form-control" name="from_name"
+             value="{{ form_values.from_name if form_values.from_name is defined else (cuenta.from_name if cuenta else '') }}"
+             placeholder="Evalua ERP · Soporte">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Host SMTP</label>
+      <input class="form-control" name="host" id="host"
+             value="{{ form_values.host if form_values.host is defined else (cuenta.host if cuenta else '') }}"
+             placeholder="mail.empresa.cl">
+      <div class="form-text">Gmail y Microsoft 365 completan el host si lo deja vacío.</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Puerto</label>
+      <input class="form-control" name="port" id="port"
+             value="{{ form_values.port if form_values.port is defined else (cuenta.port if cuenta else 465) }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Seguridad</label>
+      {% set sec = form_values.security if form_values.security is defined else (cuenta.security if cuenta else 'SSL') %}
+      <select class="form-select" name="security" id="security">
+        {% for code, label in securities %}
+        <option value="{{ code }}" {% if sec == code %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Usuario de autenticación</label>
+      <input class="form-control" name="username" required autocomplete="off"
+             value="{{ form_values.username if form_values.username is defined else (cuenta.username if cuenta else '') }}">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">{% if modo == 'nuevo' %}Contraseña{% else %}Nueva contraseña{% endif %}</label>
+      <input class="form-control" type="password" name="password" autocomplete="new-password"
+             {% if modo == 'nuevo' %}required{% endif %}
+             placeholder="{% if modo == 'editar' %}Dejar vacío para no cambiar{% else %}No se volverá a mostrar{% endif %}">
+      {% if modo == 'editar' %}
+      <div class="form-text">La contraseña actual está cifrada y no se puede ver. Solo puede reemplazarla.</div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-footer bg-white d-flex justify-content-between">
+    <a class="btn btn-outline-secondary" href="{{ request.url_for('seguridad_correo') }}">Cancelar</a>
+    <button class="btn btn-primary" type="submit">Guardar</button>
+  </div>
+</form>
+{% endblock %}

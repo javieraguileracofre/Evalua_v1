@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import select, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session
 
 from core.config import settings
@@ -80,6 +80,31 @@ def propose_database_user(code: str) -> str:
     return f"erp_{code}_app"[:63]
 
 
+_LOOPBACK_HOSTS = {"", "localhost", "127.0.0.1", "::1"}
+
+
+def database_endpoint(host: str, port: int) -> tuple[str, int]:
+    """La base nueva vive en el servidor de ADMIN_POSTGRES_URL.
+
+    El formulario usa localhost. En Windows eso puede resolver a IPv6 y
+    PostgreSQL queda escuchando solo en 127.0.0.1. Un host explícito distinto
+    del loopback se conserva para registrar una base que ya existe.
+    """
+    raw_host = (host or "").strip()
+    raw_port = int(port or 5432)
+    admin = (settings.admin_postgres_url or "").strip()
+    if not admin:
+        if raw_host.lower() in _LOOPBACK_HOSTS:
+            return "127.0.0.1", raw_port
+        return raw_host, raw_port
+    parsed = make_url(admin)
+    admin_host = parsed.host or "127.0.0.1"
+    admin_port = int(parsed.port or 5432)
+    if raw_host.lower() in _LOOPBACK_HOSTS:
+        return admin_host, admin_port
+    return raw_host, raw_port
+
+
 class DatabaseProvisioner:
     """Crea la base PostgreSQL y aplica el esquema. Los tests sustituyen esta clase."""
 
@@ -109,6 +134,7 @@ class DatabaseProvisioner:
                 ).scalar()
                 if not exists_db:
                     conn.execute(text(f"CREATE DATABASE {database_name} OWNER {database_user}"))
+            self._install_extensions(database_name)
         except ProvisioningError:
             raise
         except Exception as exc:
@@ -116,7 +142,6 @@ class DatabaseProvisioner:
             raise ProvisioningError(MSG_CREATE_DB) from exc
         finally:
             admin.dispose()
-        from urllib.parse import quote_plus
 
         return self.open_existing(
             database_name=database_name,
@@ -125,6 +150,24 @@ class DatabaseProvisioner:
             host=host,
             port=port,
         )
+
+    def _install_extensions(self, database_name: str) -> None:
+        """pgcrypto y citext los instala el administrador. El usuario de la compañía no es superuser."""
+        from sqlalchemy import create_engine
+
+        admin_url = make_url(settings.admin_postgres_url).set(database=database_name)
+        engine = create_engine(
+            admin_url.render_as_string(hide_password=False),
+            future=True,
+            pool_pre_ping=True,
+        )
+        try:
+            with engine.connect() as conn:
+                conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS citext"))
+        finally:
+            engine.dispose()
 
     def open_existing(self, *, database_name: str, database_user: str, password: str, host: str, port: int) -> str:
         from urllib.parse import quote_plus
@@ -177,11 +220,11 @@ class DatabaseProvisioner:
 
 
 def _stamp(url: str) -> None:
-    from alembic import command
-    from alembic.config import Config
+    from services.platform.alembic_support import load_alembic
 
-    cfg = Config(str(PROJECT_ROOT / "alembic.ini"))
-    cfg.set_main_option("sqlalchemy.url", url)
+    command, config_cls = load_alembic()
+    cfg = config_cls(str(PROJECT_ROOT / "alembic.ini"))
+    cfg.set_main_option("sqlalchemy.url", (url or "").replace("%", "%%"))
     command.stamp(cfg, "head")
 
 
@@ -416,8 +459,7 @@ class CompanyProvisioningService:
         password = password_override or secrets.token_urlsafe(24)
         database_name = (draft.database_name or propose_database_name(company.code)).strip()
         database_user = (draft.database_user or propose_database_user(company.code)).strip()
-        host = (draft.host or "localhost").strip() or "localhost"
-        port = int(draft.port or 5432)
+        host, port = database_endpoint(draft.host, int(draft.port or 5432))
         record = db.execute(
             select(CompanyDatabase).where(CompanyDatabase.company_id == company.id)
         ).scalar_one_or_none()
@@ -438,8 +480,10 @@ class CompanyProvisioningService:
             password = _existing_or_new_secret(record, password)
             database_name = record.database_name
             database_user = record.database_user
-            host = record.host
-            port = int(record.port)
+            host, port = database_endpoint(record.host, int(record.port))
+            record.host = host
+            record.port = port
+            db.commit()
         try:
             write_audit(
                 db,

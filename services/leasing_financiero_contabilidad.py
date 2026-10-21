@@ -10,7 +10,7 @@ from sqlalchemy import delete, text
 from sqlalchemy.orm import Session
 
 from crud.finanzas.config_contable import obtener_configuracion_evento_modulo
-from crud.finanzas.contabilidad_asientos import crear_asiento
+from modules.contabilidad import accounting_service
 from models.comercial.leasing_financiero_cotizacion import (
     LeasingFinancieroCotizacion,
     LeasingFinancieroProyeccionLinea,
@@ -454,7 +454,7 @@ def activar_contabilidad_leasing_financiero(
             }
         )
 
-    return crear_asiento(
+    asiento_id = accounting_service.post_entry(
         db,
         fecha=cotizacion.fecha_inicio or cotizacion.fecha_cotizacion or date.today(),
         origen_tipo="LEASING_FIN_ACTIVACION",
@@ -465,3 +465,17 @@ def activar_contabilidad_leasing_financiero(
         moneda="CLP",
         do_commit=False,
     )
+    from erp_platform.events import publish_in_transaction
+    from erp_platform.events import types as event_types
+
+    publish_in_transaction(
+        db,
+        event_name=event_types.CONTRATO_LEASING_ACTIVADO,
+        payload={
+            "producto": "LF",
+            "cotizacion_id": int(cotizacion.id),
+            "asiento_id": int(asiento_id),
+        },
+        correlation_id=f"LEASING_FIN_ACTIVACION:{int(cotizacion.id)}",
+    )
+    return asiento_id

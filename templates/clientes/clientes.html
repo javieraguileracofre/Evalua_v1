@@ -1,7 +1,7 @@
 {# templates/clientes/clientes.html #}
 {% extends "layout/base.html" %}
 
-{% block title %}Clientes · Evalua_V1{% endblock title %}
+{% block title %}Clientes · Evalua ERP{% endblock title %}
 
 {% block breadcrumbs %}
 <li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
@@ -9,136 +9,55 @@
 {% endblock breadcrumbs %}
 
 {% block page_title %}Clientes{% endblock page_title %}
+{% block page_subtitle %}
+<p class="page-subtitle mb-0">Cartera comercial, contacto y estado operativo.</p>
+{% endblock page_subtitle %}
+
+{% block page_actions %}
+<div class="d-flex flex-wrap gap-2">
+  <a href="{{ request.url_for('clientes_carga_masiva_form') }}" class="btn btn-outline-primary btn-sm">
+    <i class="bi bi-upload"></i> Carga masiva
+  </a>
+  <a href="{{ request.url_for('clientes_form_nuevo') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg"></i> Nuevo cliente
+  </a>
+</div>
+{% endblock page_actions %}
 
 {% block content %}
 
-{% set total_clientes = clientes|length %}
-{% set clientes_activos = clientes|selectattr("activo")|list|length %}
-{% set clientes_inactivos = total_clientes - clientes_activos %}
-{% set con_email = clientes|selectattr("email")|list|length %}
+{% set total_clientes = total_filtrado if total_filtrado is defined else clientes|length %}
+{% set n_activos = clientes_activos if clientes_activos is defined else clientes|selectattr("activo")|list|length %}
+{% set n_inactivos = clientes_inactivos if clientes_inactivos is defined else (total_clientes - n_activos) %}
+{% set n_email = con_email if con_email is defined else clientes|selectattr("email")|list|length %}
+{% set desde_n = (skip|default(0)) + (1 if clientes else 0) %}
+{% set hasta_n = (skip|default(0)) + clientes|length %}
 
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
-  <div>
-    <h2 class="h4 fw-semibold mb-1">Maestro de clientes</h2>
-    <div class="text-muted small">
-      Administra la cartera comercial, mantiene trazabilidad de clientes y controla su estado operativo dentro del sistema.
-    </div>
-  </div>
-
-  <div class="d-flex flex-wrap gap-2">
-    <a href="{{ request.url_for('menu_principal') }}" class="btn btn-outline-secondary btn-sm">
-      <i class="bi bi-arrow-left"></i> Volver
-    </a>
-
-    <a href="{{ request.url_for('clientes_carga_masiva_form') }}" class="btn btn-outline-primary btn-sm">
-      <i class="bi bi-upload"></i> Carga masiva
-    </a>
-
-    <a href="{{ request.url_for('clientes_form_nuevo') }}" class="btn btn-primary btn-sm">
-      <i class="bi bi-plus-lg"></i> Nuevo cliente
-    </a>
-  </div>
-</div>
-
-{% if msg %}
-<div class="alert alert-{{ sev or 'info' }} alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
-  <div class="d-flex align-items-start gap-2">
-    {% if (sev or 'info') in ['success'] %}
-      <i class="bi bi-check-circle-fill mt-1"></i>
-    {% elif (sev or 'info') in ['warning'] %}
-      <i class="bi bi-exclamation-triangle-fill mt-1"></i>
-    {% elif (sev or 'info') in ['danger'] %}
-      <i class="bi bi-x-circle-fill mt-1"></i>
-    {% else %}
-      <i class="bi bi-info-circle-fill mt-1"></i>
-    {% endif %}
-    <div class="flex-grow-1">
-      <div class="fw-semibold mb-1">Información del sistema</div>
-      <div>{{ msg }}</div>
-      {% if (sev or 'info') == 'warning' %}
-        <div class="small text-muted mt-1">
-          Si el cliente tiene documentos asociados, el sistema no permite eliminarlo por trazabilidad y lo desactiva automáticamente.
-        </div>
-      {% endif %}
-    </div>
-  </div>
-  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
-</div>
-{% endif %}
-
-<div class="row g-3 mb-4">
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small text-uppercase fw-semibold mb-2">Total clientes</div>
-        <div class="fs-3 fw-bold">{{ total_clientes }}</div>
-        <div class="small text-muted mt-2">
-          Registros visibles en esta página (hasta {{ limit|default(200) }} por consulta).
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small text-uppercase fw-semibold mb-2">Activos</div>
-        <div class="fs-3 fw-bold text-success">{{ clientes_activos }}</div>
-        <div class="small text-muted mt-2">
-          Clientes habilitados para operar comercialmente.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small text-uppercase fw-semibold mb-2">Inactivos</div>
-        <div class="fs-3 fw-bold text-secondary">{{ clientes_inactivos }}</div>
-        <div class="small text-muted mt-2">
-          Registros deshabilitados, conservados por control y trazabilidad.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small text-uppercase fw-semibold mb-2">Con correo</div>
-        <div class="fs-3 fw-bold text-primary">{{ con_email }}</div>
-        <div class="small text-muted mt-2">
-          Clientes con canal disponible para notificaciones y contacto.
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
+<div data-live-list>
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-white border-0 pb-0 pt-3">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
       <div>
         <h3 class="h6 fw-semibold mb-1">Filtros de consulta</h3>
         <div class="text-muted small">
-          Busca clientes por razón social, nombre fantasía, RUT u otros campos indexados por el buscador general.
+          El listado se actualiza al escribir. Busque por razón social, nombre de fantasía o RUT.
         </div>
       </div>
-      <span class="badge rounded-pill bg-light text-dark border">Búsqueda y segmentación</span>
     </div>
   </div>
 
   <div class="card-body pt-3">
-    <form id="filtrosClientes" method="get" class="row g-3 align-items-end">
+    <form id="filtrosClientes" method="get" class="row g-3 align-items-end" data-live-form action="{{ request.url_for('clientes_list') }}">
       <div class="col-md-8">
-        <label class="form-label small fw-semibold">Búsqueda general</label>
+        <label class="form-label small fw-semibold" for="qClientes">Búsqueda</label>
         <input
-          type="text"
+          id="qClientes"
+          type="search"
           name="q"
           class="form-control"
-          placeholder="Buscar por razón social, RUT, comuna, ciudad..."
+          placeholder="Razón social, RUT, comuna, ciudad…"
           value="{{ q or '' }}"
+          autocomplete="off"
         >
       </div>
 
@@ -164,7 +83,7 @@
         <button class="btn btn-primary w-100" type="submit">
           <i class="bi bi-search"></i> Filtrar
         </button>
-        <a href="{{ request.url_for('clientes_list') }}" class="btn btn-light">
+        <a href="{{ request.url_for('clientes_list') }}" class="btn btn-light" data-live-reset title="Limpiar">
           <i class="bi bi-x-circle"></i>
         </a>
       </div>
@@ -172,11 +91,62 @@
   </div>
 </div>
 
+<div data-live-results>
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Total clientes</div>
+        <div class="fs-3 fw-bold">{{ total_clientes }}</div>
+        <div class="small text-muted mt-2">
+          Coincidencias del filtro. En esta página: {{ desde_n }}–{{ hasta_n }}.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Activos</div>
+        <div class="fs-3 fw-bold text-success">{{ n_activos }}</div>
+        <div class="small text-muted mt-2">
+          Clientes habilitados para operar comercialmente.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Inactivos</div>
+        <div class="fs-3 fw-bold text-secondary">{{ n_inactivos }}</div>
+        <div class="small text-muted mt-2">
+          Registros deshabilitados, conservados por control y trazabilidad.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small text-uppercase fw-semibold mb-2">Con correo</div>
+        <div class="fs-3 fw-bold text-primary">{{ n_email }}</div>
+        <div class="small text-muted mt-2">
+          Clientes con canal disponible para notificaciones y contacto.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% if skip is defined %}
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
     <span class="small text-muted mb-0">
-      Página {{ (skip // limit) + 1 }} · {{ limit }} filas · máximo {{ list_page_max|default(500) }} por página
+      Página {{ (skip // limit) + 1 }} · mostrando {{ desde_n }}–{{ hasta_n }} de {{ total_clientes }}
     </span>
     <div class="ms-auto d-flex flex-wrap gap-2">
       {% if skip > 0 %}
@@ -206,13 +176,13 @@
         </div>
       </div>
       <span class="badge rounded-pill bg-light text-dark border">
-        {{ total_clientes }} registro{{ '' if total_clientes == 1 else 's' }}
+        {{ clientes|length }} en página · {{ total_clientes }} en total
       </span>
     </div>
   </div>
 
   <div class="card-body pt-3 p-0">
-    <div class="table-responsive">
+    <div class="evalua-table-wrap">
       <table class="table table-hover align-middle mb-0">
         <thead class="table-light">
           <tr>
@@ -229,7 +199,7 @@
 
         <tbody>
           {% for c in clientes %}
-          <tr class="{% if c.activo is defined and (not c.activo) %}table-secondary{% endif %}">
+          <tr class="{% if c.activo is defined and (not c.activo) %}table-secondary{% endif %}" data-row-href="{{ request.url_for('clientes_form_editar', cliente_id=c.id) }}">
             <td class="text-muted">{{ (skip|default(0)) + loop.index }}</td>
 
             <td>
@@ -278,8 +248,10 @@
                 <form
                   method="post"
                   action="{{ request.url_for('clientes_delete', cliente_id=c.id) }}"
-                  style="display:inline"
-                  onsubmit="return confirm('¿Eliminar cliente?\n\nSi el cliente tiene documentos asociados, el sistema no lo eliminará por trazabilidad y lo desactivará automáticamente.');"
+                  class="d-inline"
+                  data-confirm-title="Eliminar o desactivar cliente"
+                  data-confirm-body="{{ c.razon_social }}: si tiene documentos asociados no se elimina. Se desactiva para conservar la trazabilidad."
+                  data-confirm-ok="Eliminar o desactivar"
                 >
                   <button
                     type="submit"
@@ -298,8 +270,13 @@
               <div class="mb-2">
                 <i class="bi bi-people fs-3"></i>
               </div>
-              <div class="fw-semibold">No hay clientes registrados aún.</div>
-              <div class="small">Crea tu primer cliente o realiza una carga masiva para comenzar.</div>
+              <div class="fw-semibold">{% if q %}Ningún cliente coincide con la búsqueda.{% else %}No hay clientes registrados aún.{% endif %}</div>
+              <div class="small mb-3">{% if q %}Pruebe otro RUT o razón social, o limpie el filtro.{% else %}Cree el primer cliente para vender, cobrar o cotizar leasing.{% endif %}</div>
+              {% if q %}
+              <a href="{{ request.url_for('clientes_list') }}" class="btn btn-sm btn-outline-secondary" data-live-reset>Limpiar filtro</a>
+              {% else %}
+              <a href="{{ request.url_for('clientes_form_nuevo') }}" class="btn btn-sm btn-primary">Nuevo cliente</a>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -307,6 +284,8 @@
       </table>
     </div>
   </div>
+</div>
+</div>
 </div>
 
 {% endblock content %}

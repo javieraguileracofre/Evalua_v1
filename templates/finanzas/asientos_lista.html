@@ -33,9 +33,10 @@
 {% endblock %}
 
 {% block content %}
+<div data-live-list>
 <div class="card mb-4">
   <div class="card-body">
-    <form method="get" class="row g-3">
+    <form method="get" class="row g-3" data-live-form action="{{ request.url_for('contabilidad_asientos') }}">
       <div class="col-md-3">
         <label class="form-label">Fecha desde</label>
         <input type="date" name="fecha_desde" class="form-control" value="{{ fecha_desde or '' }}">
@@ -46,17 +47,21 @@
       </div>
       <div class="col-md-3">
         <label class="form-label">Origen</label>
-        <input type="text" name="origen_tipo" class="form-control" value="{{ origen_tipo or '' }}" placeholder="VENTA, COBRANZA, AP, etc.">
+        <input type="search" name="origen_tipo" class="form-control" value="{{ origen_tipo or '' }}" placeholder="VENTA, COBRANZA, AP, etc." autocomplete="off">
       </div>
-      <div class="col-md-3 d-flex align-items-end">
-        <button class="btn btn-outline-primary w-100">
+      <div class="col-md-3 d-flex align-items-end gap-2">
+        <button class="btn btn-outline-primary w-100" type="submit">
           <i class="bi bi-funnel"></i> Filtrar
         </button>
+        <a href="{{ request.url_for('contabilidad_asientos') }}" class="btn btn-light" data-live-reset title="Limpiar">
+          <i class="bi bi-x-circle"></i>
+        </a>
       </div>
     </form>
   </div>
 </div>
 
+<div data-live-results>
 <div class="card">
   <div class="card-header bg-white border-0 pb-0 pt-3">
     <h3 class="h6 fw-semibold mb-1">Libro diario</h3>
@@ -64,7 +69,7 @@
   </div>
 
   <div class="card-body pt-3">
-    <div class="table-responsive">
+    <div class="evalua-table-wrap">
       <table class="table table-hover align-middle mb-0">
         <thead class="table-light">
           <tr>
@@ -81,7 +86,7 @@
         </thead>
         <tbody>
           {% for a in asientos %}
-          <tr>
+          <tr data-row-href="{{ request.url_for('contabilidad_asiento_detalle', asiento_id=a.id) }}">
             <td class="fw-semibold">#{{ a.id }}</td>
             <td>{{ a.fecha }}</td>
             <td>{{ a.glosa or '—' }}</td>
@@ -105,5 +110,7 @@
       </table>
     </div>
   </div>
+</div>
+</div>
 </div>
 {% endblock %}

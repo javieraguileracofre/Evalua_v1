@@ -2,16 +2,18 @@
 {% extends "layout/base.html" %}
 {% block title %}Área comercial{% endblock %}
 
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item active" aria-current="page">Área comercial</li>
+{% endblock breadcrumbs %}
+
+{% block page_title %}Área comercial{% endblock page_title %}
+{% block page_subtitle %}
+<p class="page-subtitle mb-0">Nota de venta, leasing y el paso siguiente hacia crédito.</p>
+{% endblock page_subtitle %}
+
 {% block content %}
-<div class="container py-4">
-  <div class="row mb-4">
-    <div class="col-lg-8">
-      <h1 class="h4 fw-semibold mb-1">Área comercial</h1>
-      <p class="text-secondary mb-0">
-        Nota de venta, leasing financiero, leasing operativo, scoring y crédito/riesgo.
-      </p>
-    </div>
-  </div>
+<div class="container-fluid px-0 py-2">
 
   <div class="row g-3">
     <div class="col-md-6 col-xl-3">
@@ -24,11 +26,16 @@
             <h2 class="h6 mb-0">Nota de venta</h2>
           </div>
           <p class="text-secondary small flex-grow-1">
-            Registro comercial de ventas, detalle y emisión de comprobante.
+            Emite ventas y administra notas emitidas: ver, editar, anular o eliminar.
           </p>
-          <a href="{{ request.url_for('nota_venta_form') }}" class="btn btn-success btn-sm align-self-start">
-            Abrir nota de venta
-          </a>
+          <div class="d-flex flex-wrap gap-2">
+            <a href="{{ request.url_for('nota_venta_form') }}" class="btn btn-primary btn-sm">
+              Nueva venta
+            </a>
+            <a href="{{ request.url_for('nota_venta_lista') }}" class="btn btn-outline-secondary btn-sm">
+              Notas emitidas
+            </a>
+          </div>
         </div>
       </div>
     </div>
@@ -45,7 +52,7 @@
           <p class="text-secondary small flex-grow-1">
             Cotizaciones y amortización de leasing financiero con datos UF/USD diarios.
           </p>
-          <a href="{{ request.url_for('lf_cotizaciones_list') }}" class="btn btn-dark btn-sm align-self-start">
+          <a href="{{ request.url_for('lf_cotizaciones_list') }}" class="btn btn-primary btn-sm align-self-start">
             Abrir cotizador
           </a>
         </div>
@@ -78,13 +85,13 @@
             <span class="rounded-circle bg-info-subtle text-info-emphasis d-inline-flex p-2">
               <i class="bi bi-clipboard-data fs-5"></i>
             </span>
-            <h2 class="h6 mb-0">Crédito y riesgo</h2>
+            <h2 class="h6 mb-0">Crédito y cobranzas</h2>
           </div>
           <p class="text-secondary small flex-grow-1">
-            Módulo completo: score 0–1000, macro/micro, comité, dashboard y exportaciones.
+            Área propia: riesgo crediticio, comité, CxC y recuperación de cartera.
           </p>
-          <a href="{{ request.url_for('credito_riesgo_dashboard') }}" class="btn btn-info btn-sm align-self-start">
-            Abrir módulo
+          <a href="{{ request.url_for('credito_cobranzas_hub') }}" class="btn btn-outline-primary btn-sm align-self-start">
+            Abrir hub
           </a>
         </div>
       </div>
@@ -102,7 +109,7 @@
           <p class="text-secondary small flex-grow-1">
             Motor económico: CAPEX, residual, collateral, costo de fondo, riesgo, VAN/TIR y pricing.
           </p>
-          <a href="{{ request.url_for('leasing_operativo_hub') }}" class="btn btn-secondary btn-sm align-self-start">
+          <a href="{{ request.url_for('leasing_operativo_hub') }}" class="btn btn-outline-primary btn-sm align-self-start">
             Abrir simulaciones
           </a>
         </div>

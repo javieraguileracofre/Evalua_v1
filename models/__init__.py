@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from .auth.usuario import Rol, Usuario
 from .auth.modulo_visible import UsuarioModuloVisible
+from .auth.login_attempt import LoginAttempt
 from .auth.password_reset import PasswordResetCode
 from .auth.audit_event import AuthAuditEvent
 from .ops.backup import DatabaseBackup
@@ -128,6 +129,7 @@ from .finanzas.compras_finanzas import (
     APPago,
     APPagoAplicacion,
 )
+from .tesoreria.sii import SiiArchivo, SiiCredencial, SiiEjecucion
 
 # ============================================================
 # REMUNERACIONES / RRHH
@@ -239,6 +241,9 @@ __all__ = [
     "APDocumentoImpuesto",
     "APPago",
     "APPagoAplicacion",
+    "SiiArchivo",
+    "SiiCredencial",
+    "SiiEjecucion",
     "ConceptoRemuneracion",
     "ContratoLaboral",
     "DetalleRemuneracion",

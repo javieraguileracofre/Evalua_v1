@@ -14,6 +14,7 @@ from models.comercial.leasing_financiero_credito import (
     LeasingFinancieroCreditoDocumento,
 )
 from models.comercial.leasing_financiero_cotizacion import LeasingFinancieroCotizacion, LeasingFinancieroHistorial
+from services.leasing_financiero_estados import estados_equivalentes_db
 from crud.comercial.leasing_fin_operacion import (
     inicializar_checklist,
     persistir_amortizacion_oficial,
@@ -177,7 +178,7 @@ def listar_cotizaciones_para_credito(
         )
     )
     if estado:
-        stmt = stmt.where(LeasingFinancieroCotizacion.estado == estado)
+        stmt = stmt.where(LeasingFinancieroCotizacion.estado.in_(estados_equivalentes_db(estado)))
     if recomendacion:
         stmt = stmt.join(LeasingFinancieroCotizacion.analisis_credito).where(
             LeasingFinancieroAnalisisCredito.recomendacion == recomendacion

@@ -20,6 +20,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base_class import Base
@@ -145,7 +146,8 @@ class LeasingFinancieroCotizacion(Base):
     email_aceptacion_enviado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     email_aceptacion_destino: Mapped[str | None] = mapped_column(String(255))
 
-    estado: Mapped[str] = mapped_column(
+    estado_db: Mapped[str] = mapped_column(
+        "estado",
         String(40),
         nullable=False,
         default="BORRADOR",
@@ -154,6 +156,58 @@ class LeasingFinancieroCotizacion(Base):
 
     contrato_activo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     workflow_json: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'::jsonb"))
+
+    @staticmethod
+    def _normalizar_tasa_tipo(value: str | None) -> str:
+        val = str(value or "ANUAL").strip().upper()
+        return val if val in {"ANUAL", "MENSUAL"} else "ANUAL"
+
+    @hybrid_property
+    def tasa_tipo(self) -> str:
+        """Tipo de tasa (ANUAL/MENSUAL).
+
+        El rol de la app no es dueño de comercial_lf_cotizaciones, así que el
+        parche 135 (columna tasa_tipo) no puede aplicarse en caliente. Se
+        persiste en workflow_json hasta que un dueño ejecute el SQL.
+        """
+        raw = self.workflow_json if isinstance(self.workflow_json, dict) else {}
+        return self._normalizar_tasa_tipo(raw.get("tasa_tipo"))
+
+    @tasa_tipo.inplace.setter
+    def _tasa_tipo_setter(self, value: str | None) -> None:
+        raw = dict(self.workflow_json) if isinstance(self.workflow_json, dict) else {}
+        raw["tasa_tipo"] = self._normalizar_tasa_tipo(value)
+        self.workflow_json = raw
+
+    @hybrid_property
+    def estado(self) -> str:
+        """Estado de flujo Fase 1.
+
+        chk_comercial_lf_estado no admite EN_EVALUACION / ACUERDO_FIRMADO /
+        ACTIVO_PENDIENTE_COMPRA / ACTIVO_ADQUIRIDO. La columna guarda el alias
+        permitido y el canónico vive en workflow_json.estado_canonico.
+        """
+        from services.leasing_financiero_estados import estado_canonico
+
+        raw = self.workflow_json if isinstance(self.workflow_json, dict) else {}
+        stored = str(raw.get("estado_canonico") or "").strip().upper()
+        if stored:
+            return estado_canonico(stored)
+        return estado_canonico(self.estado_db)
+
+    @estado.inplace.setter
+    def _estado_setter(self, value: str | None) -> None:
+        from services.leasing_financiero_estados import estado_canonico, estado_para_db
+
+        canon = estado_canonico(value)
+        self.estado_db = estado_para_db(canon)
+        raw = dict(self.workflow_json) if isinstance(self.workflow_json, dict) else {}
+        raw["estado_canonico"] = canon
+        self.workflow_json = raw
+
+    @estado.inplace.expression
+    def _estado_expression(cls):
+        return cls.estado_db
 
     proyeccion_lineas: Mapped[list["LeasingFinancieroProyeccionLinea"]] = relationship(
         "LeasingFinancieroProyeccionLinea",

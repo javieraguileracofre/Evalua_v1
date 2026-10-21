@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from services.leasing_financiero_estados import puede_comprar_activo
+
 CHECKLIST_DEFINICION: list[dict[str, Any]] = [
     {"codigo": "cliente_validado", "titulo": "Cliente creado y validado", "automatico": True, "bloqueante": True, "orden": 10},
     {"codigo": "direccion_registrada", "titulo": "Dirección registrada", "automatico": True, "bloqueante": True, "orden": 20},
@@ -23,15 +25,19 @@ CHECKLIST_DEFINICION: list[dict[str, Any]] = [
 
 TRANSICIONES_ESTADO: dict[str, set[str]] = {
     "BORRADOR": {"COTIZADA", "ANULADA"},
-    "COTIZADA": {"EN_ANALISIS_COMERCIAL", "EN_ANALISIS_CREDITO", "BORRADOR", "ANULADA"},
-    "EN_ANALISIS_COMERCIAL": {"EN_ANALISIS_CREDITO", "COTIZADA", "ANULADA"},
-    "EN_ANALISIS_CREDITO": {"APROBADA", "APROBADA_CONDICIONES", "RECHAZADA", "ANULADA"},
-    "APROBADA_CONDICIONES": {"EN_FORMALIZACION", "APROBADA", "ANULADA"},
-    "APROBADA": {"EN_FORMALIZACION", "ANULADA"},
-    "RECHAZADA": {"EN_ANALISIS_CREDITO", "ANULADA", "PERDIDA_CLIENTE"},
-    "EN_FORMALIZACION": {"DOCUMENTACION_COMPLETA", "ANULADA"},
-    "DOCUMENTACION_COMPLETA": {"ACTIVADA", "ANULADA"},
-    "ACTIVADA": {"VIGENTE", "ANULADA"},
+    "COTIZADA": {"EN_EVALUACION", "EN_ANALISIS_COMERCIAL", "EN_ANALISIS_CREDITO", "BORRADOR", "ANULADA"},
+    "EN_EVALUACION": {"APROBADA", "APROBADA_CONDICIONES", "RECHAZADA", "COTIZADA", "ANULADA", "EN_ANALISIS_CREDITO"},
+    "EN_ANALISIS_COMERCIAL": {"EN_EVALUACION", "EN_ANALISIS_CREDITO", "COTIZADA", "ANULADA"},
+    "EN_ANALISIS_CREDITO": {"APROBADA", "APROBADA_CONDICIONES", "RECHAZADA", "EN_EVALUACION", "ANULADA"},
+    "APROBADA_CONDICIONES": {"APROBADA", "ACUERDO_FIRMADO", "EN_FORMALIZACION", "ANULADA"},
+    "APROBADA": {"ACUERDO_FIRMADO", "EN_FORMALIZACION", "ANULADA"},
+    "RECHAZADA": {"EN_EVALUACION", "EN_ANALISIS_CREDITO", "ANULADA", "PERDIDA_CLIENTE"},
+    "ACUERDO_FIRMADO": {"ACTIVO_PENDIENTE_COMPRA", "EN_FORMALIZACION", "ANULADA"},
+    "EN_FORMALIZACION": {"ACUERDO_FIRMADO", "ACTIVO_PENDIENTE_COMPRA", "DOCUMENTACION_COMPLETA", "ANULADA"},
+    "DOCUMENTACION_COMPLETA": {"ACTIVO_PENDIENTE_COMPRA", "ACTIVO_ADQUIRIDO", "ACTIVADA", "ANULADA"},
+    "ACTIVO_PENDIENTE_COMPRA": {"ACTIVO_ADQUIRIDO", "ANULADA"},
+    "ACTIVO_ADQUIRIDO": {"ACTIVADA", "VIGENTE", "ANULADA"},
+    "ACTIVADA": {"VIGENTE", "ACTIVO_ADQUIRIDO", "ANULADA"},
     "VIGENTE": {"ANULADA"},
     "ANULADA": set(),
     "PERDIDA_CLIENTE": set(),
@@ -63,6 +69,12 @@ def merge_workflow(raw: dict | None) -> dict[str, Any]:
         for key in ("hitos", "checklist_documental"):
             if isinstance(raw.get(key), dict):
                 base[key].update(raw[key])
+        tipo = str(raw.get("tasa_tipo") or "").strip().upper()
+        if tipo in {"ANUAL", "MENSUAL"}:
+            base["tasa_tipo"] = tipo
+        estado_canon = str(raw.get("estado_canonico") or "").strip().upper()
+        if estado_canon:
+            base["estado_canonico"] = estado_canon
     return base
 
 
@@ -75,6 +87,14 @@ def puede_transicionar(estado_actual: str, estado_nuevo: str) -> bool:
     if permitidos is None:
         return False
     return nuevo in permitidos
+
+
+def exigir_acuerdo_para_compra(estado: str | None) -> None:
+    if not puede_comprar_activo(estado):
+        raise ValueError(
+            "La compra o adquisición del activo solo está disponible después de "
+            "formalizar el acuerdo (estado «Acuerdo firmado»)."
+        )
 
 
 def checklist_bloqueantes_pendientes(items: list) -> list:

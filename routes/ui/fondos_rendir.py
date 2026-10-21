@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -912,7 +912,9 @@ def fondos_rendir_fondo_eliminar(
     if (redir := guard_finanzas_mutacion(request)) is not None:
         return redir
     try:
-        crud_fr.eliminar_fondo_rendir(db, fondo_id)
+        from modules.fondos import eliminar_fondo_rendir
+
+        eliminar_fondo_rendir(db, fondo_id)
         db.commit()
     except ValueError as e:
         db.rollback()

@@ -92,6 +92,8 @@ def test_defaults_por_rol() -> None:
     assert "FINANZAS" in fin
     assert "CONTABILIDAD" in fin
     assert "OPERACIONES" not in fin
+    assert "EMPRESAS" not in fin
+    assert "EMPRESAS" in ALL_MODULE_KEYS
 
     rrhh = default_visible_modules_for_roles(["RRHH"])
     assert rrhh == frozenset({"PRINCIPAL", "RRHH"})
@@ -134,6 +136,14 @@ def test_filtrado_menu_por_modulos_visibles() -> None:
     assert visible == frozenset({"PRINCIPAL", "FINANZAS"})
     assert usuario_puede_ver_modulo_nav(auth, "FINANZAS") is True
     assert usuario_puede_ver_modulo_nav(auth, "OPERACIONES") is False
+    assert usuario_puede_ver_modulo_nav(auth, "EMPRESAS") is False
+
+
+def test_empresas_se_asigna_como_modulo() -> None:
+    asignado = {"roles": ["FINANZAS"], "visibleModules": ["PRINCIPAL", "FINANZAS", "EMPRESAS"]}
+    assert usuario_puede_ver_modulo_nav(asignado, "EMPRESAS") is True
+    admin = {"roles": ["ADMIN"], "visibleModules": ["PRINCIPAL"]}
+    assert usuario_puede_ver_modulo_nav(admin, "EMPRESAS") is True
 
 
 def test_rrhh_solo_ve_secciones_configuradas(db: Session) -> None:
@@ -207,9 +217,40 @@ def test_submodulo_nav_retrocompat_comercial_sin_subs() -> None:
     auth = {"roles": ["FINANZAS"], "visibleModules": ["PRINCIPAL", "COMERCIAL"]}
     assert usuario_puede_ver_submodulo_nav(auth, "LEASING_FINANCIERO") is True
     assert usuario_puede_ver_submodulo_nav(auth, "LEASING_OPERATIVO") is True
+    assert usuario_puede_ver_submodulo_nav(auth, "CREDITO_RIESGO") is False
 
 
 def test_submodulo_nav_filtrado_explicito() -> None:
     auth = {"roles": ["FINANZAS"], "visibleModules": ["PRINCIPAL", "COMERCIAL", "LEASING_FINANCIERO"]}
     assert usuario_puede_ver_submodulo_nav(auth, "LEASING_FINANCIERO") is True
     assert usuario_puede_ver_submodulo_nav(auth, "LEASING_OPERATIVO") is False
+
+
+def test_credito_cobranzas_defaults_en_finanzas() -> None:
+    fin = default_visible_modules_for_roles(["FINANZAS"])
+    assert "CREDITO_COBRANZAS" in fin
+    assert "CREDITO_RIESGO" in fin
+    assert "COBRANZA" in fin
+
+
+def test_submodulo_nav_credito_cobranzas_retrocompat_padre() -> None:
+    auth = {"roles": ["FINANZAS"], "visibleModules": ["PRINCIPAL", "CREDITO_COBRANZAS"]}
+    assert usuario_puede_ver_modulo_nav(auth, "CREDITO_COBRANZAS") is True
+    assert usuario_puede_ver_submodulo_nav(auth, "CREDITO_RIESGO") is True
+    assert usuario_puede_ver_submodulo_nav(auth, "COBRANZA") is True
+
+
+def test_submodulo_nav_credito_cobranzas_filtrado_explicito() -> None:
+    auth = {
+        "roles": ["FINANZAS"],
+        "visibleModules": ["PRINCIPAL", "CREDITO_COBRANZAS", "COBRANZA"],
+    }
+    assert usuario_puede_ver_submodulo_nav(auth, "COBRANZA") is True
+    assert usuario_puede_ver_submodulo_nav(auth, "CREDITO_RIESGO") is False
+
+
+def test_seccion_credito_cobranzas_con_solo_hijo() -> None:
+    auth = {"roles": ["FINANZAS"], "visibleModules": ["PRINCIPAL", "CREDITO_RIESGO"]}
+    assert usuario_puede_ver_modulo_nav(auth, "CREDITO_COBRANZAS") is True
+    assert usuario_puede_ver_submodulo_nav(auth, "CREDITO_RIESGO") is True
+    assert usuario_puede_ver_submodulo_nav(auth, "COBRANZA") is False

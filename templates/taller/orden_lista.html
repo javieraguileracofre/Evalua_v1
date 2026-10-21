@@ -50,24 +50,27 @@
   <p class="tl-ordenes-sub small mb-0">Filtre por estado y abra el detalle o imprima el comprobante desde cada fila.</p>
 </div>
 
-<div class="tl-ordenes-page">
+<div class="tl-ordenes-page" data-live-list>
 <div class="tl-ordenes-toolbar d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-  <form method="get" class="d-flex flex-wrap gap-2 align-items-center">
-    <label class="small mb-0">Estado</label>
-    <select name="estado" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+  <form method="get" class="d-flex flex-wrap gap-2 align-items-center" data-live-form action="{{ request.url_for('taller_ordenes_lista') }}">
+    <label class="small mb-0" for="estadoOrden">Estado</label>
+    <select id="estadoOrden" name="estado" class="form-select form-select-sm" style="width:auto">
       <option value="">Todos</option>
       {% for e in estados %}
       <option value="{{ e }}" {% if filtro_estado == e %}selected{% endif %}>{{ e }}</option>
       {% endfor %}
     </select>
+    <button class="btn btn-outline-primary btn-sm" type="submit">Filtrar</button>
+    <a href="{{ request.url_for('taller_ordenes_lista') }}" class="btn btn-light btn-sm" data-live-reset>Limpiar</a>
   </form>
   <a href="{{ request.url_for('taller_orden_nueva') }}" class="btn btn-primary btn-sm">
     <i class="bi bi-plus-lg"></i> Nueva orden
   </a>
 </div>
 
+<div data-live-results>
 <div class="card border-0 shadow-sm">
-  <div class="table-responsive">
+  <div class="evalua-table-wrap">
     <table class="table table-hover align-middle mb-0 tl-ordenes-table">
       <thead>
         <tr>
@@ -81,7 +84,7 @@
       </thead>
       <tbody>
         {% for o in ordenes %}
-        <tr>
+        <tr data-row-href="{{ request.url_for('taller_orden_detalle', orden_id=o.id) }}">
           <td class="fw-semibold">{{ o.folio or '—' }}</td>
           <td>{{ o.fecha_recepcion.strftime('%d-%m-%Y %H:%M') if o.fecha_recepcion else '—' }}</td>
           <td>{{ o.cliente.razon_social if o.cliente else '—' }}</td>
@@ -102,6 +105,7 @@
       </tbody>
     </table>
   </div>
+</div>
 </div>
 </div>
 {% endblock %}

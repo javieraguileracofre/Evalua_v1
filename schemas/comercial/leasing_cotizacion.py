@@ -8,24 +8,12 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ESTADOS_LF = {
-    "BORRADOR",
-    "COTIZADA",
-    "EN_ANALISIS_COMERCIAL",
-    "EN_ANALISIS_CREDITO",
-    "APROBADA_CONDICIONES",
-    "APROBADA",
-    "RECHAZADA",
-    "EN_FORMALIZACION",
-    "DOCUMENTACION_COMPLETA",
-    "ACTIVADA",
-    "VIGENTE",
-    "ANULADA",
-    "PERDIDA_CLIENTE",
-}
+from services.leasing_financiero_estados import ESTADOS_LF as _ESTADOS_LF_SVC
 
+ESTADOS_LF = set(_ESTADOS_LF_SVC)
 
 PERIODICIDADES_LF = frozenset({"MENSUAL", "TRIMESTRAL", "SEMESTRAL", "ANUAL"})
+TASA_TIPOS_LF = frozenset({"ANUAL", "MENSUAL"})
 
 
 class LeasingCotizacionBase(BaseModel):
@@ -33,6 +21,7 @@ class LeasingCotizacionBase(BaseModel):
     monto: Optional[Decimal] = None
     moneda: str = "CLP"
     tasa: Optional[Decimal] = None
+    tasa_tipo: str = Field(default="ANUAL", max_length=20)
     plazo: Optional[int] = None
     opcion_compra: Optional[Decimal] = None
     periodos_gracia: Optional[int] = 0
@@ -110,6 +99,7 @@ class LeasingCotizacionUpdate(BaseModel):
     monto: Optional[Decimal] = None
     moneda: Optional[str] = None
     tasa: Optional[Decimal] = None
+    tasa_tipo: Optional[str] = None
     plazo: Optional[int] = None
     opcion_compra: Optional[Decimal] = None
     periodos_gracia: Optional[int] = None
@@ -181,6 +171,7 @@ class LeasingSimulacionInput(BaseModel):
 
     moneda: str = "CLP"
     tasa: Optional[Decimal] = None
+    tasa_tipo: str = "ANUAL"
     plazo: Optional[int] = None
     opcion_compra: Optional[Decimal] = None
     periodos_gracia: Optional[int] = 0

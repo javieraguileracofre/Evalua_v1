@@ -4,78 +4,225 @@
 {% block head %}
 <link rel="stylesheet" href="/static/css/leasing_operativo.css" />
 <style>
-  .lo-hub-kpi { border-radius:14px; border:1px solid #E5E7EB; background:#fff; height:100%; }
-  .lo-hub-kpi .val { font-size:1.35rem; font-weight:700; color:#0B1F3B; }
-  .lo-hub-kpi .lbl { font-size:.72rem; color:#6B7280; text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
-  .funnel-step { flex:1; min-width:0; text-align:center; position:relative; }
-  .funnel-step:not(:last-child)::after { content:"→"; position:absolute; right:-6px; top:50%; transform:translateY(-50%); color:#6B7280; }
-  .funnel-count { font-size:1.25rem; font-weight:700; color:#0B1F3B; }
-  .funnel-lbl { font-size:.68rem; color:#6B7280; text-transform:uppercase; }
+  :root{
+    --eva-navy:#0B1F3B;
+    --eva-border:#E5E7EB;
+    --eva-muted:#6B7280;
+    --eva-gold:#D4AF37;
+  }
+  .eva-card{ border:1px solid var(--eva-border) !important; border-radius:14px; background:#fff; }
+  .eva-title{ color:var(--eva-navy); }
+  .eva-badge{
+    display:inline-flex; align-items:center; gap:.35rem; padding:.22rem .6rem; border-radius:999px;
+    font-size:.72rem; font-weight:600; border:1px solid var(--eva-border); background:#F9FAFB; color:#111827;
+  }
+  .eva-badge--ok{ border-color:rgba(22,163,74,.35); background:rgba(22,163,74,.10); color:#065F46; }
+  .eva-badge--warn{ border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.12); color:#92400E; }
+  .eva-badge--bad{ border-color:rgba(220,38,38,.35); background:rgba(220,38,38,.10); color:#7F1D1D; }
+  .eva-badge--gold{ border-color:rgba(212,175,55,.45); background:rgba(212,175,55,.12); color:#6B4E00; }
+  .btn-eva-primary{ background:var(--eva-navy); border-color:var(--eva-navy); color:#fff; }
+  .btn-eva-primary:hover{ background:#07162B; border-color:#07162B; color:#fff; }
+  .kpi-card{ border-radius:14px; border:1px solid var(--eva-border); background:#fff; height:100%; transition:box-shadow .15s; }
+  .kpi-card:hover{ box-shadow:0 4px 14px rgba(11,31,59,.08); }
+  .kpi-card .icon{ width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1rem; }
+  .kpi-card .val{ font-size:1.35rem; font-weight:700; color:var(--eva-navy); font-variant-numeric:tabular-nums; }
+  .kpi-card .lbl{ font-size:.72rem; color:var(--eva-muted); text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+  .kpi-card .sub{ font-size:.75rem; color:var(--eva-muted); }
+  .icon-blue{ background:rgba(11,31,59,.08); color:var(--eva-navy); }
+  .icon-amber{ background:rgba(245,158,11,.15); color:#92400E; }
+  .icon-green{ background:rgba(22,163,74,.12); color:#065F46; }
+  .icon-red{ background:rgba(220,38,38,.10); color:#7F1D1D; }
+  .icon-gold{ background:rgba(212,175,55,.18); color:#6B4E00; }
+  .funnel-step{ flex:1; min-width:0; text-align:center; position:relative; }
+  .funnel-step:not(:last-child)::after{
+    content:"→"; position:absolute; right:-6px; top:50%; transform:translateY(-50%);
+    color:var(--eva-muted); font-size:.85rem;
+  }
+  .funnel-count{ font-size:1.25rem; font-weight:700; color:var(--eva-navy); }
+  .funnel-lbl{ font-size:.68rem; color:var(--eva-muted); text-transform:uppercase; letter-spacing:.03em; }
+  .market-strip{
+    border-radius:12px; border:1px solid rgba(11,31,59,.1);
+    background:linear-gradient(90deg,rgba(11,31,59,.04),rgba(212,175,55,.08));
+    padding:.65rem 1rem; font-size:.82rem;
+  }
+  .queue-item{ padding:.55rem 0; border-bottom:1px solid var(--eva-border); }
+  .queue-item:last-child{ border-bottom:none; }
+  .eva-link{ color:var(--eva-navy); font-weight:600; text-decoration:none; }
+  .eva-link:hover{ text-decoration:underline; }
+  .money-clp{ font-variant-numeric:tabular-nums; }
+  .lo-actions{ display:flex; flex-wrap:wrap; gap:.35rem; justify-content:flex-end; }
+  .lo-empty-cta{
+    border:1px dashed #CBD5E1; border-radius:14px; background:#F8FAFC;
+    padding:2rem 1.25rem; text-align:center;
+  }
 </style>
 {% endblock head %}
 
 {% block content %}
-<div class="container py-4 lo-page">
-  <div class="lo-hero d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+<div class="container-fluid py-4 lo-page">
+  <div class="d-flex flex-wrap justify-content-between align-items-start mb-3 gap-2">
     <div>
-      <h1 class="h5 mb-1">Hub operativo · Leasing operativo</h1>
-      <p class="mb-0 small opacity-75">Simulación → crédito → contrato → activación → cartera de rentas</p>
+      <h1 class="h5 fw-semibold mb-1 eva-title">Hub operativo · Leasing operativo</h1>
+      <p class="small text-muted mb-0">
+        Cotización → crédito → contrato → activación → cartera de rentas
+      </p>
     </div>
     <div class="d-flex flex-wrap gap-2">
-      <a class="btn btn-light btn-sm" href="{{ request.url_for('leasing_operativo_simulador') }}">Nueva simulación</a>
-      <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_tablero') }}">Kanban</a>
-      <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_cartera') }}">Cartera</a>
-      <a class="btn btn-outline-light btn-sm" href="{{ request.url_for('leasing_operativo_list') }}">Todas</a>
+      <a class="btn btn-sm btn-eva-primary" href="{{ request.url_for('leasing_operativo_simulador') }}">
+        <i class="bi bi-plus-lg me-1"></i>Nueva cotización
+      </a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_list') }}">Todas las cotizaciones</a>
+      <a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('leasing_operativo_tablero') }}">Kanban</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_cartera') }}">Cartera</a>
+      <a class="btn btn-sm btn-outline-dark" href="{{ request.url_for('leasing_operativo_tipos_activo') }}" title="Residual, desgaste y catálogo del simulador">
+        <i class="bi bi-sliders me-1"></i>Tipos de activo
+      </a>
     </div>
   </div>
 
+  <div class="eva-card p-3 mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <div class="small fw-semibold eva-title mb-0">Configuración operativa</div>
+        <p class="small text-muted mb-0">Parámetros por tipo de activo, defaults comerciales y políticas del motor.</p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-sm btn-outline-dark" href="{{ request.url_for('leasing_operativo_tipos_activo') }}">Tipos de activo</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_parametros') }}">Parámetros comerciales</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ request.url_for('leasing_operativo_politicas') }}">Políticas globales</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="eva-card p-3 mb-3">
+    <div class="small fw-semibold eva-title mb-2">¿En qué etapa está su operación?</div>
+    <div class="d-flex flex-wrap gap-2 small">
+      <span class="eva-badge">1. Cotización</span>
+      <span class="eva-badge">2. Crédito</span>
+      <span class="eva-badge">3. Contrato</span>
+      <span class="eva-badge">4. Documentación</span>
+      <span class="eva-badge">5. Activación</span>
+      <span class="eva-badge eva-badge--gold">6. Cartera</span>
+    </div>
+    <p class="small text-muted mb-0 mt-2">
+      Empiece por <strong>Nueva cotización</strong>. En cada ficha puede editar o eliminar cotizaciones aún no formalizadas.
+    </p>
+  </div>
+
+  {% if simulaciones_truncadas %}
+  <div class="alert alert-warning">
+    Los indicadores del hub usan las 1.000 cotizaciones más recientes. Hay operaciones anteriores que no entran en este resumen.
+  </div>
+  {% endif %}
+
   {% if mercado %}
-  <div class="alert alert-light border small mb-3 py-2">
-    <strong>Referencia mercado:</strong> UF ${{ mercado.uf }} · USD ${{ mercado.dolar }} · {{ mercado.fecha }} · {{ mercado.fuente }}
+  <div class="market-strip mb-3 d-flex flex-wrap align-items-center gap-3">
+    <span class="eva-badge eva-badge--gold"><i class="bi bi-bank"></i> Referencia mercado</span>
+    <span><strong>UF</strong> ${{ mercado.uf }} CLP</span>
+    <span><strong>USD</strong> ${{ mercado.dolar }} CLP</span>
+    <span class="text-muted">· {{ mercado.fecha }} · {{ mercado.fuente }}</span>
   </div>
   {% endif %}
 
   <div class="row g-3 mb-3">
-    {% set kpi_items = [
-      ('Abiertas', kpis.abiertas, 'Cotización comercial'),
-      ('En crédito', kpis.en_credito, 'Scoring pendiente'),
-      ('Aprobadas', kpis.aprobadas, 'Formalización'),
-      ('Docs / activación', kpis.formalizacion, 'Pipeline operativo'),
-      ('Cartera', kpis.activadas, kpis.vigentes ~ ' vigentes'),
-      ('Rechazadas', kpis.rechazadas, 'Tasa cierre ' ~ (tasa_cierre_pct|round(1) if tasa_cierre_pct is not none else '—') ~ '%')
-    ] %}
-    {% for lbl, val, sub in kpi_items %}
     <div class="col-6 col-md-4 col-xl-2">
-      <div class="lo-hub-kpi p-3">
-        <div class="lbl mb-1">{{ lbl }}</div>
-        <div class="val">{{ val }}</div>
-        <div class="small text-muted">{{ sub }}</div>
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Abiertas</div>
+          <div class="icon icon-blue"><i class="bi bi-file-earmark-text"></i></div>
+        </div>
+        <div class="val">{{ kpis.abiertas }}</div>
+        <div class="sub">Cotización comercial</div>
       </div>
     </div>
-    {% endfor %}
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">En crédito</div>
+          <div class="icon icon-amber"><i class="bi bi-shield-check"></i></div>
+        </div>
+        <div class="val">{{ kpis.en_credito }}</div>
+        <div class="sub">Scoring pendiente</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Aprobadas</div>
+          <div class="icon icon-green"><i class="bi bi-check2-circle"></i></div>
+        </div>
+        <div class="val">{{ kpis.aprobadas }}</div>
+        <div class="sub">Listas para formalizar</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Docs / activación</div>
+          <div class="icon icon-gold"><i class="bi bi-folder2-open"></i></div>
+        </div>
+        <div class="val">{{ kpis.formalizacion }}</div>
+        <div class="sub">Pipeline operativo</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Cartera</div>
+          <div class="icon icon-green"><i class="bi bi-graph-up-arrow"></i></div>
+        </div>
+        <div class="val">{{ kpis.activadas }}</div>
+        <div class="sub">{{ kpis.vigentes }} vigentes</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Rechazadas</div>
+          <div class="icon icon-red"><i class="bi bi-x-circle"></i></div>
+        </div>
+        <div class="val">{{ kpis.rechazadas }}</div>
+        <div class="sub">
+          {% if tasa_cierre_pct is not none %}
+            Cierre {{ "{:.1f}".format(tasa_cierre_pct|float) }}%
+          {% else %}
+            {{ kpis.total }} operaciones
+          {% endif %}
+        </div>
+      </div>
+    </div>
   </div>
 
-  {% if margen_pipeline_pct is not none or tir_pipeline_pct is not none %}
+  {% if margen_pipeline_pct is not none or tir_pipeline_pct is not none or alertas_observar %}
   <div class="row g-3 mb-3">
     <div class="col-md-4">
-      <div class="lo-hub-kpi p-3 border-primary border-opacity-25">
-        <div class="lbl mb-1">Margen pipeline prom.</div>
-        <div class="val text-primary">{% if margen_pipeline_pct is not none %}{{ margen_pipeline_pct|round(2) }}%{% else %}—{% endif %}</div>
-        <div class="small text-muted">Promedio operaciones simuladas</div>
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Margen pipeline prom.</div>
+          <div class="icon icon-blue"><i class="bi bi-percent"></i></div>
+        </div>
+        <div class="val">{% if margen_pipeline_pct is not none %}{{ margen_pipeline_pct|round(2) }}%{% else %}—{% endif %}</div>
+        <div class="sub">Promedio operaciones simuladas</div>
       </div>
     </div>
     <div class="col-md-4">
-      <div class="lo-hub-kpi p-3 border-success border-opacity-25">
-        <div class="lbl mb-1">TIR pipeline prom.</div>
-        <div class="val text-success">{% if tir_pipeline_pct is not none %}{{ tir_pipeline_pct|round(2) }}%{% else %}—{% endif %}</div>
-        <div class="small text-muted">Rentabilidad anualizada pipeline</div>
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">TIR pipeline prom.</div>
+          <div class="icon icon-green"><i class="bi bi-graph-up"></i></div>
+        </div>
+        <div class="val">{% if tir_pipeline_pct is not none %}{{ tir_pipeline_pct|round(2) }}%{% else %}—{% endif %}</div>
+        <div class="sub">Rentabilidad anualizada pipeline</div>
       </div>
     </div>
     <div class="col-md-4">
-      <div class="lo-hub-kpi p-3 {% if alertas_observar %}border-warning{% endif %}">
-        <div class="lbl mb-1">Casos OBSERVAR</div>
-        <div class="val {% if alertas_observar %}text-warning{% endif %}">{{ alertas_observar or 0 }}</div>
-        <div class="small text-muted">Requieren revisión comercial</div>
+      <div class="kpi-card p-3">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="lbl">Casos OBSERVAR</div>
+          <div class="icon icon-amber"><i class="bi bi-exclamation-triangle"></i></div>
+        </div>
+        <div class="val">{{ alertas_observar or 0 }}</div>
+        <div class="sub">Requieren revisión comercial</div>
       </div>
     </div>
   </div>
@@ -83,10 +230,10 @@
 
   <div class="row g-3 mb-3">
     <div class="col-lg-5">
-      <div class="card border-0 shadow-sm h-100">
+      <div class="card eva-card shadow-sm border-0 h-100">
         <div class="card-body">
-          <h2 class="h6 fw-semibold mb-3">Embudo comercial</h2>
-          <div class="d-flex gap-2 mb-2">
+          <h2 class="h6 fw-semibold eva-title mb-3">Embudo comercial</h2>
+          <div class="d-flex gap-2 mb-3">
             {% for step in funnel %}
             <div class="funnel-step">
               <div class="funnel-count">{{ step.count }}</div>
@@ -99,24 +246,42 @@
       </div>
     </div>
     <div class="col-lg-7">
-      <div class="card border-0 shadow-sm h-100">
+      <div class="card eva-card shadow-sm border-0 h-100">
         <div class="card-body">
-          <h2 class="h6 fw-semibold mb-3">Exposición financiera</h2>
+          <h2 class="h6 fw-semibold eva-title mb-3">Exposición financiera</h2>
           <div class="row g-3">
             <div class="col-md-6">
-              <div class="small text-muted text-uppercase fw-semibold mb-2">Pipeline (CAPEX)</div>
+              <div class="small text-muted text-uppercase fw-semibold mb-2" style="letter-spacing:.04em;">Pipeline (CAPEX)</div>
               {% for mon, monto in pipeline_montos.items() %}
                 {% if monto and monto > 0 %}
-                <div class="d-flex justify-content-between mb-1"><span>{{ mon }}</span><strong>${{ "{:,.0f}".format(monto).replace(",", ".") if mon == 'CLP' else monto }}</strong></div>
+                <div class="d-flex justify-content-between mb-1 money-clp">
+                  <span>{{ mon }}</span>
+                  <strong>
+                    {% if mon == 'CLP' %}${{ "{:,.0f}".format(monto).replace(",", ".") }}
+                    {% elif mon == 'UF' %}{{ "{:,.4f}".format(monto).replace(",", "X").replace(".", ",").replace("X", ".") }} UF
+                    {% else %}US$ {{ "{:,.2f}".format(monto).replace(",", "X").replace(".", ",").replace("X", ".") }}{% endif %}
+                  </strong>
+                </div>
                 {% endif %}
+              {% else %}
+              <span class="text-muted small">Sin montos en pipeline.</span>
               {% endfor %}
             </div>
             <div class="col-md-6">
-              <div class="small text-muted text-uppercase fw-semibold mb-2">Cartera colocada (rentas)</div>
+              <div class="small text-muted text-uppercase fw-semibold mb-2" style="letter-spacing:.04em;">Cartera colocada (rentas)</div>
               {% for mon, monto in cartera_montos.items() %}
                 {% if monto and monto > 0 %}
-                <div class="d-flex justify-content-between mb-1"><span>{{ mon }}</span><strong class="text-success">${{ "{:,.0f}".format(monto).replace(",", ".") if mon == 'CLP' else monto }}</strong></div>
+                <div class="d-flex justify-content-between mb-1 money-clp">
+                  <span>{{ mon }}</span>
+                  <strong class="text-success">
+                    {% if mon == 'CLP' %}${{ "{:,.0f}".format(monto).replace(",", ".") }}
+                    {% elif mon == 'UF' %}{{ "{:,.4f}".format(monto).replace(",", "X").replace(".", ",").replace("X", ".") }} UF
+                    {% else %}US$ {{ "{:,.2f}".format(monto).replace(",", "X").replace(".", ",").replace("X", ".") }}{% endif %}
+                  </strong>
+                </div>
                 {% endif %}
+              {% else %}
+              <span class="text-muted small">Sin operaciones activadas aún.</span>
               {% endfor %}
             </div>
           </div>
@@ -127,72 +292,139 @@
 
   <div class="row g-3 mb-3">
     <div class="col-lg-4">
-      <div class="card border-0 shadow-sm h-100">
+      <div class="card eva-card shadow-sm border-0 h-100">
         <div class="card-body">
-          <h2 class="h6 fw-semibold mb-2">Pendientes crédito <span class="badge bg-warning-subtle text-warning-emphasis">{{ pendientes_credito|length }}</span></h2>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h6 fw-semibold mb-0 eva-title">Pendientes crédito</h2>
+            <span class="eva-badge eva-badge--warn">{{ pendientes_credito|length }}</span>
+          </div>
           {% for s in pendientes_credito %}
-          <div class="small border-bottom py-2">
-            <a href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">{{ s.codigo }}</a>
+          {% set j = s.result_json or {} %}
+          <div class="queue-item small">
+            <a class="eva-link" href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">{{ s.codigo }}</a>
             · {{ s.cliente.razon_social if s.cliente else 'N/D' }}
+            {% if j.get('renta_sugerida') %}<br><span class="text-muted money-clp">Renta ${{ "{:,.0f}".format(j.get('renta_sugerida') or 0).replace(",", ".") }}</span>{% endif %}
+            <a class="float-end eva-link" href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">Abrir →</a>
           </div>
-          {% else %}<p class="small text-muted mb-0">Sin pendientes.</p>{% endfor %}
+          {% else %}
+          <p class="small text-muted mb-0">Sin operaciones en análisis de crédito.</p>
+          {% endfor %}
         </div>
       </div>
     </div>
     <div class="col-lg-4">
-      <div class="card border-0 shadow-sm h-100">
+      <div class="card eva-card shadow-sm border-0 h-100">
         <div class="card-body">
-          <h2 class="h6 fw-semibold mb-2">Pendientes documentación <span class="badge bg-secondary-subtle">{{ pendientes_documentacion|length }}</span></h2>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h6 fw-semibold mb-0 eva-title">Pendientes documentación</h2>
+            <span class="eva-badge eva-badge--gold">{{ pendientes_documentacion|length }}</span>
+          </div>
           {% for s in pendientes_documentacion %}
-          <div class="small border-bottom py-2">
-            <a href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">{{ s.codigo }}</a>
-            · {{ (s.result_json or {}).get('workflow_v1', {}).get('etapa_actual', '') }}
+          {% set et = (s.result_json or {}).get('workflow_v1', {}).get('etapa_actual', '') %}
+          <div class="queue-item small">
+            <a class="eva-link" href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">{{ s.codigo }}</a>
+            · {{ s.cliente.razon_social if s.cliente else 'N/D' }}
+            {% if et %}<span class="eva-badge eva-badge--warn ms-1">{{ et }}</span>{% endif %}
           </div>
-          {% else %}<p class="small text-muted mb-0">Sin pendientes.</p>{% endfor %}
+          {% else %}
+          <p class="small text-muted mb-0">Sin pendientes de formalización.</p>
+          {% endfor %}
         </div>
       </div>
     </div>
     <div class="col-lg-4">
-      <div class="card border-0 shadow-sm h-100">
+      <div class="card eva-card shadow-sm border-0 h-100">
         <div class="card-body">
-          <h2 class="h6 fw-semibold mb-2">Listas para activar <span class="badge bg-success-subtle text-success">{{ pendientes_activacion|length }}</span></h2>
-          {% for s in pendientes_activacion %}
-          <div class="small border-bottom py-2">
-            <a href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">{{ s.codigo }}</a>
-            · plazo {{ s.plazo_meses }} m
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h6 fw-semibold mb-0 eva-title">Listas para activar</h2>
+            <span class="eva-badge eva-badge--ok">{{ pendientes_activacion|length }}</span>
           </div>
-          {% else %}<p class="small text-muted mb-0">Ninguna pendiente.</p>{% endfor %}
+          {% for s in pendientes_activacion %}
+          <div class="queue-item small">
+            <a class="eva-link" href="{{ request.url_for('leasing_operativo_detail', sim_id=s.id) }}">{{ s.codigo }}</a>
+            · {{ s.cliente.razon_social if s.cliente else 'N/D' }}
+            <br><span class="text-muted">plazo {{ s.plazo_meses }} meses</span>
+          </div>
+          {% else %}
+          <p class="small text-muted mb-0">Ninguna operación lista para activar.</p>
+          {% endfor %}
         </div>
       </div>
     </div>
   </div>
 
-  <div class="card border-0 shadow-sm">
+  <div class="card eva-card shadow-sm border-0">
     <div class="card-body">
-      <div class="d-flex justify-content-between mb-3">
-        <h2 class="h6 fw-semibold mb-0">Últimas operaciones</h2>
-        <a href="{{ request.url_for('leasing_operativo_list') }}" class="small">Ver todas →</a>
+      <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+        <h2 class="h6 fw-semibold mb-0 eva-title">Últimas cotizaciones</h2>
+        <a href="{{ request.url_for('leasing_operativo_list') }}" class="small eva-link">Ver todas →</a>
       </div>
+      {% if recientes_ui %}
       <div class="table-responsive">
-        <table class="table table-sm table-hover mb-0">
-          <thead class="table-light"><tr><th>Código</th><th>Cliente</th><th>Plazo</th><th>Renta</th><th>Etapa</th><th></th></tr></thead>
+        <table class="table table-hover table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Código</th>
+              <th>Cliente</th>
+              <th class="text-end">Renta</th>
+              <th>Plazo</th>
+              <th>Etapa</th>
+              <th>Decisión</th>
+              <th class="text-end">Acciones</th>
+            </tr>
+          </thead>
           <tbody>
-          {% for r in recientes %}
+          {% for item in recientes_ui %}
+          {% set r = item.sim %}
           {% set j = r.result_json or {} %}
+          {% set dec = (r.decision_codigo or 'PENDIENTE')|upper %}
           <tr>
             <td class="font-monospace small">{{ r.codigo }}</td>
-            <td>{{ r.cliente.razon_social if r.cliente else '—' }}</td>
-            <td>{{ r.plazo_meses }} m</td>
-            <td>{{ "{:,.0f}".format(j.get('renta_sugerida', 0) or 0).replace(",", ".") }}</td>
-            <td><span class="badge bg-light border">{{ (j.get('workflow_v1') or {}).get('etapa_actual', 'COTIZACION') }}</span></td>
-            <td><a href="{{ request.url_for('leasing_operativo_detail', sim_id=r.id) }}" class="small">Ver</a></td>
+            <td>
+              <div class="fw-semibold">{{ r.cliente.razon_social if r.cliente else 'N/D' }}</div>
+              <div class="small text-muted">{{ r.nombre or '' }}</div>
+            </td>
+            <td class="text-end money-clp">${{ "{:,.0f}".format(j.get('renta_sugerida', 0) or 0).replace(",", ".") }}</td>
+            <td>{{ r.plazo_meses or '—' }}{% if r.plazo_meses %} m{% endif %}</td>
+            <td><span class="eva-badge">{{ item.etapa_label }}</span></td>
+            <td>
+              {% if dec == 'APROBAR' %}
+                <span class="eva-badge eva-badge--ok">{{ r.decision_codigo }}</span>
+              {% elif dec == 'RECHAZAR' %}
+                <span class="eva-badge eva-badge--bad">{{ r.decision_codigo }}</span>
+              {% elif dec == 'OBSERVAR' %}
+                <span class="eva-badge eva-badge--warn">{{ r.decision_codigo }}</span>
+              {% else %}
+                <span class="eva-badge">{{ r.decision_codigo or 'PENDIENTE' }}</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <div class="lo-actions">
+                <a href="{{ request.url_for('leasing_operativo_detail', sim_id=r.id) }}" class="btn btn-sm btn-outline-primary">Ver</a>
+                {% if item.puede_editar %}
+                <a href="{{ request.url_for('leasing_operativo_editar', sim_id=r.id) }}" class="btn btn-sm btn-outline-secondary">Editar</a>
+                {% endif %}
+                {% if item.puede_eliminar %}
+                <form method="post" action="{{ request.url_for('leasing_operativo_eliminar', sim_id=r.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar la cotización {{ r.codigo }}? Esta acción no se puede deshacer.');">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                </form>
+                {% endif %}
+              </div>
+            </td>
           </tr>
-          {% else %}
-          <tr><td colspan="6" class="text-center text-muted py-3">Sin operaciones aún.</td></tr>
           {% endfor %}
           </tbody>
         </table>
       </div>
+      {% else %}
+      <div class="lo-empty-cta">
+        <h3 class="h6 fw-semibold mb-2 eva-title">Aún no hay cotizaciones</h3>
+        <p class="small text-muted mb-3">Cree la primera cotización para iniciar el pipeline comercial.</p>
+        <a class="btn btn-sm btn-eva-primary" href="{{ request.url_for('leasing_operativo_simulador') }}">
+          <i class="bi bi-plus-lg me-1"></i>Nueva cotización
+        </a>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>

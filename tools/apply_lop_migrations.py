@@ -34,6 +34,11 @@ from db.startup_schema import (
 
 
 def _resolve_url() -> str:
+    if settings.database_per_company:
+        raise SystemExit(
+            "En database_per_company este script no usa DATABASE_URL. "
+            "El esquema se aplica al provisionar cada compañía."
+        )
     url = (settings.admin_postgres_url or settings.database_url or "").strip()
     if not url:
         raise SystemExit("Configure DATABASE_URL o ADMIN_POSTGRES_URL en .env")

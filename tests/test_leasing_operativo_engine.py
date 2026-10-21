@@ -113,6 +113,51 @@ def test_decision_rechazar_ltv():
     assert d["decision_codigo"] == "RECHAZAR"
 
 
+def test_ltv_es_capital_financiado_sobre_valor_vehiculo():
+    from services.leasing_operativo.collateral_model import analizar_collateral
+
+    out = analizar_collateral(
+        valor_mercado=Decimal("28000000"),
+        costo_repossession=Decimal("0"),
+        costo_legal=Decimal("0"),
+        transporte=Decimal("0"),
+        reacondicionamiento=Decimal("0"),
+        descuento_venta_forzada_pct=Decimal("10"),
+        meses_liquidacion=3,
+        tasa_fin_liquidacion_mensual=Decimal("0.008"),
+        ead=Decimal("25500000"),
+        capital_financiado=Decimal("24000000"),
+        valor_vehiculo=Decimal("30000000"),
+    )
+    # 24.000.000 / 30.000.000 = 80%
+    assert out["ltv_pct"] == 80.0
+    assert out["ltv_formula"] == "capital_financiado / valor_vehiculo"
+
+    p = _politica_base()
+    tipo = _tipo_camioneta()
+    r = run_economic_engine(
+        inputs={
+            "plazo_meses": 36,
+            "escenario": "BASE",
+            "metodo_pricing": "COSTO_SPREAD",
+            "spread_pct": Decimal("8"),
+            "pie_inicial_pct": Decimal("20"),
+            "capex": {"precio_compra": Decimal("30000000")},
+            "uso": {"km_anual": Decimal("30000")},
+            "activo": {},
+            "collateral": {"valor_mercado": Decimal("29000000")},
+            "comercial": {},
+            "riesgo": {"segmento_cliente": "MEDIO"},
+        },
+        tipo_activo=tipo,
+        politica=p,
+        plantillas_costo=[{"codigo": "T", "periodicidad": "MENSUAL", "monto_mensual_equiv": 100000}],
+    )
+    # CAPEX financiado = 30M * 80% = 24M → LTV = 24/30 = 80%
+    assert abs(float(r["ltv_pct"]) - 80.0) < 0.05
+    assert abs(float(r["capex_financiado"]) - 24_000_000) < 1
+
+
 def test_tir_bisec_simple():
     fl = [Decimal("-1000"), Decimal("600"), Decimal("600")]
     tir_m = tir_mensual_bisec(fl)

@@ -1,0 +1,50 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Clave SII · Tesorería{% endblock %}
+{% block page_title %}Clave tributaria{% endblock %}
+
+{% block page_subtitle %}
+<div class="page-subtitle">Solo se guarda para {{ empresa.nombre }} · {{ empresa.rut }}</div>
+{% endblock %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{{ request.url_for('menu_principal') }}">Inicio</a></li>
+<li class="breadcrumb-item"><a href="{{ request.url_for('tesoreria_home') }}">Tesorería</a></li>
+<li class="breadcrumb-item active" aria-current="page">Clave SII</li>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm" style="max-width: 36rem;">
+  <div class="card-body">
+    <p class="small text-muted">
+      El usuario de ingreso es el RUT de la empresa activa. La clave se almacena cifrada y no se vuelve a mostrar.
+    </p>
+    {% if credencial and credencial.tiene_secreto %}
+    <p class="small mb-3">
+      Hay una clave guardada para el RUT {{ credencial.rut }}
+      {% if largo_clave %}de {{ largo_clave }} caracteres{% endif %}.
+      Déjela en blanco para mantenerla. Si la reemplaza, al guardar verá cuántos caracteres quedaron registrados.
+    </p>
+    {% endif %}
+    {% if puede_guardar and esquema_listo %}
+    <form method="post" action="{{ request.url_for('tesoreria_credenciales_guardar') }}" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_global', '') }}">
+      <div class="mb-3">
+        <label class="form-label" for="rut">RUT contribuyente</label>
+        <input class="form-control" id="rut" value="{{ empresa.rut }}" readonly>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="clave">Clave tributaria</label>
+        <input class="form-control" id="clave" name="clave" type="password" autocomplete="new-password" value="">
+      </div>
+      <button class="btn btn-primary" type="submit">Guardar</button>
+      <a class="btn btn-outline-secondary" href="{{ request.url_for('tesoreria_home') }}">Volver</a>
+    </form>
+    {% elif not esquema_listo %}
+    <p class="text-warning mb-0">Falta aplicar la migración de Tesorería en la base de esta empresa.</p>
+    {% else %}
+    <p class="mb-0">Su rol puede consultar Tesorería, no modificar la clave.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

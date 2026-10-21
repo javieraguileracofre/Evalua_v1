@@ -311,8 +311,19 @@ def actualizar_orden_servicio(
     orden = db.get(OrdenServicio, orden_id)
     if not orden:
         raise ValueError("La orden no existe.")
+    estado_previo = str(orden.estado or "")
     if estado in ESTADOS_ORDEN:
         orden.estado = estado
+    if estado == "ENTREGADA" and estado_previo != "ENTREGADA":
+        from erp_platform.events import publish_in_transaction
+        from erp_platform.events import types as event_types
+
+        publish_in_transaction(
+            db,
+            event_name=event_types.ORDEN_TRABAJO_CERRADA,
+            payload={"orden_id": int(orden.id), "folio": str(orden.folio or "")},
+            correlation_id=f"OT_ENTREGADA:{int(orden.id)}",
+        )
     if fecha_recepcion is not None:
         orden.fecha_recepcion = fecha_recepcion
     orden.fecha_entrega_estimada = fecha_entrega_estimada

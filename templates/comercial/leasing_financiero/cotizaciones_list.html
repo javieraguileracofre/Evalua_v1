@@ -35,12 +35,13 @@
 {% endblock head %}
 
 {% block content %}
-<div class="container py-4">
+<link rel="stylesheet" href="/static/css/leasing_financiero.css" />
+<div class="container-fluid py-4 lf-page">
   <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
     <div>
-      <h1 class="h5 fw-semibold mb-0 eva-title">Cotizaciones Leasing Financiero</h1>
+      <h1 class="h5 fw-semibold mb-0 eva-title">Cotizaciones · Leasing financiero</h1>
       <div class="small" style="color:var(--eva-muted);">
-        Cree cotizaciones desde aquí o desde la ficha del cliente (maestro).
+        Busque, edite o elimine cotizaciones del pipeline comercial.
       </div>
     </div>
     <div class="d-flex gap-2">
@@ -50,17 +51,22 @@
     </div>
   </div>
 
-  <form class="card eva-card shadow-sm border-0 mb-3" method="get">
+<div data-live-list>
+  <form class="card eva-card shadow-sm border-0 mb-3" method="get" data-live-form action="{{ request.url_for('lf_cotizaciones_list') }}">
     <div class="card-body row g-2">
-      <div class="col-md-2"><input class="form-control form-control-sm" name="estado" placeholder="Estado" value="{{ filtros.estado }}"></div>
-      <div class="col-md-2"><input class="form-control form-control-sm" name="moneda" placeholder="Moneda" value="{{ filtros.moneda }}"></div>
-      <div class="col-md-3"><input class="form-control form-control-sm" name="ejecutivo" placeholder="Ejecutivo" value="{{ filtros.ejecutivo }}"></div>
+      <div class="col-md-2"><input class="form-control form-control-sm" name="estado" placeholder="Estado" value="{{ filtros.estado }}" autocomplete="off"></div>
+      <div class="col-md-2"><input class="form-control form-control-sm" name="moneda" placeholder="Moneda" value="{{ filtros.moneda }}" autocomplete="off"></div>
+      <div class="col-md-2"><input class="form-control form-control-sm" name="ejecutivo" placeholder="Ejecutivo" value="{{ filtros.ejecutivo }}" autocomplete="off"></div>
       <div class="col-md-2"><input class="form-control form-control-sm" type="date" name="fecha_desde" value="{{ filtros.fecha_desde }}"></div>
       <div class="col-md-2"><input class="form-control form-control-sm" type="date" name="fecha_hasta" value="{{ filtros.fecha_hasta }}"></div>
-      <div class="col-md-1"><button class="btn btn-sm btn-outline-secondary w-100" type="submit">Filtrar</button></div>
+      <div class="col-md-2 d-flex gap-1">
+        <button class="btn btn-sm btn-outline-secondary w-100" type="submit">Filtrar</button>
+        <a class="btn btn-sm btn-light" href="{{ request.url_for('lf_cotizaciones_list') }}" data-live-reset title="Limpiar"><i class="bi bi-x-circle"></i></a>
+      </div>
     </div>
   </form>
 
+  <div data-live-results>
   <form
     id="lf-bulk-form"
     method="post"
@@ -91,8 +97,8 @@
         <button type="button" class="btn btn-sm btn-outline-primary" id="lf-btn-amort" disabled title="Tabla de amortización">
           <i class="bi bi-table"></i> Amort.
         </button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="lf-btn-formalizar" disabled title="Formalizar cotización">
-          <i class="bi bi-pencil-square"></i> Formalizar
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="lf-btn-editar" disabled title="Editar cotización">
+          <i class="bi bi-pencil-square"></i> Editar
         </button>
         <button
           type="submit"
@@ -107,7 +113,7 @@
       </div>
     </div>
 
-    <div class="table-responsive">
+    <div class="evalua-table-wrap">
       <table class="table table-hover mb-0 align-middle" id="lf-cotizaciones-table">
         <thead class="table-light">
           <tr>
@@ -126,18 +132,22 @@
           </tr>
         </thead>
         <tbody>
-        {% if cotizaciones %}
-          {% for c in cotizaciones %}
+        {% if cotizaciones_ui %}
+          {% for item in cotizaciones_ui %}
+          {% set c = item.cot %}
           {% set est = (c.estado or 'BORRADOR') | string | upper %}
-          {% set eliminable = est not in ['ACTIVADA', 'VIGENTE'] and not c.contrato_activo and not c.asiento_id %}
+          {% set editable = item.puede_editar %}
+          {% set eliminable = item.puede_eliminar %}
           <tr
             class="lf-cot-row"
+            data-row-href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}"
             data-id="{{ c.id }}"
+            data-editable="{{ '1' if editable else '0' }}"
             data-eliminable="{{ '1' if eliminable else '0' }}"
             data-url-ver="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}"
             data-url-credito="{{ request.url_for('lf_credito_form', cotizacion_id=c.id) }}"
             data-url-amort="{{ request.url_for('lf_cotizacion_amortizacion', cotizacion_id=c.id) }}"
-            data-url-formalizar="{{ request.url_for('lf_cotizacion_editar_form', cotizacion_id=c.id) }}"
+            data-url-editar="{{ request.url_for('lf_cotizacion_editar_form', cotizacion_id=c.id) }}"
             data-url-eliminar="{{ request.url_for('lf_cotizacion_eliminar', cotizacion_id=c.id) }}"
           >
             <td>
@@ -154,7 +164,7 @@
                 class="form-check-input"
                 type="checkbox"
                 disabled
-                title="No eliminable: activada o vigente"
+                title="No eliminable en este estado"
                 aria-label="Cotización #{{ c.id }} no eliminable"
               >
               {% endif %}
@@ -194,8 +204,10 @@
             <td class="text-end text-nowrap">
               <a href="{{ request.url_for('lf_cotizacion_detalle', cotizacion_id=c.id) }}" class="eva-link">Ver</a> ·
               <a href="{{ request.url_for('lf_credito_form', cotizacion_id=c.id) }}" class="eva-link">Crédito</a> ·
-              <a href="{{ request.url_for('lf_cotizacion_amortizacion', cotizacion_id=c.id) }}" class="eva-link">Amort.</a> ·
-              <a href="{{ request.url_for('lf_cotizacion_editar_form', cotizacion_id=c.id) }}" class="eva-link">Formalizar</a>
+              <a href="{{ request.url_for('lf_cotizacion_amortizacion', cotizacion_id=c.id) }}" class="eva-link">Amort.</a>
+              {% if editable %}
+              · <a href="{{ request.url_for('lf_cotizacion_editar_form', cotizacion_id=c.id) }}" class="eva-link">Editar</a>
+              {% endif %}
               {% if eliminable %}
               ·
               <button
@@ -210,62 +222,70 @@
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="12" class="text-center py-4 text-muted">No hay cotizaciones registradas.</td>
+            <td colspan="12" class="text-center py-4">
+              <div class="lf-empty-cta d-inline-block text-start" style="min-width:min(28rem,100%);">
+                <div class="h6 fw-semibold eva-title mb-2">No hay cotizaciones registradas</div>
+                <p class="small text-muted mb-3">Cree la primera cotización para iniciar el pipeline.</p>
+                <a href="{{ request.url_for('lf_cotizacion_nueva_form') }}" class="btn btn-sm btn-eva-primary">+ Nueva cotización</a>
+              </div>
+            </td>
           </tr>
         {% endif %}
         </tbody>
       </table>
     </div>
   </form>
+  </div>
+</div>
 </div>
 
 <script>
 (function () {
-  const form = document.getElementById('lf-bulk-form');
-  const selectAll = document.getElementById('lf-select-all');
-  const countEl = document.getElementById('lf-selected-count');
-  const btnVer = document.getElementById('lf-btn-ver');
-  const btnCredito = document.getElementById('lf-btn-credito');
-  const btnAmort = document.getElementById('lf-btn-amort');
-  const btnFormalizar = document.getElementById('lf-btn-formalizar');
-  const btnEliminar = document.getElementById('lf-btn-eliminar');
-  const rows = Array.from(document.querySelectorAll('.lf-cot-row'));
+  function rows() {
+    return Array.from(document.querySelectorAll(".lf-cot-row"));
+  }
 
   function checkedRows() {
-    return rows.filter(function (row) {
-      const cb = row.querySelector('.lf-row-check');
+    return rows().filter(function (row) {
+      var cb = row.querySelector(".lf-row-check");
       return cb && cb.checked;
     });
   }
 
   function eliminableChecked() {
     return checkedRows().filter(function (row) {
-      return row.dataset.eliminable === '1';
+      return row.dataset.eliminable === "1";
     });
   }
 
   function updateUi() {
-    const selected = checkedRows();
-    const eliminables = eliminableChecked();
-    const count = selected.length;
-    countEl.textContent = count === 1 ? '1 seleccionada' : count + ' seleccionadas';
-
-    rows.forEach(function (row) {
-      const cb = row.querySelector('.lf-row-check');
-      row.classList.toggle('lf-row-selected', !!(cb && cb.checked));
+    var selectAll = document.getElementById("lf-select-all");
+    var countEl = document.getElementById("lf-selected-count");
+    var btnVer = document.getElementById("lf-btn-ver");
+    var btnCredito = document.getElementById("lf-btn-credito");
+    var btnAmort = document.getElementById("lf-btn-amort");
+    var btnEditar = document.getElementById("lf-btn-editar");
+    var btnEliminar = document.getElementById("lf-btn-eliminar");
+    if (!countEl || !btnVer || !btnEliminar) return;
+    var selected = checkedRows();
+    var eliminables = eliminableChecked();
+    var count = selected.length;
+    var allRows = rows();
+    countEl.textContent = count === 1 ? "1 seleccionada" : count + " seleccionadas";
+    allRows.forEach(function (row) {
+      var cb = row.querySelector(".lf-row-check");
+      row.classList.toggle("lf-row-selected", !!(cb && cb.checked));
     });
-
-    const one = count === 1 ? selected[0] : null;
+    var one = count === 1 ? selected[0] : null;
     btnVer.disabled = !one;
     btnCredito.disabled = !one;
     btnAmort.disabled = !one;
-    btnFormalizar.disabled = !one;
+    btnEditar.disabled = !(one && one.dataset.editable === "1");
     btnEliminar.disabled = eliminables.length === 0;
-
     if (selectAll) {
-      const selectable = rows.filter(function (r) { return r.dataset.eliminable === '1'; });
-      const selectableChecked = selectable.filter(function (r) {
-        const cb = r.querySelector('.lf-row-check');
+      var selectable = allRows.filter(function (r) { return r.dataset.eliminable === "1"; });
+      var selectableChecked = selectable.filter(function (r) {
+        var cb = r.querySelector(".lf-row-check");
         return cb && cb.checked;
       });
       selectAll.indeterminate = selectableChecked.length > 0 && selectableChecked.length < selectable.length;
@@ -277,70 +297,75 @@
     if (url) window.location.href = url;
   }
 
-  if (selectAll) {
-    selectAll.addEventListener('change', function () {
-      rows.forEach(function (row) {
-        if (row.dataset.eliminable !== '1') return;
-        const cb = row.querySelector('.lf-row-check');
-        if (cb) cb.checked = selectAll.checked;
+  document.addEventListener("change", function (ev) {
+    var target = ev.target;
+    if (!target) return;
+    if (target.id === "lf-select-all") {
+      rows().forEach(function (row) {
+        if (row.dataset.eliminable !== "1") return;
+        var cb = row.querySelector(".lf-row-check");
+        if (cb) cb.checked = target.checked;
       });
       updateUi();
-    });
-  }
-
-  rows.forEach(function (row) {
-    const cb = row.querySelector('.lf-row-check');
-    if (cb) cb.addEventListener('change', updateUi);
-  });
-
-  btnVer.addEventListener('click', function () {
-    const one = checkedRows()[0];
-    if (one) go(one.dataset.urlVer);
-  });
-  btnCredito.addEventListener('click', function () {
-    const one = checkedRows()[0];
-    if (one) go(one.dataset.urlCredito);
-  });
-  btnAmort.addEventListener('click', function () {
-    const one = checkedRows()[0];
-    if (one) go(one.dataset.urlAmort);
-  });
-  btnFormalizar.addEventListener('click', function () {
-    const one = checkedRows()[0];
-    if (one) go(one.dataset.urlFormalizar);
-  });
-
-  btnEliminar.addEventListener('click', function (ev) {
-    const n = eliminableChecked().length;
-    if (n === 0) {
-      ev.preventDefault();
       return;
     }
-    const msg = n === 1
-      ? '¿Eliminar la cotización seleccionada? Esta acción no se puede deshacer.'
-      : '¿Eliminar ' + n + ' cotizaciones seleccionadas? Esta acción no se puede deshacer.';
-    if (!window.confirm(msg)) ev.preventDefault();
+    if (target.classList && target.classList.contains("lf-row-check")) updateUi();
   });
 
-  form.querySelectorAll('.lf-row-delete').forEach(function (btn) {
-    btn.addEventListener('click', function (ev) {
-      const row = btn.closest('.lf-cot-row');
-      const id = row ? row.dataset.id : '';
-      const msg = id
-        ? '¿Eliminar la cotización #' + id + '? Esta acción no se puede deshacer.'
-        : '¿Eliminar esta cotización? Esta acción no se puede deshacer.';
-      if (!window.confirm(msg)) {
+  document.addEventListener("click", function (ev) {
+    var target = ev.target && ev.target.closest ? ev.target.closest("button") : null;
+    if (!target) return;
+    if (target.id === "lf-btn-ver") {
+      var one = checkedRows()[0];
+      if (one) go(one.dataset.urlVer);
+      return;
+    }
+    if (target.id === "lf-btn-credito") {
+      var credito = checkedRows()[0];
+      if (credito) go(credito.dataset.urlCredito);
+      return;
+    }
+    if (target.id === "lf-btn-amort") {
+      var amort = checkedRows()[0];
+      if (amort) go(amort.dataset.urlAmort);
+      return;
+    }
+    if (target.id === "lf-btn-editar") {
+      var editar = checkedRows()[0];
+      if (editar && editar.dataset.editable === "1") go(editar.dataset.urlEditar);
+      return;
+    }
+    if (target.id === "lf-btn-eliminar") {
+      var n = eliminableChecked().length;
+      if (n === 0) {
         ev.preventDefault();
         return;
       }
-      rows.forEach(function (r) {
-        const cb = r.querySelector('.lf-row-check');
+      var msg = n === 1
+        ? "¿Eliminar la cotización seleccionada? Esta acción no se puede deshacer."
+        : "¿Eliminar " + n + " cotizaciones seleccionadas? Esta acción no se puede deshacer.";
+      if (!window.confirm(msg)) ev.preventDefault();
+      return;
+    }
+    if (target.classList.contains("lf-row-delete")) {
+      var row = target.closest(".lf-cot-row");
+      var id = row ? row.dataset.id : "";
+      var delMsg = id
+        ? "¿Eliminar la cotización #" + id + "? Esta acción no se puede deshacer."
+        : "¿Eliminar esta cotización? Esta acción no se puede deshacer.";
+      if (!window.confirm(delMsg)) {
+        ev.preventDefault();
+        return;
+      }
+      rows().forEach(function (r) {
+        var cb = r.querySelector(".lf-row-check");
         if (cb) cb.checked = false;
       });
       updateUi();
-    });
+    }
   });
 
+  document.addEventListener("evalua:list-updated", updateUi);
   updateUi();
 })();
 </script>

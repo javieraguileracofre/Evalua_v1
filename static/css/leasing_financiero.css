@@ -8,6 +8,24 @@
   --lf-warn: #92400e;
 }
 
+/* Usa todo el ancho útil del área central */
+.lf-page.container,
+.container.lf-page,
+.lf-page.container-fluid {
+  max-width: min(1760px, 100%);
+  width: 100%;
+  padding-left: clamp(0.75rem, 1.5vw, 1.25rem);
+  padding-right: clamp(0.75rem, 1.5vw, 1.25rem);
+}
+.lf-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; }
+.lf-empty-cta {
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 2rem 1.25rem;
+  text-align: center;
+}
+
 .lf-title { color: var(--lf-navy); }
 .lf-card {
   border: 1px solid var(--lf-border) !important;

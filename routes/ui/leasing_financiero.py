@@ -12,7 +12,7 @@ from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -1444,7 +1444,9 @@ def lf_cotizacion_workflow_activar(
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
     try:
-        crud_lf.activar_flujo_contable(db, cotizacion=cotizacion, usuario="ui")
+        from modules.leasing.financiero import activar_contrato_financiero
+
+        activar_contrato_financiero(db, cotizacion=cotizacion, usuario="ui")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     security_event("leasing_activar", auth=getattr(request.state, "auth_user", None), cotizacion_id=cotizacion_id)

@@ -8,11 +8,18 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from openpyxl import Workbook
 from sqlalchemy.orm import Session
 
+from core.company_context import document_footer_text, document_header_text
 from core.paths import TEMPLATES_DIR
+from core.rbac import (
+    guard_credito_riesgo_aprobar,
+    guard_credito_riesgo_consulta,
+    guard_credito_riesgo_mutacion,
+)
+from core.security_log import security_event
 from crud.comercial import credito_riesgo as crud_cr
 from crud.maestros.cliente import listar_clientes
 from db.session import get_db
@@ -55,6 +62,8 @@ def credito_riesgo_root():
 
 @router.get("/dashboard", response_class=HTMLResponse, name="credito_riesgo_dashboard")
 def credito_riesgo_dashboard(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_consulta(request)) is not None:
+        return redir
     kpi = crud_cr.dashboard_kpis(db)
     return templates.TemplateResponse(
         "comercial/credito_riesgo/dashboard_riesgo.html",
@@ -64,6 +73,8 @@ def credito_riesgo_dashboard(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/politicas/flujos", response_class=HTMLResponse, name="credito_riesgo_politicas_flujos")
 def politicas_flujos(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_consulta(request)) is not None:
+        return redir
     defaults = {
         "rapido_score_aprobacion": 300.0,
         "rapido_endeudamiento_max_pct": 45.0,
@@ -103,6 +114,8 @@ def politicas_flujos_guardar(
     profundo_concentracion_alta_pct: str = Form("60"),
     profundo_concentracion_baja_pct: str = Form("35"),
 ):
+    if (redir := guard_credito_riesgo_aprobar(request)) is not None:
+        return redir
     reglas = {
         "rapido_score_aprobacion": float(_parse_decimal(rapido_score_aprobacion, "300")),
         "rapido_endeudamiento_max_pct": float(_parse_decimal(rapido_endeudamiento_max_pct, "45")),
@@ -131,6 +144,8 @@ def politicas_flujos_guardar(
 
 @router.get("/solicitudes", response_class=HTMLResponse, name="credito_riesgo_solicitudes_list")
 def listado_solicitudes(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_consulta(request)) is not None:
+        return redir
     solicitudes = crud_cr.listar_solicitudes(db, limit=300)
     return templates.TemplateResponse(
         "comercial/credito_riesgo/listado_solicitudes_credito.html",
@@ -140,6 +155,8 @@ def listado_solicitudes(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/solicitudes/nueva", response_class=HTMLResponse, name="credito_riesgo_solicitud_nueva_get")
 def form_solicitud_get(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_mutacion(request)) is not None:
+        return redir
     clientes, _ = listar_clientes(db, activos_solo=True, limit=400)
     return templates.TemplateResponse(
         "comercial/credito_riesgo/form_solicitud_credito.html",
@@ -198,6 +215,8 @@ def form_solicitud_post(
     riesgo_reputacional: str = Form(""),
     observaciones: str = Form(""),
 ):
+    if (redir := guard_credito_riesgo_mutacion(request)) is not None:
+        return redir
     cid = _parse_int(cliente_id, 0)
     if cid <= 0:
         raise HTTPException(status_code=400, detail="Cliente requerido")
@@ -279,6 +298,8 @@ def form_solicitud_post(
 
 @router.get("/solicitudes/{solicitud_id}", response_class=HTMLResponse, name="credito_riesgo_solicitud_detalle")
 def solicitud_detalle(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_consulta(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -290,6 +311,8 @@ def solicitud_detalle(request: Request, solicitud_id: int, db: Session = Depends
 
 @router.post("/solicitudes/{solicitud_id}/evaluar", name="credito_riesgo_evaluar")
 def solicitud_evaluar(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_mutacion(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -302,6 +325,8 @@ def solicitud_evaluar(request: Request, solicitud_id: int, db: Session = Depends
 
 @router.post("/solicitudes/{solicitud_id}/evaluar-rapido", name="credito_riesgo_evaluar_rapido")
 def solicitud_evaluar_rapido(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_mutacion(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -314,6 +339,8 @@ def solicitud_evaluar_rapido(request: Request, solicitud_id: int, db: Session = 
 
 @router.post("/solicitudes/{solicitud_id}/evaluar-profundo", name="credito_riesgo_evaluar_profundo")
 def solicitud_evaluar_profundo(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_mutacion(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -341,6 +368,8 @@ def documento_actualizar(
     referencia: str = Form(""),
     observaciones: str = Form(""),
 ):
+    if (redir := guard_credito_riesgo_mutacion(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -371,6 +400,8 @@ def solicitud_aprobar_limites(
     condiciones: str = Form(""),
     justificacion: str = Form(""),
 ):
+    if (redir := guard_credito_riesgo_aprobar(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -398,6 +429,8 @@ def solicitud_solicitar_antecedentes(
     db: Session = Depends(get_db),
     nota: str = Form(""),
 ):
+    if (redir := guard_credito_riesgo_mutacion(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -414,6 +447,8 @@ def solicitud_solicitar_antecedentes(
 
 @router.post("/solicitudes/{solicitud_id}/aprobar", name="credito_riesgo_aprobar")
 def solicitud_aprobar(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_aprobar(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -421,11 +456,14 @@ def solicitud_aprobar(request: Request, solicitud_id: int, db: Session = Depends
         crud_cr.aplicar_decision_manual(db, sol, "APROBADA", evento="DECISION_APROBADA")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    security_event("credito_aprobar", auth=getattr(request.state, "auth_user", None), solicitud_id=solicitud_id)
     return _redirect_ficha_solicitud(request, solicitud_id)
 
 
 @router.post("/solicitudes/{solicitud_id}/rechazar", name="credito_riesgo_rechazar")
 def solicitud_rechazar(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_aprobar(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -433,11 +471,14 @@ def solicitud_rechazar(request: Request, solicitud_id: int, db: Session = Depend
         crud_cr.aplicar_decision_manual(db, sol, "RECHAZADA", evento="DECISION_RECHAZADA")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    security_event("credito_rechazar", auth=getattr(request.state, "auth_user", None), solicitud_id=solicitud_id)
     return _redirect_ficha_solicitud(request, solicitud_id)
 
 
 @router.post("/solicitudes/{solicitud_id}/condiciones", name="credito_riesgo_condiciones")
 def solicitud_condiciones(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_mutacion(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -450,6 +491,8 @@ def solicitud_condiciones(request: Request, solicitud_id: int, db: Session = Dep
 
 @router.post("/solicitudes/{solicitud_id}/reabrir-evaluacion", name="credito_riesgo_reabrir_evaluacion")
 def solicitud_reabrir_evaluacion(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_mutacion(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -467,6 +510,8 @@ def solicitud_reabrir_evaluacion(request: Request, solicitud_id: int, db: Sessio
 
 @router.get("/score/{eval_id}", response_class=HTMLResponse, name="credito_riesgo_score_detalle")
 def detalle_score(request: Request, eval_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_consulta(request)) is not None:
+        return redir
     ev = crud_cr.obtener_evaluacion(db, eval_id)
     if not ev:
         raise HTTPException(status_code=404, detail="Evaluación no encontrada")
@@ -478,6 +523,8 @@ def detalle_score(request: Request, eval_id: int, db: Session = Depends(get_db))
 
 @router.get("/comite", response_class=HTMLResponse, name="credito_riesgo_comite_list")
 def comite_list(request: Request, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_consulta(request)) is not None:
+        return redir
     items = crud_cr.listar_comite_pendientes(db, limit=150)
     return templates.TemplateResponse(
         "comercial/credito_riesgo/comite_credito.html",
@@ -487,6 +534,8 @@ def comite_list(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/comite/{comite_id}", response_class=HTMLResponse, name="credito_riesgo_comite_detalle")
 def comite_detalle(request: Request, comite_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_consulta(request)) is not None:
+        return redir
     c = crud_cr.obtener_comite(db, comite_id)
     if not c:
         raise HTTPException(status_code=404, detail="Registro de comité no encontrado")
@@ -504,6 +553,8 @@ def comite_resolver(
     decision: str = Form(...),
     comentario: str = Form(""),
 ):
+    if (redir := guard_credito_riesgo_aprobar(request)) is not None:
+        return redir
     c = crud_cr.obtener_comite(db, comite_id)
     if not c or c.estado != "PENDIENTE":
         raise HTTPException(status_code=400, detail="Comité no disponible")
@@ -524,6 +575,8 @@ def comite_abrir_desde_solicitud(
     db: Session = Depends(get_db),
     resumen: str = Form(""),
 ):
+    if (redir := guard_credito_riesgo_mutacion(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -536,6 +589,8 @@ def comite_abrir_desde_solicitud(
 
 @router.get("/solicitudes/{solicitud_id}/export/excel", name="credito_riesgo_export_excel")
 def export_excel_solicitud(request: Request, solicitud_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_consulta(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -543,7 +598,7 @@ def export_excel_solicitud(request: Request, solicitud_id: int, db: Session = De
     ws = wb.active
     ws.title = "Ficha"
     rows = [
-        ("EvaluaERP — Ficha evaluación crediticia",),
+        ((document_header_text() or "Ficha evaluación crediticia") + " · " + document_footer_text(),),
         ("Código", sol.codigo),
         ("Cliente", sol.cliente.razon_social if sol.cliente else ""),
         ("Monto solicitado", float(sol.monto_solicitado)),
@@ -579,6 +634,8 @@ def export_pdf_solicitud(request: Request, solicitud_id: int, db: Session = Depe
             detail="Exportación PDF requiere el paquete reportlab (pip install reportlab).",
         ) from exc
 
+    if (redir := guard_credito_riesgo_consulta(request)) is not None:
+        return redir
     sol = crud_cr.obtener_solicitud(db, solicitud_id)
     if not sol:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
@@ -587,7 +644,10 @@ def export_pdf_solicitud(request: Request, solicitud_id: int, db: Session = Depe
     w, h = A4
     y = h - 50
     cnv.setFont("Helvetica-Bold", 14)
-    cnv.drawString(40, y, "EvaluaERP — Resumen comité / crédito")
+    cnv.drawString(40, y, (document_header_text() or "Resumen comité / crédito")[:80])
+    y -= 18
+    cnv.setFont("Helvetica", 8)
+    cnv.drawString(40, y, document_footer_text())
     y -= 28
     cnv.setFont("Helvetica", 10)
     cli = sol.cliente.razon_social if sol.cliente else ""
@@ -624,6 +684,8 @@ def export_pdf_solicitud(request: Request, solicitud_id: int, db: Session = Depe
 
 @router.get("/cliente/{cliente_id}/historial", response_class=HTMLResponse, name="credito_riesgo_historial_cliente")
 def historial_por_cliente(request: Request, cliente_id: int, db: Session = Depends(get_db)):
+    if (redir := guard_credito_riesgo_consulta(request)) is not None:
+        return redir
     evs = crud_cr.listar_evaluaciones_cliente(db, cliente_id, limit=80)
     return templates.TemplateResponse(
         "comercial/credito_riesgo/historial_cliente.html",

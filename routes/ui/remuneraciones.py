@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -34,7 +34,7 @@ from core.rbac import (
 )
 from crud import fondos_rendir as crud_fr
 from crud import remuneraciones as crud_rem
-from crud.remuneraciones_contabilidad import (
+from modules.rrhh.payroll import (
     contabilizar_pago_nomina_periodo,
     contabilizar_provision_nomina_periodo,
 )

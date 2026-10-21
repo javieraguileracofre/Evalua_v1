@@ -34,7 +34,8 @@
   {%- elif auth.visibleModules is defined and auth.visibleModules -%}
     {%- set mk = module_key | upper -%}
     {%- set mods = auth.visibleModules | map('upper') | list -%}
-    {%- if mk in mods -%}1{%- else -%}0{%- endif -%}
+    {%- if mk == 'TESORERIA' and ('TESORERIA' in mods or 'FINANZAS' in mods) -%}1
+    {%- elif mk in mods -%}1{%- else -%}0{%- endif -%}
   {%- else -%}0
   {%- endif -%}
 {%- endmacro %}
@@ -78,7 +79,9 @@
   {% else %}
     {% set is_active = (current_menu in active_menus) %}
   {% endif %}
-  <a href="{% if href_override %}{{ href_override }}{% else %}{{ request.url_for(route_name) }}{% endif %}"
+  {% set _nav_href = href_override if href_override else request.url_for(route_name) %}
+  <div class="nav-item-row">
+  <a href="{{ _nav_href }}"
      class="nav-item-evalua {% if is_active %}active{% endif %}"
      data-nav-label="{{ label }}"
      {% if is_active %}aria-current="page"{% endif %}
@@ -89,6 +92,16 @@
     <span class="nav-item-badge">{{ badge }}</span>
     {% endif %}
   </a>
+  <button type="button"
+          class="nav-pin-btn"
+          data-pin-href="{{ _nav_href }}"
+          data-pin-label="{{ label }}"
+          data-pin-icon="{{ icon_bi }}"
+          aria-label="Fijar {{ label }}"
+          title="Fijar en el menú">
+    <i class="bi bi-star" aria-hidden="true"></i>
+  </button>
+  </div>
 {% endmacro %}
 
 
@@ -126,6 +139,7 @@
   {{ _sidebar_section_open('comercial', 'Comercial', 'COMERCIAL', auth, current_menu, active_keys, with_title) }}
   {{ _nav_item(request, 'comercial_hub', 'comercial', 'Área comercial', 'bi-briefcase', current_menu, with_title) }}
   {{ _nav_item(request, 'nota_venta_form', 'ventas', 'Nota de venta', 'bi-shop', current_menu, with_title) }}
+  {{ _nav_item(request, 'nota_venta_lista', 'ventas', 'Notas emitidas', 'bi-receipt', current_menu, with_title) }}
   {{ _nav_item(request, 'clientes_list', 'clientes', 'Clientes', 'bi-people', current_menu, with_title) }}
   {{ _nav_item(request, 'postventa_hub', 'postventa', 'Postventa', 'bi-headset', current_menu, with_title) }}
   {% if _nav_submodule_visible(auth, 'leasing_financiero', 'COMERCIAL') | trim == '1' %}
@@ -207,6 +221,18 @@
   {{ _nav_item(request, 'cxp_lista', 'cxp', 'Cuentas por pagar', 'bi-wallet2', current_menu, with_title) }}
   {{ _nav_item(request, 'fin_periodos', 'fin_periodos', 'Cierre mensual', 'bi-calendar-month', current_menu, with_title) }}
   {{ _sidebar_section_close('FINANZAS', auth) }}
+  {% endif %}
+{% endmacro %}
+
+
+{% macro tesoreria(request, current_menu, with_title=false) %}
+  {% set auth = request.state.auth_user if request.state.auth_user is defined else none %}
+  {% set active_keys = ['tesoreria', 'tesoreria_credenciales', 'tesoreria_ejecucion'] %}
+  {% if _nav_module_visible(auth, 'TESORERIA') | trim == '1' %}
+  {{ _sidebar_section_open('tesoreria', 'Tesorería', 'TESORERIA', auth, current_menu, active_keys, with_title) }}
+  {{ _nav_item(request, 'tesoreria_home', 'tesoreria', 'Compras y ventas', 'bi-receipt-cutoff', current_menu, with_title) }}
+  {{ _nav_item(request, 'tesoreria_credenciales', 'tesoreria_credenciales', 'Clave SII', 'bi-key', current_menu, with_title) }}
+  {{ _sidebar_section_close('TESORERIA', auth) }}
   {% endif %}
 {% endmacro %}
 

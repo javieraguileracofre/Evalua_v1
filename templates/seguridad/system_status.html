@@ -1,0 +1,57 @@
+{% extends "layout/base.html" %}
+{% block title %}Estado del sistema · Administración{% endblock %}
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><span>Administración</span></li>
+<li class="breadcrumb-item active" aria-current="page">Estado del sistema</li>
+{% endblock %}
+{% block page_title %}Estado del sistema{% endblock %}
+{% block page_subtitle %}Solo lectura. No inicia ni detiene servicios desde esta pantalla.{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+  {% for key, label in [('fastapi','FastAPI'), ('postgresql','PostgreSQL'), ('cloudflare','Cloudflare')] %}
+  {% set c = status[key] %}
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <h2 class="h6 mb-0">{{ label }}</h2>
+          {% if c.online %}
+          <span class="badge text-bg-success">ONLINE</span>
+          {% else %}
+          <span class="badge text-bg-secondary">OFFLINE</span>
+          {% endif %}
+        </div>
+        <p class="small text-muted mb-2">{{ c.detail }}</p>
+        {% if key == 'fastapi' %}
+        <ul class="small mb-0 ps-3">
+          <li>Host: {{ c.fastapiHost }}</li>
+          <li>Puerto: {{ c.fastapiPort }}</li>
+        </ul>
+        {% elif key == 'postgresql' %}
+        <ul class="small mb-0 ps-3">
+          <li>Base: {{ c.databaseName or '—' }}</li>
+        </ul>
+        {% else %}
+        <ul class="small mb-0 ps-3">
+          <li>Servicio: {{ c.serviceName }} ({{ c.serviceState }})</li>
+          <li>Túnel: {{ c.tunnelName }}</li>
+          <li>Hostname: {{ c.hostname }}</li>
+          <li>Origen: {{ c.origin }}</li>
+        </ul>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body small">
+    <div><strong>Entorno:</strong> {{ status.appEnv }}</div>
+    <div><strong>Versión:</strong> {{ status.appVersion }}</div>
+    <div><strong>Tenancy:</strong> {{ status.tenancyMode }}</div>
+    <div><strong>Último inicio proceso:</strong> {{ status.lastStartDisplay }}</div>
+  </div>
+</div>
+{% endblock %}

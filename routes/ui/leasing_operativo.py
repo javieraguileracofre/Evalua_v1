@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from core.ui_templates import EvaluaTemplates as Jinja2Templates
 from openpyxl import Workbook
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -191,7 +191,7 @@ def lo_hub(request: Request, db: Session = Depends(get_db)):
 def lo_list(request: Request, db: Session = Depends(get_db), q: str = "", etapa: str = ""):
     if (redir := guard_leasing_op_consulta(request)) is not None:
         return redir
-    rows = lo_crud.listar_simulaciones(db, limit=300, q=q or None, etapa=etapa or None)
+    rows, has_more = lo_crud.listar_simulaciones(db, limit=300, q=q or None, etapa=etapa or None)
     resumen = {
         "total": len(rows),
         "cotizado": 0,
@@ -240,6 +240,7 @@ def lo_list(request: Request, db: Session = Depends(get_db), q: str = "", etapa:
             "active_menu": "leasing_operativo",
             "q": q,
             "etapa": etapa,
+            "has_more": has_more,
             "etapa_labels": lo_crud.ETAPA_LABELS,
             "puede_mutar": puede_mutar,
         },
@@ -250,7 +251,7 @@ def lo_list(request: Request, db: Session = Depends(get_db), q: str = "", etapa:
 def lo_tablero(request: Request, db: Session = Depends(get_db)):
     if (redir := guard_leasing_op_consulta(request)) is not None:
         return redir
-    rows = lo_crud.listar_simulaciones(db, limit=400)
+    rows, _has_more = lo_crud.listar_simulaciones(db, limit=400)
     puede_mutar = _puede_mutar_lop(request)
     etapas = [
         "COTIZACION",

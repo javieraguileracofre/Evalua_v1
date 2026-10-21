@@ -125,6 +125,18 @@ ERP_MODULES: tuple[ErpModule, ...] = (
         owns_schemas=("fin.ap",),
     ),
     ErpModule(
+        code="TESORERIA",
+        name="Tesorería",
+        domain="financiero",
+        icon="bi-receipt-cutoff",
+        route_name="tesoreria_home",
+        nav_module_key="TESORERIA",
+        permissions=("TESORERIA.VIEW", "TESORERIA.SII"),
+        depends_on=("CONTABILIDAD",),
+        owns_schemas=("fin.documento_tributario", "fin.sii_credencial", "fin.sii_ejecucion"),
+        description="Libros de compra y venta. La actualización SII no contabiliza.",
+    ),
+    ErpModule(
         code="CONTABILIDAD",
         name="Contabilidad",
         domain="financiero",
