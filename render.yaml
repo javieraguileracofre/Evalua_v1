@@ -40,7 +40,7 @@ services:
       - key: TRUST_X_FORWARDED_FOR
         value: "true"
       - key: ALLOWED_HOSTS
-        value: "localhost,127.0.0.1,.onrender.com"
+        value: "localhost,127.0.0.1,*.onrender.com,*.evaluasoluciones.cl"
       - key: LOG_LEVEL
         value: INFO
       - key: TENANCY_MODE

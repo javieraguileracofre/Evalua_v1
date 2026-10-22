@@ -52,7 +52,7 @@ Si alguna vez se commitió `.env`, seeds con `Evalua1234##` o claves SMTP:
 - `APP_DEBUG=false`
 - `AUTH_COOKIE_SECURE=true`
 - `TRUST_X_FORWARDED_FOR=true` solo detrás del proxy de Render. Si la variable no está definida, la aplicación usa la IP del socket.
-- `ALLOWED_HOSTS` con el FQDN real (además de `.onrender.com` si aplica)
+- `ALLOWED_HOSTS` con el FQDN real (además de `*.onrender.com` si aplica). El comodín de Starlette es `*.dominio`, no `.dominio`.
 - `SECRET_KEY` generado, no el valor de desarrollo
 - Imagen Docker corre como usuario no root; no copia `.env`
 

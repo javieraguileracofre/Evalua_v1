@@ -389,7 +389,14 @@ class Settings:
         elif is_dev:
             allowed_hosts = ("localhost", "127.0.0.1", "testserver")
         else:
-            allowed_hosts = ("localhost", "127.0.0.1", "testserver", ".onrender.com")
+            # Starlette solo trata como comodín un patrón que empieza por "*."
+            allowed_hosts = (
+                "localhost",
+                "127.0.0.1",
+                "testserver",
+                "*.onrender.com",
+                "*.evaluasoluciones.cl",
+            )
 
         return Settings(
             app_name=os.getenv("APP_NAME", "EvaluaERP").strip(),
